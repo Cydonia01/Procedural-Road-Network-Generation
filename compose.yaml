@@ -1,0 +1,66 @@
+# Usage (see README "Development environment (Docker)"):
+#   docker compose run --rm dev        # headless shell: tests, pipeline, bench (Linux + macOS)
+#   docker compose run --rm gui        # Linux: X11/XWayland + GPU, for `cli view` / `simulate --gui`
+#   docker compose run --rm gui-mac    # macOS: GUI through XQuartz (software rendering)
+#
+# Set LOCAL_UID/LOCAL_GID (e.g. in .env) if your host user is not 1000:1000,
+# so files written to the bind-mounted workspace stay owned by you.
+
+x-base: &base
+  image: procedural-road-network:dev
+  # esmini only ships x86_64 Linux binaries. Native on Linux/Intel Macs;
+  # emulated with Rosetta on Apple Silicon (Docker Desktop setting).
+  platform: linux/amd64
+  build:
+    context: .
+    target: dev
+    platforms: [linux/amd64]
+    args:
+      USER_UID: ${LOCAL_UID:-1000}
+      USER_GID: ${LOCAL_GID:-1000}
+  working_dir: /workspace
+  volumes:
+    # :z relabels for SELinux hosts (Fedora/RHEL); ignored elsewhere.
+    - .:/workspace:z
+  init: false # tini is the image entrypoint
+  stdin_open: true
+  tty: true
+
+services:
+  dev:
+    <<: *base
+
+  # Linux desktop (X11 or Wayland via XWayland).
+  gui:
+    <<: *base
+    environment:
+      DISPLAY: ${DISPLAY:-:0}
+      QT_X11_NO_MITSHM: "1"
+      # Uncomment to force Mesa software rendering if GPU passthrough fails.
+      # LIBGL_ALWAYS_SOFTWARE: "1"
+    volumes:
+      - .:/workspace:z
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Host X cookie; the entrypoint turns it into a container-usable one.
+      # Falls back to /dev/null (no auth) when XAUTHORITY is unset.
+      - ${XAUTHORITY:-/dev/null}:/tmp/.host.Xauthority:ro
+    devices:
+      # GPU access for hardware-accelerated OpenGL (Intel/AMD via Mesa).
+      - /dev/dri:/dev/dri
+    ipc: host # needed by X11 MIT-SHM
+    security_opt:
+      # Lets the container talk to the host X socket on SELinux hosts.
+      - label=disable
+
+  # macOS: XQuartz must be running with "Allow connections from network
+  # clients" enabled, and `xhost +localhost` run once per XQuartz session.
+  gui-mac:
+    <<: *base
+    environment:
+      DISPLAY: host.docker.internal:0
+      # No GPU passthrough on Docker Desktop: render with llvmpipe in the
+      # container and ship pixels to XQuartz (indirect GLX is GL 2.1 only).
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    extra_hosts:
+      # Built in on Docker Desktop; keeps the service usable on Linux too.
+      - host.docker.internal:host-gateway

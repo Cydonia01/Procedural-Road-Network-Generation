@@ -46,4 +46,7 @@ odrviewer_log.txt
 log.csv
 sim.dat
 ground_truth.osi
+# Simulation outputs (esmini)
+*.dat
+*.osi
 screen_shot_*.tga
