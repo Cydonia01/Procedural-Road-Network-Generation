@@ -1,218 +1,137 @@
 # Procedural-Road-Network-Generation
 
-CMPE492 Project — a Python pipeline that procedurally generates road networks,
-converts them to ASAM OpenDRIVE (`.xodr`), builds OpenSCENARIO (`.xosc`) traffic
-scenarios, and runs them headless in [esmini](https://github.com/esmini/esmini).
+CMPE492 Project. **roadgen** is a Python pipeline that procedurally generates
+road networks, converts them to ASAM OpenDRIVE (`.xodr`), builds OpenSCENARIO
+(`.xosc`) traffic scenarios, and runs them headless in
+[esmini](https://github.com/esmini/esmini) for large-scale traffic and
+scalability experiments. All networks are generated; OpenStreetMap is not used.
 
 ```
-Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validator
+Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
                                                     -> Scenario Builder -> .xosc -> esmini -> metrics
 ```
 
-## Setup
+**Features**
 
-Requires Python 3.10+.
+- **Generators:**
+  - `manhattan`: parametric grids with one-way patterns, multi-lane avenues,
+    a ring road, jitter, dropped streets, and a Midtown-like preset.
+  - `lsystem`: Parish & Müller style growth.
+- **OpenDRIVE builder:**
+  - junctions with any number of arms, at any angle down to 10°;
+  - one connecting road per lane movement, with arc-like cubic curves;
+  - no lane ever dead-ends.
+- **Validation:**
+  - traffic connectivity (no traps, everything reachable);
+  - id and link topology, and lane continuity within 1 cm;
+  - optional XSD schema check;
+  - a drive-through of every junction movement with esmini's own RoadManager.
+- **Scenarios:** hundreds to thousands of vehicles, with random junction
+  choices or shortest-path routes.
+- **3D buildings:** optional, one extruded block per city block.
+- **Benchmark:** resumable scalability sweep measuring real-time factor, load
+  time and peak memory, with report plots.
+
+## Quick start
+
+### With Docker (Linux and macOS)
+
+Python, all dependencies and esmini are preinstalled. See
+[docs/docker.md](docs/docker.md) for GUI setup and macOS notes.
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+docker compose build
+docker compose run --rm dev                 # shell with the repo mounted at /workspace
 ```
 
-esmini is an external tool. Download a release and either unpack it into
-`./esmini` (git-ignored) or point `ESMINI_HOME` at it:
+### Native
+
+Requires Python 3.10+ and an [esmini release](https://github.com/esmini/esmini/releases)
+(tested with v3.9).
 
 ```bash
-export ESMINI_HOME=/path/to/esmini
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+export ESMINI_HOME=/path/to/esmini          # or unpack it into ./esmini (git-ignored)
 export OPENDRIVE_XSD=/path/to/opendrive_16_core.xsd   # optional
 ```
 
-## Usage
-
-Render a RoadGraph JSON file to an image:
-
-```bash
-python -m cli plot-graph tests/data/three_nodes.json out/three_nodes.png --node-ids
-```
-
-Generate a Manhattan grid (avenues along x, streets along y), or run the
-whole pipeline in one go. `pipeline` writes `<prefix>.json`, `.png`, `.xodr`
-and `.roadmap.json`, runs all validators, and logs how long each stage took:
-
-```bash
-python -m cli generate manhattan --avenues 5 --streets 10 --seed 1 -o out/grid.json
-python -m cli pipeline manhattan --avenues 10 --streets 10 --seed 1 -o out/grid10x10
-python -m cli pipeline manhattan --avenues 10 --streets 10 --seed 1 \
-    --jitter 3 --edge-drop 0.2 --rotation 15 --drive-check -o out/grid_variant
-```
-
-Run `python -m cli generate manhattan --help` for all parameters (spacing,
-lane counts, speeds, origin, one-way patterns, boundary mode). The same
-seed and parameters always give identical output.
-
-A Midtown-like preset: rotated 29 degrees, avenues 250 m apart with 4 lanes
-and streets 80 m apart with 2 lanes, both alternating one-way, and a ring
-road around the grid. Flags given on the command line override the preset:
-
-```bash
-python -m cli pipeline manhattan --preset manhattan_like --seed 1 -o out/manhattan_like
-python -m cli pipeline manhattan --preset manhattan_like --avenues 4 --streets 8 -o out/small
-```
-
-- `--avenue-oneway` / `--street-oneway alternating`: consecutive avenues or
-  streets flip direction, and one-way roads put all their lanes forward.
-- `--boundary dead_end` (default) keeps the grid closed. `--boundary loop`
-  extends every avenue and street to a two-way ring road so traffic never
-  dead-ends (`--ring-offset`, `--ring-lanes`).
-
-`pipeline` also checks traffic connectivity. It fails if vehicles could get
-trapped (dead ends, one-way sinks), if some road can never be reached, or if
-the lane-direction graph is not strongly connected, and it names the nodes
-involved. Pass `--allow-traps` to report these as warnings instead.
-`build-xodr` always reports them as warnings.
-
-### Generators
-
-Generators register themselves by name. `python -m cli generators` lists them
-with their presets and every parameter. Each one accepts `--preset`,
-`--params file.yaml` (either plain fields, or `preset:` plus `params:`),
-repeatable `--set key=value`, and `--seed`. The output path is optional and
-defaults to `out/<name>[_<preset>]_s<seed>`.
-
-- `manhattan`: the parametric grid described above.
-- `lsystem`: growth in the style of Parish & Müller. Proposed segments wait
-  in a priority queue and pass local constraints (stay in bounds, stop at
-  the first crossing, snap to a nearby node or road, minimum length, minimum
-  angle) before a global goal proposes the next ones. The `grid` goal is
-  implemented: preset `grid` reproduces the 10x10 Manhattan grid exactly,
-  and `grid_organic` adds heading and length noise and skips some branches.
-
-```bash
-python -m cli pipeline lsystem --preset grid
-python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
-```
-
-Further `pipeline` options:
-- `--buildings`: writes `<prefix>_buildings.osgt`, one extruded building per
-  city block. The file is OpenSceneGraph ASCII, which esmini can load as a
-  SceneGraphFile (the bundled esmini cannot read `.obj`). `.obj` export is
-  also available for other tools.
-- `--simulate`: runs a short headless esmini simulation with random traffic,
-  using the buildings when they were exported.
-
-`scenario --scenegraph <file>` attaches a 3D model to any scenario.
-
-Junctions may have any number of arms at any angle down to 10 degrees.
-Adjacent arms are pulled back until their road edges no longer overlap, at
-most one exit counts as straight, and turns are cubic curves shaped like
-circular arcs.
-
-Convert a RoadGraph to OpenDRIVE and open it in esmini's `odrviewer`:
-
-```bash
-python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
-python -m cli view out/single_4way.xodr --density 2
-```
-
-Nodes of degree 1 are dead ends and every other node becomes a junction,
-with one single-lane connecting road per lane movement (straight, left,
-right; no U-turns; one-way edges respected). A degree-2 node, such as a
-grid corner, is a two-arm junction in which every lane continues. Junction
-fixtures live in `tests/fixtures/`.
-
-`build-xodr` also writes `out/single_4way.roadmap.json`, which maps graph
-edge ids to road ids and node ids to junction ids, and lists every junction
-movement. It then checks the file:
-
-- topology: ids are unique, and road, junction and lane links all resolve;
-- continuity: lane centers match within 1 cm and 0.01 rad at every link;
-- schema: only if `OPENDRIVE_XSD` (or `--xsd`) points at the ASAM OpenDRIVE
-  XSD; otherwise this check is skipped with a warning.
-
-To drive every junction movement with esmini's own RoadManager library and
-confirm that each one takes its connecting road into the right lane without
-position jumps:
-
-```bash
-python -m cli drive-check out/single_4way.xodr
-```
-
-esmini is looked up in `$ESMINI_HOME`, falling back to `esmini/` in the repo.
-
-Generate an OpenSCENARIO file with many vehicles and run it in esmini:
-
-```bash
-python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 -o out/grid10x10.xosc
-python -m cli simulate out/grid10x10.xosc          # headless: timing, errors, .dat/.csv/.log
-python -m cli simulate out/grid10x10.xosc --gui    # watch it (top camera by default)
-```
-
-- `--mode random_lanes` (default): no routes, so esmini picks a random
-  connection at every junction.
-- `--mode explicit_routes`: each vehicle follows a shortest path to a random
-  reachable destination. The path is planned lane by lane over the junction
-  movements, because esmini's default controller never changes lanes on a
-  road.
-
-Vehicles spawn on random driving lanes of normal roads, at least
-`--min-gap` metres apart within a lane, with speeds drawn from
-`--speed-min`..`--speed-max`. The same seed gives an identical file.
-`simulate` writes `<stem>.dat`, `.csv` and `.log` next to the scenario. It
-reports simulated time, wall time, the real-time factor, and any esmini
-errors or warnings; missing 3D-model and texture warnings are counted but
-ignored.
-
-### Scalability benchmark
-
-```bash
-python -m cli bench configs/bench_scalability.yaml   # resumable sweep -> out/bench/results.csv + plots
-python -m cli bench-plot out/bench/results.csv      # re-plot (PNG + PDF in out/bench/plots/)
-```
-
-The YAML config sets the grid sizes, vehicle counts, seeds, simulated
-duration, spawn mode, a timeout and memory cap per esmini run, and optional
-`network` overrides (e.g. `{preset: manhattan_like}`). Each network is built
-once per grid size and seed and cached.
-
-Each combination appends one row to `results.csv`:
-- network size and road length;
-- generation and build times, and `.xodr` size;
-- esmini load time (time to first step);
-- stepping wall time and real-time factor (RTF = simulated s / wall s);
-- peak memory;
-- status and errors.
-
-Load time comes from the first simulation-timestamped esmini log line, read
-live through a pseudo-terminal. Status values:
-- `ok` / `error`: the run completed, without or with esmini errors.
-- `skipped`: the vehicles don't fit at the spawn gap, or the run is
-  dominated by an earlier timeout or memory kill on the same network.
-- `timeout` / `memory`: killed at the limit.
-- `failed`: any other exception.
-
-Rerunning the same command skips rows that are already present, so an
-interrupted sweep can simply be restarted. `configs/bench_smoke.yaml` runs
-in about a minute.
-
-Generated files go in `out/`, which git ignores.
-
-## Tests
+### First run
 
 ```bash
 pytest
+python -m cli pipeline manhattan --avenues 4 --streets 4 --seed 1 --drive-check --simulate -o out/first
+python -m cli view out/first.xodr           # natively; in Docker see below
 ```
+
+Opening a window (`view`, `simulate --gui`) needs a display. The `dev`
+service has none, so `odrviewer` exits immediately without an error.
+In Docker, use the GUI service for your OS:
+
+```bash
+# Linux (X11 or Wayland/XWayland), from a terminal in your desktop session
+docker compose run --rm gui python -m cli view out/first.xodr
+
+# macOS: XQuartz running, "Allow connections from network clients" on,
+# and `xhost +localhost` run once (see docs/docker.md)
+docker compose run --rm gui-mac python -m cli view out/first.xodr
+```
+
+## Common commands
+
+```bash
+python -m cli generators                                       # list generators, presets, parameters
+
+# Generate + build + validate (writes .json, .png, .xodr, .roadmap.json)
+python -m cli pipeline manhattan --avenues 10 --streets 10 --seed 1 -o out/grid10x10
+python -m cli pipeline manhattan --preset manhattan_like --seed 1
+python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
+
+# Individual stages
+python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
+python -m cli drive-check out/single_4way.xodr
+python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 -o out/grid10x10.xosc
+python -m cli simulate out/grid10x10.xosc            # headless: timing, errors, .dat/.csv/.log
+python -m cli simulate out/grid10x10.xosc --gui      # watch it
+
+# Scalability benchmark
+python -m cli bench configs/bench_smoke.yaml         # ~1 minute
+python -m cli bench configs/bench_scalability.yaml   # full, resumable sweep
+```
+
+Generated files go in `out/`, which git ignores. Every command is documented
+in the [CLI reference](docs/cli-reference.md).
+
+## Documentation
+
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | Installation and first run |
+| [Architecture](docs/architecture.md) | Pipeline, design rules, module map, output files |
+| [RoadGraph](docs/road-graph.md) | Data model and JSON format |
+| [Generators](docs/generators.md) | `manhattan`, `lsystem`, presets, adding a generator |
+| [OpenDRIVE builder](docs/opendrive.md) | Roads, lanes, junction geometry, id scheme, sidecar |
+| [Validation](docs/validation.md) | Connectivity, topology, continuity, schema, drive-check |
+| [Scenarios & simulation](docs/scenarios-and-simulation.md) | `.xosc` generation, esmini runner, 3D buildings |
+| [Scalability benchmark](docs/benchmarking.md) | Sweep config, results CSV, plots |
+| [CLI reference](docs/cli-reference.md) | All commands and flags |
+| [Docker environment](docs/docker.md) | Container setup, Linux/macOS GUI |
+| [Development guide](docs/development.md) | Tests, coding rules, project phases, known issues |
 
 ## Layout
 
 ```
+cli.py          command-line entry point (python -m cli ...)
 roadgen/
   graph/        RoadGraph model, JSON I/O, plotting
-  generators/   procedural network generators
-  opendrive/    RoadGraph -> OpenDRIVE builder
-  validate/     schema / topology / continuity checks
+  generators/   procedural network generators (registry, manhattan, lsystem)
+  opendrive/    RoadGraph -> OpenDRIVE builder (lanes, junctions, geometry)
+  validate/     connectivity / topology / continuity / schema checks
   scenario/     OpenSCENARIO builder
-  sim/          esmini runner
-  bench/        benchmarks
-cli.py          command-line entry point
-tests/
+  sim/          esmini runner and RoadManager drive-check
+  scene/        3D buildings
+  bench/        scalability benchmark and plots
+configs/        benchmark configs
+tests/          pytest suite and RoadGraph fixtures
+docs/           documentation
 ```

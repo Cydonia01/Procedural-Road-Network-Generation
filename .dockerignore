@@ -1,0 +1,7 @@
+# The image only needs dependency manifests and docker/ helpers; the source
+# tree is bind-mounted at runtime. Allowlist keeps the context tiny (no PDFs,
+# out/, esmini/ downloads, .git).
+*
+!pyproject.toml
+!requirements-dev.txt
+!docker/
