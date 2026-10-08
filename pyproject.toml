@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "roadgen"
+version = "0.1.0"
+description = "Procedural road network generation for OpenDRIVE / OpenSCENARIO and esmini"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "shapely",
+    "networkx",
+    "matplotlib",
+    "lxml",
+    "scenariogeneration",
+    "pyyaml",
+    "psutil",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.packages.find]
+include = ["roadgen*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# matplotlib's mathtext (log-axis tick labels) calls deprecated pyparsing APIs.
+filterwarnings = [
+    "ignore::DeprecationWarning:matplotlib.*",
+    "ignore::DeprecationWarning:pyparsing.*",
+]

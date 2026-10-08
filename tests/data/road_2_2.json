@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "metadata": {"name": "road_2_2"},
+  "nodes": [
+    {"id": 1, "x": 10.0, "y": 20.0, "kind": "dead_end"},
+    {"id": 2, "x": 130.0, "y": 70.0, "kind": "dead_end"}
+  ],
+  "edges": [
+    {"id": 1, "from_node": 1, "to_node": 2, "road_class": "street",
+     "lanes_forward": 2, "lanes_backward": 2}
+  ]
+}

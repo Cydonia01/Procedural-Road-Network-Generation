@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "name": "star_5way",
+    "description": "five 1+1 streets 72 degrees apart"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0.0,
+      "y": 0.0,
+      "kind": "junction"
+    },
+    {
+      "id": 2,
+      "x": 0.0,
+      "y": 90.0,
+      "kind": "dead_end"
+    },
+    {
+      "id": 3,
+      "x": -85.595,
+      "y": 27.812,
+      "kind": "dead_end"
+    },
+    {
+      "id": 4,
+      "x": -52.901,
+      "y": -72.812,
+      "kind": "dead_end"
+    },
+    {
+      "id": 5,
+      "x": 52.901,
+      "y": -72.812,
+      "kind": "dead_end"
+    },
+    {
+      "id": 6,
+      "x": 85.595,
+      "y": 27.812,
+      "kind": "dead_end"
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "from_node": 1,
+      "to_node": 2,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1,
+      "lane_width": 3.5
+    },
+    {
+      "id": 2,
+      "from_node": 3,
+      "to_node": 1,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1,
+      "lane_width": 3.5
+    },
+    {
+      "id": 3,
+      "from_node": 1,
+      "to_node": 4,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1,
+      "lane_width": 3.5
+    },
+    {
+      "id": 4,
+      "from_node": 5,
+      "to_node": 1,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1,
+      "lane_width": 3.5
+    },
+    {
+      "id": 5,
+      "from_node": 1,
+      "to_node": 6,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1,
+      "lane_width": 3.5
+    }
+  ]
+}

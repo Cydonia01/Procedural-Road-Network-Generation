@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "name": "4way_oneway",
+    "description": "1+1 east-west street crossing a southbound one-way 2-lane street; the south arm is a backward-only edge"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0.0,
+      "y": 0.0,
+      "kind": "junction"
+    },
+    {
+      "id": 2,
+      "x": -80.0,
+      "y": 0.0,
+      "kind": "dead_end"
+    },
+    {
+      "id": 3,
+      "x": 80.0,
+      "y": 0.0,
+      "kind": "dead_end"
+    },
+    {
+      "id": 4,
+      "x": 0.0,
+      "y": 80.0,
+      "kind": "dead_end"
+    },
+    {
+      "id": 5,
+      "x": 0.0,
+      "y": -80.0,
+      "kind": "dead_end"
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "from_node": 2,
+      "to_node": 1,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1
+    },
+    {
+      "id": 2,
+      "from_node": 1,
+      "to_node": 3,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1
+    },
+    {
+      "id": 3,
+      "from_node": 4,
+      "to_node": 1,
+      "road_class": "street",
+      "lanes_forward": 2,
+      "lanes_backward": 0
+    },
+    {
+      "id": 4,
+      "from_node": 5,
+      "to_node": 1,
+      "road_class": "street",
+      "lanes_forward": 0,
+      "lanes_backward": 2
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Tiny sweep for checking the harness end to end (~1 minute).
+grid_sizes: [[3, 3], [5, 5]]
+vehicle_counts: [5, 20, 2000]
+seeds: [1, 2]
+sim_duration: 10
+timeout_s: 120
+memory_cap_mb: 2048
+out_dir: out/bench_smoke

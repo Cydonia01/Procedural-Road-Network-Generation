@@ -1,0 +1,13 @@
+# Full scalability sweep (Phase 6). Run: python -m cli bench configs/bench_scalability.yaml
+grid_sizes: [[5, 5], [10, 10], [20, 20], [30, 30], [50, 50]]
+vehicle_counts: [10, 50, 100, 500, 1000, 2000]
+seeds: [1, 2, 3]
+sim_duration: 60          # simulated seconds per run
+timestep: 0.05            # esmini fixed timestep [s]
+spawn_mode: random_lanes  # or explicit_routes
+min_spawn_gap: 10.0       # [m]; combinations that don't fit are recorded as skipped
+speed_range: [8.0, 13.9]  # [m/s]
+timeout_s: 900            # per esmini run
+memory_cap_mb: 8192       # per esmini run
+network: {}               # ManhattanParams overrides, e.g. {preset: manhattan_like}
+out_dir: out/bench

@@ -36,3 +36,14 @@ out/
 # Environment / secrets
 .env
 .env.*
+
+# esmini binaries (~450 MB): download a release into ./esmini or set ESMINI_HOME
+esmini/
+
+# Files esmini/odrviewer write to the working directory by default
+log.txt
+odrviewer_log.txt
+log.csv
+sim.dat
+ground_truth.osi
+screen_shot_*.tga

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "name": "acute_T",
+    "description": "2+2 avenue with a 1+1 street joining at 35 degrees to its east arm"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0.0,
+      "y": 0.0,
+      "kind": "junction"
+    },
+    {
+      "id": 2,
+      "x": 90.0,
+      "y": 0.0,
+      "kind": "dead_end"
+    },
+    {
+      "id": 3,
+      "x": -90.0,
+      "y": 0.0,
+      "kind": "dead_end"
+    },
+    {
+      "id": 4,
+      "x": 73.724,
+      "y": 51.622,
+      "kind": "dead_end"
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "from_node": 1,
+      "to_node": 2,
+      "road_class": "avenue",
+      "lanes_forward": 2,
+      "lanes_backward": 2,
+      "lane_width": 3.5
+    },
+    {
+      "id": 2,
+      "from_node": 3,
+      "to_node": 1,
+      "road_class": "avenue",
+      "lanes_forward": 2,
+      "lanes_backward": 2,
+      "lane_width": 3.5
+    },
+    {
+      "id": 3,
+      "from_node": 1,
+      "to_node": 4,
+      "road_class": "street",
+      "lanes_forward": 1,
+      "lanes_backward": 1,
+      "lane_width": 3.5
+    }
+  ]
+}
