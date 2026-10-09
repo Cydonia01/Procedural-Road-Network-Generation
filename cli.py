@@ -233,6 +233,9 @@ def cmd_view(args: argparse.Namespace) -> int:
         log.error("%s", e)
         return 1
     cmd = [str(odrviewer), "--odr", args.input, "--density", str(args.density)]
+    # Explicit size: without it the first window is 0x0, which VirtualGL
+    # (gui-mac container) can't render into.
+    cmd += ["--window", "60", "60", "1280", "800"]
     log.info("running %s", " ".join(cmd))
     return subprocess.run(cmd).returncode
 

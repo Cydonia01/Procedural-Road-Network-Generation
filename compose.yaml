@@ -58,9 +58,13 @@ services:
     <<: *base
     environment:
       DISPLAY: host.docker.internal:0
-      # No GPU passthrough on Docker Desktop: render with llvmpipe in the
-      # container and ship pixels to XQuartz (indirect GLX is GL 2.1 only).
+      # No GPU passthrough on Docker Desktop, and Mesa can't create GLX
+      # contexts on XQuartz. The entrypoint renders with llvmpipe in an
+      # in-container Xvfb on VGL_DISPLAY and VirtualGL copies frames to XQuartz.
       LIBGL_ALWAYS_SOFTWARE: "1"
+      VGL_DISPLAY: ":99"
+      # Plain X11 image transport; the default for a remote DISPLAY needs vglclient.
+      VGL_COMPRESS: proxy
     extra_hosts:
       # Built in on Docker Desktop; keeps the service usable on Linux too.
       - host.docker.internal:host-gateway

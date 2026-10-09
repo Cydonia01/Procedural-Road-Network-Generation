@@ -40,6 +40,13 @@ RUN curl -fsSL --retry 3 -o /tmp/bin.zip "${ESMINI_URL}/esmini-bin_Linux.zip" \
     && rm -f /opt/esmini/bin/*.a \
     && rm -rf /tmp/*.zip /tmp/esmini-demo
 
+# VirtualGL, for the macOS GUI: XQuartz can't host Mesa's GLX contexts, so
+# esmini renders into an in-container Xvfb and VirtualGL copies the frames to
+# the XQuartz window.
+ARG VIRTUALGL_VERSION=3.1.1
+RUN curl -fsSL --retry 3 -o /tmp/virtualgl.deb \
+    "https://github.com/VirtualGL/virtualgl/releases/download/${VIRTUALGL_VERSION}/virtualgl_${VIRTUALGL_VERSION}_amd64.deb"
+
 # -----------------------------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim-${DEBIAN_RELEASE} AS deps
 
@@ -125,15 +132,18 @@ CMD ["bash"]
 FROM runtime AS dev
 
 USER root
+# apt resolves the VirtualGL .deb's own dependencies (libegl1, libxv1, ...).
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=bind,from=esmini,source=/tmp/virtualgl.deb,target=/tmp/virtualgl.deb \
     apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         make \
         less \
         mesa-utils \
-        x11-apps
+        x11-apps \
+        /tmp/virtualgl.deb
 
 # Project dev extras (pyproject [dev]) + container-only tooling.
 COPY pyproject.toml /tmp/pyproject.toml
