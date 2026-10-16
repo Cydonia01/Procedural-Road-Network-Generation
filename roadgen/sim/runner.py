@@ -16,6 +16,7 @@ from typing import Optional, Sequence, Union
 import psutil
 from lxml import etree
 
+from roadgen.config import DEFAULTS
 from roadgen.sim.esmini import esmini_binary
 
 log = logging.getLogger(__name__)
@@ -212,13 +213,14 @@ def has_scenegraph(xosc_path: PathLike) -> bool:
 def run_esmini(
     xosc_path: PathLike,
     headless: bool = True,
-    timestep: float = 0.05,
+    timestep: float = DEFAULTS["esmini"]["timestep"],
     record: bool = True,
     csv: bool = True,
     out_dir: Optional[PathLike] = None,
     extra_args: Sequence[str] = (),
     timeout: Optional[float] = None,
     memory_cap_mb: Optional[float] = None,
+    window: Sequence[int] = DEFAULTS["esmini"]["window"],
 ) -> SimResult:
     """Run esmini and return timing, peak memory and parsed problems.
 
@@ -235,7 +237,7 @@ def run_esmini(
     csv_path = out / f"{stem}.csv" if csv else None
 
     cmd = [str(esmini_binary("esmini")), "--osc", str(xosc_path)]
-    cmd += ["--headless"] if headless else ["--window", "60", "60", "1280", "800"]
+    cmd += ["--headless"] if headless else ["--window", *map(str, window)]
     cmd += ["--fixed_timestep", str(timestep), "--logfile_path", str(log_path)]
     if record_path:
         cmd += ["--record", str(record_path)]

@@ -1,0 +1,90 @@
+# Default parameters for roadgen. This file is the single source of default
+# values: the params dataclasses and the CLI read them from here.
+#
+# To change defaults without editing this file, write a YAML file with only the
+# keys you want to change (same nesting) and pass it before the command:
+#   python -m cli --config my_defaults.yaml pipeline manhattan ...
+# Precedence, lowest first: this file < --config file < --preset < --params
+# < command-line flags and --set.
+
+seed: 0  # random seed for generate, pipeline, scenario and buildings
+
+generators:
+  manhattan:
+    # n_avenues and n_streets have no default (required without --preset).
+    avenue_spacing: 250.0      # [m]
+    street_spacing: 80.0       # [m]
+    rotation_deg: 0.0
+    origin: [0.0, 0.0]
+    avenue_lanes: [2, 2]       # (forward, backward)
+    street_lanes: [1, 1]
+    lane_width: 3.5            # [m]
+    avenue_speed: 13.9         # [m/s]
+    street_speed: 11.1         # [m/s]
+    jitter: 0.0                # max node displacement per axis [m], uniform
+    edge_drop_prob: 0.0        # chance to drop each street segment
+    avenue_oneway_pattern: none   # none | alternating
+    street_oneway_pattern: none
+    boundary_mode: dead_end    # dead_end | loop
+    ring_offset: 60.0          # distance from the outermost grid lines to the ring [m]
+    ring_lanes: [2, 2]
+  lsystem:
+    global_goal: grid
+    extent: [1000.0, 600.0]    # area width (local x), height (local y) [m]
+    origin: [0.0, 0.0]         # world position of the area's lower-left corner
+    rotation_deg: 0.0          # rotation of the local frame around origin
+    start: [0.5, 0.5]          # seed point, as a fraction of the extent
+    block_size: [250.0, 80.0]  # grid goal: segment length along local x / y
+    branch_prob: 1.0           # chance of each perpendicular branch at a free end
+    branch_delay: 3            # queue delay of branches relative to straight growth
+    angle_jitter_deg: 0.0      # std dev of heading noise around the grid axes
+    length_jitter: 0.0         # relative std dev of segment length
+    snap_radius: 15.0          # [m]
+    min_segment_length: 30.0   # [m]
+    min_angle_deg: 30.0        # min angle between roads meeting at a node
+    max_segments: 20000
+    major_lanes: [2, 2]        # roads along local y ("avenues")
+    minor_lanes: [1, 1]        # roads along local x ("streets")
+    lane_width: 3.5
+    major_speed: 13.9
+    minor_speed: 11.1
+
+opendrive:
+  junction_margin: 2.0  # extra clearance between junction center region and roads [m]
+
+scenario:
+  sim_duration: 60.0        # simulated time [s]
+  spawn_mode: random_lanes  # random_lanes | explicit_routes
+  speed_range: [8.0, 13.9]  # [m/s]
+  min_spawn_gap: 10.0       # min spawn gap in a lane [m]
+
+buildings:
+  setback: 3.0              # sidewalk between road edge and building [m]
+  corner_radius: 6.0        # rounding of convex footprint corners [m]
+  min_height: 12.0          # [m]
+  max_height: 60.0          # [m]
+  min_area: 150.0           # smaller footprints are dropped [m^2]
+  color: [0.78, 0.76, 0.72]
+  y_up: true                # .obj only: y-up instead of OpenDRIVE's z-up
+
+esmini:
+  timestep: 0.05                # fixed timestep [s]
+  window: [60, 60, 1280, 800]   # x y width height of GUI windows
+  camera: top                   # camera mode for `simulate --gui`
+  view_density: 1.0             # cars per 100 m in `view`
+
+pipeline:
+  sim_vehicles: 50      # --simulate: number of vehicles
+  sim_duration: 30.0    # --simulate: simulated time [s]
+  sim_timeout: 600.0    # --simulate: wall-clock limit for esmini [s]
+
+bench:  # defaults for keys a sweep config leaves out
+  sim_duration: 60.0
+  timestep: 0.05
+  spawn_mode: random_lanes
+  min_spawn_gap: 10.0
+  speed_range: [8.0, 13.9]
+  timeout_s: 900.0      # per esmini run
+  memory_cap_mb: 8192.0 # per esmini run
+  network: {}           # ManhattanParams overrides, e.g. {preset: manhattan_like}
+  out_dir: out/bench

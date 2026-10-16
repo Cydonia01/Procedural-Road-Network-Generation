@@ -27,6 +27,7 @@ from typing import Any, Literal
 import networkx as nx
 import numpy as np
 
+from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
 from roadgen.graph.model import Edge, Node, RoadClass, RoadGraph
 
@@ -37,27 +38,29 @@ BoundaryMode = Literal["dead_end", "loop"]
 ONEWAY_PATTERNS = ("none", "alternating")
 BOUNDARY_MODES = ("dead_end", "loop")
 
+_D = section(DEFAULTS, "generators", "manhattan")
+
 
 @dataclass(frozen=True)
 class ManhattanParams:
     n_avenues: int
     n_streets: int
-    avenue_spacing: float = 250.0
-    street_spacing: float = 80.0
-    rotation_deg: float = 0.0
-    origin: tuple[float, float] = (0.0, 0.0)
-    avenue_lanes: tuple[int, int] = (2, 2)
-    street_lanes: tuple[int, int] = (1, 1)
-    lane_width: float = 3.5
-    avenue_speed: float = 13.9
-    street_speed: float = 11.1
-    jitter: float = 0.0  # max node displacement per axis [m], uniform
-    edge_drop_prob: float = 0.0  # chance to drop each street segment
-    avenue_oneway_pattern: OnewayPattern = "none"
-    street_oneway_pattern: OnewayPattern = "none"
-    boundary_mode: BoundaryMode = "dead_end"
-    ring_offset: float = 60.0  # distance from the outermost grid lines to the ring [m]
-    ring_lanes: tuple[int, int] = (2, 2)
+    avenue_spacing: float = _D["avenue_spacing"]
+    street_spacing: float = _D["street_spacing"]
+    rotation_deg: float = _D["rotation_deg"]
+    origin: tuple[float, float] = _D["origin"]
+    avenue_lanes: tuple[int, int] = _D["avenue_lanes"]
+    street_lanes: tuple[int, int] = _D["street_lanes"]
+    lane_width: float = _D["lane_width"]
+    avenue_speed: float = _D["avenue_speed"]
+    street_speed: float = _D["street_speed"]
+    jitter: float = _D["jitter"]  # max node displacement per axis [m], uniform
+    edge_drop_prob: float = _D["edge_drop_prob"]  # chance to drop each street segment
+    avenue_oneway_pattern: OnewayPattern = _D["avenue_oneway_pattern"]
+    street_oneway_pattern: OnewayPattern = _D["street_oneway_pattern"]
+    boundary_mode: BoundaryMode = _D["boundary_mode"]
+    ring_offset: float = _D["ring_offset"]  # distance from the outermost grid lines to the ring [m]
+    ring_lanes: tuple[int, int] = _D["ring_lanes"]
 
     def __post_init__(self) -> None:
         if self.n_avenues < 1 or self.n_streets < 1 or self.n_avenues * self.n_streets < 2:

@@ -24,6 +24,7 @@ from typing import Optional, Union
 
 from scenariogeneration import xodr
 
+from roadgen.config import DEFAULTS
 from roadgen.graph.model import Edge, RoadGraph
 from roadgen.opendrive.geometry import segment_start, trim
 from roadgen.opendrive.junctions import (
@@ -42,7 +43,7 @@ ODR_REV_MINOR = "6"
 ROAD_TYPE = xodr.RoadType.town
 # scenariogeneration stamps datetime.now(); a fixed value keeps output reproducible.
 HEADER_DATE = "1970-01-01T00:00:00"
-DEFAULT_JUNCTION_MARGIN = 2.0
+DEFAULT_JUNCTION_MARGIN = DEFAULTS["opendrive"]["junction_margin"]
 
 PathLike = Union[str, Path]
 

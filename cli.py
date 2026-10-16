@@ -13,12 +13,13 @@ from typing import Iterator, Optional, Sequence
 
 import yaml
 
+from roadgen.config import load_config, section
 from roadgen.generators.base import generator_names, get_generator, load_params, presets_of
-from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS, ManhattanParams
+from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
 from roadgen.graph.plot import plot_graph
-from roadgen.opendrive.builder import DEFAULT_JUNCTION_MARGIN, OpenDriveBuilder
+from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity
@@ -135,7 +136,8 @@ def generator_params(args: argparse.Namespace):
             if (value := getattr(args, flag, None)) is not None
         })
     try:
-        return load_params(gen.params_type, args.params, args.preset, overrides)
+        defaults = section(args.cfg, "generators", args.generator)
+        return load_params(gen.params_type, args.params, args.preset, overrides, defaults)
     except TypeError as e:  # missing required fields
         if args.generator == "manhattan":
             raise SystemExit("error: --avenues and --streets are required without --preset") from e
@@ -184,7 +186,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
 
         scenegraph = Path(f"{prefix}_buildings.osgt")
         with timed("buildings"):
-            n = export_buildings(graph, scenegraph, BuildingParams(seed=args.seed))
+            params = BuildingParams(seed=args.seed, **section(args.cfg, "buildings"))
+            n = export_buildings(graph, scenegraph, params)
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
         errors += ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
@@ -200,10 +203,14 @@ def simulate_network(xodr: Path, args: argparse.Namespace, scenegraph: Optional[
     from roadgen.sim.runner import run_esmini
 
     xosc = xodr.with_suffix(".xosc")
-    params = ScenarioParams(args.sim_vehicles, args.seed, args.sim_duration)
+    defaults = {**section(args.cfg, "scenario"), "seed": args.seed, "sim_duration": args.sim_duration}
+    params = ScenarioParams(args.sim_vehicles, **defaults)
     try:
         ScenarioBuilder.from_files(xodr).write(params, xosc, scenegraph=scenegraph)
-        result = run_esmini(xosc, record=False, csv=False, timeout=600)
+        result = run_esmini(
+            xosc, timestep=args.cfg["esmini"]["timestep"], record=False, csv=False,
+            timeout=args.cfg["pipeline"]["sim_timeout"],
+        )
     except (FileNotFoundError, ValueError) as e:
         return [f"simulate: {e}"]
     log.info(
@@ -220,8 +227,9 @@ def cmd_generators(args: argparse.Namespace) -> int:
         print(f"{name}: {gen.description}")
         presets = presets_of(gen.params_type)
         print(f"  presets: {', '.join(presets) if presets else '-'}")
+        defaults = section(args.cfg, "generators", name)
         for f in dataclasses.fields(gen.params_type):
-            default = "required" if f.default is dataclasses.MISSING else repr(f.default)
+            default = repr(defaults[f.name]) if f.name in defaults else "required"
             print(f"  {f.name} = {default}")
     return 0
 
@@ -235,7 +243,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     cmd = [str(odrviewer), "--odr", args.input, "--density", str(args.density)]
     # Explicit size: without it the first window is 0x0, which VirtualGL
     # (gui-mac container) can't render into.
-    cmd += ["--window", "60", "60", "1280", "800"]
+    cmd += ["--window", *map(str, args.cfg["esmini"]["window"])]
     log.info("running %s", " ".join(cmd))
     return subprocess.run(cmd).returncode
 
@@ -290,6 +298,7 @@ def cmd_simulate(args: argparse.Namespace) -> int:
             record=not args.no_record,
             csv=not args.no_csv,
             extra_args=extra,
+            window=args.cfg["esmini"]["window"],
         )
     except FileNotFoundError as e:
         log.error("%s", e)
@@ -310,7 +319,7 @@ def cmd_simulate(args: argparse.Namespace) -> int:
 def cmd_bench(args: argparse.Namespace) -> int:
     from roadgen.bench.benchmark import BenchConfig, run_sweep
 
-    cfg = BenchConfig.from_yaml(args.config)
+    cfg = BenchConfig.from_yaml(args.config, section(args.cfg, "bench"))
     if args.out_dir:
         cfg = dataclasses.replace(cfg, out_dir=args.out_dir)
     with timed("sweep"):
@@ -329,10 +338,23 @@ def cmd_bench_plot(args: argparse.Namespace) -> int:
     return 0
 
 
-def build_parser() -> argparse.ArgumentParser:
+def add_config_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--config", dest="config_file", metavar="FILE",
+        help="YAML file overriding default parameters (see roadgen/defaults.yaml)",
+    )
+
+
+def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
+    """CLI parser whose defaults come from config (default: the packaged defaults)."""
+    cfg = config if config is not None else load_config()
     parser = argparse.ArgumentParser(prog="cli", description="Road network tools")
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
+    add_config_arg(parser)
+    parser.set_defaults(cfg=cfg)
     sub = parser.add_subparsers(dest="command", required=True)
+    margin = cfg["opendrive"]["junction_margin"]
+    scenario, esmini, pipeline = cfg["scenario"], cfg["esmini"], cfg["pipeline"]
 
     p = sub.add_parser("plot-graph", help="render a RoadGraph JSON to an image")
     p.add_argument("input", help="RoadGraph JSON file")
@@ -345,8 +367,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("output", help="output .xodr (edge->road map goes next to it)")
     p.add_argument("--xsd", help="OpenDRIVE XSD (default: $OPENDRIVE_XSD)")
     p.add_argument(
-        "--junction-margin", type=float, default=DEFAULT_JUNCTION_MARGIN,
-        help="extra clearance [m] between junction center region and roads",
+        "--junction-margin", type=float, default=margin,
+        help="extra clearance [m] between junction center region and roads (default %(default)s)",
     )
     p.set_defaults(func=cmd_build_xodr)
 
@@ -357,7 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     gen = p.add_subparsers(dest="generator", required=True)
     for name in generator_names():
         g = gen.add_parser(name, help=get_generator(name).description)
-        _add_generator_args(g, name)
+        _add_generator_args(g, name, cfg)
         g.add_argument("-o", "--output", help="output RoadGraph JSON (default: out/<name>_s<seed>.json)")
         g.set_defaults(func=cmd_generate)
 
@@ -365,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
     gen = p.add_subparsers(dest="generator", required=True)
     for name in generator_names():
         g = gen.add_parser(name, help=get_generator(name).description)
-        _add_generator_args(g, name)
+        _add_generator_args(g, name, cfg)
         g.add_argument(
             "-o", "--output",
             help="output prefix; writes <prefix>.json, .png, .xodr and .roadmap.json "
@@ -377,8 +399,8 @@ def build_parser() -> argparse.ArgumentParser:
             help="report dead ends / one-way traps as warnings instead of errors",
         )
         g.add_argument(
-            "--junction-margin", type=float, default=DEFAULT_JUNCTION_MARGIN,
-            help="extra clearance [m] between junction center region and roads",
+            "--junction-margin", type=float, default=margin,
+            help="extra clearance [m] between junction center region and roads (default %(default)s)",
         )
         g.add_argument(
             "--drive-check", action="store_true",
@@ -389,23 +411,30 @@ def build_parser() -> argparse.ArgumentParser:
                             "(used as SceneGraphFile by --simulate)")
         g.add_argument("--simulate", action="store_true",
                        help="also run a short headless esmini simulation with random traffic")
-        g.add_argument("--sim-vehicles", type=int, default=50)
-        g.add_argument("--sim-duration", type=float, default=30.0, help="[s]")
+        g.add_argument("--sim-vehicles", type=int, default=pipeline["sim_vehicles"],
+                       help="(default %(default)s)")
+        g.add_argument("--sim-duration", type=float, default=pipeline["sim_duration"],
+                       help="[s] (default %(default)s)")
         g.set_defaults(func=cmd_pipeline)
 
     p = sub.add_parser("scenario", help="generate an OpenSCENARIO file with many vehicles")
     p.add_argument("input", help=".xodr written by build-xodr/pipeline (needs its .roadmap.json)")
     p.add_argument("-o", "--output", required=True, help="output .xosc")
     p.add_argument("--vehicles", type=int, required=True)
-    p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--duration", type=float, default=60.0, help="simulated time [s]")
+    p.add_argument("--seed", type=int, default=cfg["seed"], help="(default %(default)s)")
+    p.add_argument("--duration", type=float, default=scenario["sim_duration"],
+                   help="simulated time [s] (default %(default)s)")
     p.add_argument(
-        "--mode", choices=("random_lanes", "explicit_routes"), default="random_lanes",
-        help="random junction choices, or shortest-path routes to random destinations",
+        "--mode", choices=("random_lanes", "explicit_routes"), default=scenario["spawn_mode"],
+        help="random junction choices, or shortest-path routes to random destinations "
+             "(default %(default)s)",
     )
-    p.add_argument("--speed-min", type=float, default=8.0, help="[m/s]")
-    p.add_argument("--speed-max", type=float, default=13.9, help="[m/s]")
-    p.add_argument("--min-gap", type=float, default=10.0, help="min spawn gap in a lane [m]")
+    p.add_argument("--speed-min", type=float, default=scenario["speed_range"][0],
+                   help="[m/s] (default %(default)s)")
+    p.add_argument("--speed-max", type=float, default=scenario["speed_range"][1],
+                   help="[m/s] (default %(default)s)")
+    p.add_argument("--min-gap", type=float, default=scenario["min_spawn_gap"],
+                   help="min spawn gap in a lane [m] (default %(default)s)")
     p.add_argument("--graph", help="RoadGraph JSON (default: <input>.json if present)")
     p.add_argument("--scenegraph", help="3D model to show with the roads, e.g. <prefix>_buildings.osgt")
     p.set_defaults(func=cmd_scenario)
@@ -414,10 +443,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("input", help=".xosc file")
     p.add_argument("--gui", action="store_true", help="show the esmini window")
     p.add_argument(
-        "--camera", default="top",
-        help="camera mode with --gui (orbit, fixed, flex, flex-orbit, top, driver)",
+        "--camera", default=esmini["camera"],
+        help="camera mode with --gui (orbit, fixed, flex, flex-orbit, top, driver; "
+             "default %(default)s)",
     )
-    p.add_argument("--timestep", type=float, default=0.05, help="fixed timestep [s]")
+    p.add_argument("--timestep", type=float, default=esmini["timestep"],
+                   help="fixed timestep [s] (default %(default)s)")
     p.add_argument("--no-record", action="store_true", help="skip the .dat recording")
     p.add_argument("--no-csv", action="store_true", help="skip the .csv log")
     p.set_defaults(func=cmd_simulate)
@@ -435,7 +466,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("view", help="open an .xodr in esmini's odrviewer")
     p.add_argument("input", help=".xodr file")
-    p.add_argument("--density", type=float, default=1, help="cars per 100 m")
+    p.add_argument("--density", type=float, default=esmini["view_density"],
+                   help="cars per 100 m (default %(default)s)")
     p.set_defaults(func=cmd_view)
 
     p = sub.add_parser(
@@ -447,49 +479,63 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_generator_args(p: argparse.ArgumentParser, name: str) -> None:
+def _add_generator_args(p: argparse.ArgumentParser, name: str, cfg: dict) -> None:
     """Flags shared by every generator, plus Manhattan's dedicated flags."""
     gen = get_generator(name)
-    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--seed", type=int, default=cfg["seed"], help="(default %(default)s)")
     p.add_argument("--params", help="YAML with parameter values (or preset: + params:)")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
                    help="override one parameter (repeatable), e.g. --set rotation_deg=15")
     if name == "manhattan":
-        _add_manhattan_args(p)
+        _add_manhattan_args(p, section(cfg, "generators", "manhattan"))
     else:
         presets = presets_of(gen.params_type)
         p.add_argument("--preset", choices=presets or None, help="start from a named parameter set")
 
 
-def _add_manhattan_args(p: argparse.ArgumentParser) -> None:
-    """Flags default to None so a preset (or the dataclass default) applies."""
-    d = ManhattanParams(1, 2)  # only used to show defaults in --help
+def _add_manhattan_args(p: argparse.ArgumentParser, d: dict) -> None:
+    """Flags default to None so a preset (or the configured default) applies.
+
+    d holds the configured defaults, only used to show them in --help.
+    """
     p.add_argument("--preset", choices=sorted(PRESETS), help="start from a named parameter set")
     p.add_argument("--avenues", type=int, help="number of avenues (along x)")
     p.add_argument("--streets", type=int, help="number of streets (along y)")
-    p.add_argument("--avenue-spacing", type=float, help=f"[m] (default {d.avenue_spacing})")
-    p.add_argument("--street-spacing", type=float, help=f"[m] (default {d.street_spacing})")
-    p.add_argument("--rotation", type=float, help=f"[deg] (default {d.rotation_deg})")
+    p.add_argument("--avenue-spacing", type=float, help=f"[m] (default {d['avenue_spacing']})")
+    p.add_argument("--street-spacing", type=float, help=f"[m] (default {d['street_spacing']})")
+    p.add_argument("--rotation", type=float, help=f"[deg] (default {d['rotation_deg']})")
     p.add_argument("--origin", type=float, nargs=2, metavar=("X", "Y"))
     p.add_argument("--avenue-lanes", type=int, nargs=2, metavar=("FWD", "BWD"),
-                   help=f"(default {d.avenue_lanes})")
+                   help=f"(default {d['avenue_lanes']})")
     p.add_argument("--street-lanes", type=int, nargs=2, metavar=("FWD", "BWD"),
-                   help=f"(default {d.street_lanes})")
-    p.add_argument("--lane-width", type=float, help=f"[m] (default {d.lane_width})")
-    p.add_argument("--avenue-speed", type=float, help=f"[m/s] (default {d.avenue_speed})")
-    p.add_argument("--street-speed", type=float, help=f"[m/s] (default {d.street_speed})")
-    p.add_argument("--jitter", type=float, help="node noise [m] (default 0)")
-    p.add_argument("--edge-drop", type=float, help="probability of dropping each street segment")
-    p.add_argument("--avenue-oneway", choices=ONEWAY_PATTERNS, help="(default none)")
-    p.add_argument("--street-oneway", choices=ONEWAY_PATTERNS, help="(default none)")
-    p.add_argument("--boundary", choices=BOUNDARY_MODES, help="(default dead_end)")
-    p.add_argument("--ring-offset", type=float, help=f"[m] (default {d.ring_offset})")
+                   help=f"(default {d['street_lanes']})")
+    p.add_argument("--lane-width", type=float, help=f"[m] (default {d['lane_width']})")
+    p.add_argument("--avenue-speed", type=float, help=f"[m/s] (default {d['avenue_speed']})")
+    p.add_argument("--street-speed", type=float, help=f"[m/s] (default {d['street_speed']})")
+    p.add_argument("--jitter", type=float, help=f"node noise [m] (default {d['jitter']})")
+    p.add_argument("--edge-drop", type=float,
+                   help=f"probability of dropping each street segment (default {d['edge_drop_prob']})")
+    p.add_argument("--avenue-oneway", choices=ONEWAY_PATTERNS,
+                   help=f"(default {d['avenue_oneway_pattern']})")
+    p.add_argument("--street-oneway", choices=ONEWAY_PATTERNS,
+                   help=f"(default {d['street_oneway_pattern']})")
+    p.add_argument("--boundary", choices=BOUNDARY_MODES,
+                   help=f"(default {d['boundary_mode']})")
+    p.add_argument("--ring-offset", type=float, help=f"[m] (default {d['ring_offset']})")
     p.add_argument("--ring-lanes", type=int, nargs=2, metavar=("FWD", "BWD"),
-                   help=f"(default {d.ring_lanes})")
+                   help=f"(default {d['ring_lanes']})")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    # Read --config first: the parser's defaults (and --help) depend on it.
+    pre = argparse.ArgumentParser(add_help=False)
+    add_config_arg(pre)
+    known, _ = pre.parse_known_args(argv)
+    try:
+        config = load_config(known.config_file)
+    except (OSError, ValueError, yaml.YAMLError) as e:
+        raise SystemExit(f"error: --config: {e}") from e
+    args = build_parser(config).parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",

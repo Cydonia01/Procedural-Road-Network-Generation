@@ -26,24 +26,27 @@ from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.geometry.polygon import orient
 from shapely.ops import polygonize, triangulate, unary_union
 
+from roadgen.config import DEFAULTS, section
 from roadgen.graph.model import Edge, RoadGraph
 
 log = logging.getLogger(__name__)
 
 PathLike = Union[str, Path]
 
+_D = section(DEFAULTS, "buildings")
+
 
 @dataclass(frozen=True)
 class BuildingParams:
-    seed: int = 0
-    setback: float = 3.0  # sidewalk between road edge and building [m]
-    corner_radius: float = 6.0  # rounding of convex footprint corners [m]
-    min_height: float = 12.0  # [m]
-    max_height: float = 60.0  # [m]
-    min_area: float = 150.0  # smaller footprints are dropped [m^2]
-    color: tuple[float, float, float] = (0.78, 0.76, 0.72)
+    seed: int = DEFAULTS["seed"]
+    setback: float = _D["setback"]  # sidewalk between road edge and building [m]
+    corner_radius: float = _D["corner_radius"]  # rounding of convex footprint corners [m]
+    min_height: float = _D["min_height"]  # [m]
+    max_height: float = _D["max_height"]  # [m]
+    min_area: float = _D["min_area"]  # smaller footprints are dropped [m^2]
+    color: tuple[float, float, float] = _D["color"]
     # .obj only: write y-up (the usual OBJ convention) instead of OpenDRIVE's z-up.
-    y_up: bool = True
+    y_up: bool = _D["y_up"]
 
     def __post_init__(self) -> None:
         if not 0 < self.min_height <= self.max_height:

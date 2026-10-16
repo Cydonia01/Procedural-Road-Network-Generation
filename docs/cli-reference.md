@@ -3,8 +3,36 @@
 All commands run as `python -m cli <command> [options]` from the repo root.
 Run `python -m cli <command> --help` for the authoritative list.
 
-Global option: `-v, --verbose` enables debug logging. It must come **before**
-the command, e.g. `python -m cli -v pipeline ...`.
+Global options must come **before** the command, e.g. `python -m cli -v pipeline ...`:
+
+| Option | Meaning |
+|--------|---------|
+| `-v, --verbose` | Debug logging |
+| `--config FILE` | YAML file overriding default parameters |
+
+### Defaults and `--config`
+
+Every default value lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml):
+generator parameters (`generators.manhattan`, `generators.lsystem`), the seed,
+`opendrive.junction_margin`, `scenario`, `buildings`, `esmini` (timestep,
+window, camera, view density), `pipeline` (`--simulate` settings) and `bench`
+(keys a sweep config leaves out). A `--config` file uses the same nesting and
+only needs the keys it changes; unknown keys are an error. For example:
+
+```yaml
+seed: 42
+generators:
+  manhattan:
+    lane_width: 3.25
+scenario:
+  speed_range: [5.0, 10.0]
+```
+
+Precedence, lowest first: `defaults.yaml` < `--config` file < `--preset` <
+`--params` file < command-line flags and `--set`. `--help` shows the defaults
+in effect, including those from `--config`. Benchmark networks use
+`bench.network`, not `generators.manhattan`, so a sweep's config id only
+depends on the sweep settings.
 
 Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 

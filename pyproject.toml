@@ -28,6 +28,9 @@ py-modules = ["cli"]
 [tool.setuptools.packages.find]
 include = ["roadgen*"]
 
+[tool.setuptools.package-data]
+roadgen = ["defaults.yaml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

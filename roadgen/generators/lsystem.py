@@ -34,6 +34,7 @@ from typing import Any, Literal, Optional
 
 import numpy as np
 
+from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
 from roadgen.graph.model import Edge, Node, RoadGraph
 
@@ -44,29 +45,31 @@ GLOBAL_GOALS = ("grid",)
 Point = tuple[float, float]
 EPS = 1e-9
 
+_D = section(DEFAULTS, "generators", "lsystem")
+
 
 @dataclass(frozen=True)
 class LSystemParams:
-    global_goal: GlobalGoal = "grid"
-    extent: tuple[float, float] = (1000.0, 600.0)  # area width (local x), height (local y) [m]
-    origin: tuple[float, float] = (0.0, 0.0)  # world position of the area's lower-left corner
-    rotation_deg: float = 0.0  # rotation of the local frame around origin
-    start: tuple[float, float] = (0.5, 0.5)  # seed point, as a fraction of the extent
-    block_size: tuple[float, float] = (250.0, 80.0)  # grid goal: segment length along local x / y
-    branch_prob: float = 1.0  # chance of each perpendicular branch at a free end
-    branch_delay: int = 3  # queue delay of branches relative to straight growth
-    angle_jitter_deg: float = 0.0  # std dev of heading noise around the grid axes
-    length_jitter: float = 0.0  # relative std dev of segment length
-    snap_radius: float = 15.0  # [m]
-    min_segment_length: float = 30.0  # [m]
-    min_angle_deg: float = 30.0  # min angle between roads meeting at a node
-    max_segments: int = 20000
+    global_goal: GlobalGoal = _D["global_goal"]
+    extent: tuple[float, float] = _D["extent"]  # area width (local x), height (local y) [m]
+    origin: tuple[float, float] = _D["origin"]  # world position of the area's lower-left corner
+    rotation_deg: float = _D["rotation_deg"]  # rotation of the local frame around origin
+    start: tuple[float, float] = _D["start"]  # seed point, as a fraction of the extent
+    block_size: tuple[float, float] = _D["block_size"]  # grid goal: segment length along local x / y
+    branch_prob: float = _D["branch_prob"]  # chance of each perpendicular branch at a free end
+    branch_delay: int = _D["branch_delay"]  # queue delay of branches relative to straight growth
+    angle_jitter_deg: float = _D["angle_jitter_deg"]  # std dev of heading noise around the grid axes
+    length_jitter: float = _D["length_jitter"]  # relative std dev of segment length
+    snap_radius: float = _D["snap_radius"]  # [m]
+    min_segment_length: float = _D["min_segment_length"]  # [m]
+    min_angle_deg: float = _D["min_angle_deg"]  # min angle between roads meeting at a node
+    max_segments: int = _D["max_segments"]
     # Roads along local y are "avenues" (major), along local x "streets" (minor).
-    major_lanes: tuple[int, int] = (2, 2)
-    minor_lanes: tuple[int, int] = (1, 1)
-    lane_width: float = 3.5
-    major_speed: float = 13.9
-    minor_speed: float = 11.1
+    major_lanes: tuple[int, int] = _D["major_lanes"]
+    minor_lanes: tuple[int, int] = _D["minor_lanes"]
+    lane_width: float = _D["lane_width"]
+    major_speed: float = _D["major_speed"]
+    minor_speed: float = _D["minor_speed"]
 
     def __post_init__(self) -> None:
         if self.global_goal not in GLOBAL_GOALS:

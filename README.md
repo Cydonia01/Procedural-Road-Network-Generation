@@ -102,6 +102,20 @@ python -m cli bench configs/bench_scalability.yaml   # full, resumable sweep
 Generated files go in `out/`, which git ignores. Every command is documented
 in the [CLI reference](docs/cli-reference.md).
 
+### Default parameters
+
+All default values (generator parameters, scenario, buildings, esmini, pipeline
+and benchmark settings) live in [roadgen/defaults.yaml](roadgen/defaults.yaml).
+To change them, write a YAML file with only the keys you want to change and pass
+it with `--config` before the command; any command-line flag still wins:
+
+```bash
+python -m cli --config my_defaults.yaml pipeline manhattan --avenues 4 --streets 4
+```
+
+Precedence, lowest first: `defaults.yaml` < `--config` file < `--preset` <
+`--params` file < flags and `--set`.
+
 ## Documentation
 
 | | |

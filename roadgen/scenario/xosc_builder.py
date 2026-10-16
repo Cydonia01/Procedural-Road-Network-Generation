@@ -31,6 +31,7 @@ import numpy as np
 from lxml import etree
 from scenariogeneration import xosc
 
+from roadgen.config import DEFAULTS, section
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.builder import sidecar_path
 
@@ -49,15 +50,17 @@ _BBOX = xosc.BoundingBox(1.8, 4.5, 1.5, 1.4, 0.0, 0.75)
 _FRONT_AXLE = xosc.Axle(0.5, 0.6, 1.6, 2.8, 0.3)
 _REAR_AXLE = xosc.Axle(0.0, 0.6, 1.6, 0.0, 0.3)
 
+_D = section(DEFAULTS, "scenario")
+
 
 @dataclass(frozen=True)
 class ScenarioParams:
     n_vehicles: int
-    seed: int = 0
-    sim_duration: float = 60.0
-    spawn_mode: SpawnMode = "random_lanes"
-    speed_range: tuple[float, float] = (8.0, 13.9)  # [m/s]
-    min_spawn_gap: float = 10.0  # [m] along the lane
+    seed: int = DEFAULTS["seed"]
+    sim_duration: float = _D["sim_duration"]
+    spawn_mode: SpawnMode = _D["spawn_mode"]
+    speed_range: tuple[float, float] = _D["speed_range"]  # [m/s]
+    min_spawn_gap: float = _D["min_spawn_gap"]  # [m] along the lane
 
     def __post_init__(self) -> None:
         if self.n_vehicles < 0:

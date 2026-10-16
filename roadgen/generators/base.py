@@ -73,18 +73,23 @@ def build_params(
     params_type: type,
     values: Optional[dict[str, Any]] = None,
     preset: Optional[str] = None,
+    defaults: Optional[dict[str, Any]] = None,
 ) -> Any:
-    """Params from a preset (optional) overridden by values; lists become tuples."""
-    values = coerce_tuples(params_type, dict(values or {}))
+    """Params from defaults, then a preset (optional), then values; lists become tuples."""
     known = {f.name for f in dataclasses.fields(params_type)}
-    unknown = set(values) - known
-    if unknown:
-        raise ValueError(f"unknown {params_type.__name__} fields: {sorted(unknown)}")
+    for layer in (defaults, values):
+        unknown = set(layer or {}) - known
+        if unknown:
+            raise ValueError(f"unknown {params_type.__name__} fields: {sorted(unknown)}")
     if preset:
         if not hasattr(params_type, "preset"):
             raise ValueError(f"{params_type.__name__} has no presets")
-        return params_type.preset(preset, **values)
-    return params_type(**values)
+        presets = getattr(params_type, "PRESETS", {})
+        if preset not in presets:
+            raise ValueError(f"unknown preset {preset!r}; choose from {sorted(presets)}")
+        values = {**presets[preset], **(values or {})}
+    merged = coerce_tuples(params_type, {**(defaults or {}), **(values or {})})
+    return params_type(**merged)
 
 
 def load_params(
@@ -92,8 +97,9 @@ def load_params(
     path: Optional[Union[str, Path]] = None,
     preset: Optional[str] = None,
     overrides: Optional[dict[str, Any]] = None,
+    defaults: Optional[dict[str, Any]] = None,
 ) -> Any:
-    """Params from an optional YAML file, preset and overrides (in that order).
+    """Params from defaults, preset, an optional YAML file and overrides (in that order).
 
     A YAML file may hold the fields directly, or ``preset: <name>`` plus a
     ``params:`` mapping. An explicit preset argument wins over the file's.
@@ -107,7 +113,7 @@ def load_params(
         else:
             values.update(data)
     values.update(overrides or {})
-    return build_params(params_type, values, preset)
+    return build_params(params_type, values, preset, defaults)
 
 
 def coerce_tuples(params_type: type, values: dict[str, Any]) -> dict[str, Any]:

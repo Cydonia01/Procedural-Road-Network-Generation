@@ -44,6 +44,7 @@ from typing import Any, Iterator, Optional, Union
 import yaml
 from lxml import etree
 
+from roadgen.config import DEFAULTS, merge
 from roadgen.generators.manhattan import ManhattanGenerator, ManhattanParams
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.scenario.xosc_builder import END_MARGIN, ScenarioBuilder, ScenarioParams
@@ -69,28 +70,33 @@ COLUMNS = [
 KEY = ("config_id", "n_avenues", "n_streets", "n_vehicles", "seed")
 MIN_STEPPING_S = 0.01  # [s] below this, stepping time is under the timing resolution
 
+_D = DEFAULTS["bench"]
+
 
 @dataclass(frozen=True)
 class BenchConfig:
     grid_sizes: list[tuple[int, int]]
     vehicle_counts: list[int]
     seeds: list[int]
-    sim_duration: float = 60.0
-    timestep: float = 0.05
-    spawn_mode: str = "random_lanes"
-    min_spawn_gap: float = 10.0
-    speed_range: tuple[float, float] = (8.0, 13.9)
-    timeout_s: float = 900.0  # per esmini run
-    memory_cap_mb: float = 8192.0  # per esmini run
-    network: dict[str, Any] = field(default_factory=dict)  # ManhattanParams overrides / preset
-    out_dir: str = "out/bench"
+    sim_duration: float = _D["sim_duration"]
+    timestep: float = _D["timestep"]
+    spawn_mode: str = _D["spawn_mode"]
+    min_spawn_gap: float = _D["min_spawn_gap"]
+    speed_range: tuple[float, float] = tuple(_D["speed_range"])
+    timeout_s: float = _D["timeout_s"]  # per esmini run
+    memory_cap_mb: float = _D["memory_cap_mb"]  # per esmini run
+    # ManhattanParams overrides / preset
+    network: dict[str, Any] = field(default_factory=lambda: dict(_D["network"]))
+    out_dir: str = _D["out_dir"]
 
     @classmethod
-    def from_yaml(cls, path: PathLike) -> "BenchConfig":
+    def from_yaml(cls, path: PathLike, defaults: Optional[dict[str, Any]] = None) -> "BenchConfig":
+        """Sweep config from YAML; keys it leaves out come from defaults (the bench section)."""
         data = yaml.safe_load(Path(path).read_text()) or {}
         unknown = set(data) - {f for f in cls.__dataclass_fields__}
         if unknown:
             raise ValueError(f"unknown config keys: {sorted(unknown)}")
+        data = merge(defaults or {}, data)
         data["grid_sizes"] = [tuple(g) for g in data["grid_sizes"]]
         if "speed_range" in data:
             data["speed_range"] = tuple(data["speed_range"])
