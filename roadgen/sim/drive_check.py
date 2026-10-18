@@ -1,10 +1,11 @@
 """Drive every junction movement with esmini's RoadManager library.
 
 For each movement in the builder's sidecar, a position is placed in the
-incoming lane 20 m before the junction and moved forward in small steps with
-esmini's junction selector aimed at the movement. A movement passes when
-esmini routes it over the expected connecting road into the expected lane,
-the position never jumps, and esmini never reports an error.
+incoming lane 20 m (at most half the road) before the junction and moved
+forward in small steps with esmini's junction selector aimed at the movement.
+A movement passes when esmini routes it over the expected connecting road
+into the expected lane, the position never jumps, and esmini never reports
+an error. Reaching the end of a dead-end target road just ends the drive.
 
 This exercises the same lane-following logic odrviewer uses for its traffic.
 """
@@ -25,10 +26,11 @@ from roadgen.sim.esmini import esmini_library
 
 PathLike = Union[str, Path]
 
-APPROACH = 20.0  # m before the junction
+APPROACH = 20.0  # m before the junction (at most half the incoming road)
 STEP = 0.5  # m per move
 DISTANCE = 60.0  # m driven in total
 JUMP_TOL = 0.05  # m deviation from STEP that counts as a jump
+END_OF_ROAD = -2  # esmini Position::ReturnCode::ERROR_END_OF_ROAD
 
 # esmini's junctionSelectorAngle, measured counter-clockwise from straight
 # ahead (verified empirically against esmini 3.9).
@@ -111,7 +113,9 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float) -> DriveResult:
         selector = SELECTOR_ANGLE[m["kind"]]
     handle = lib.RM_CreatePosition()
     # Right lanes travel along +s towards the end, left lanes towards s = 0.
-    s0 = road_length - APPROACH if m["from_lane"] < 0 else APPROACH
+    # Start on the road itself, also when it is shorter than APPROACH.
+    approach = min(APPROACH, road_length / 2)
+    s0 = road_length - approach if m["from_lane"] < 0 else approach
     lib.RM_SetLanePosition(handle, m["from_road"], m["from_lane"], 0.0, s0, True)
     data = _PositionData()
     lib.RM_GetPositionData(handle, ctypes.byref(data))
@@ -119,7 +123,10 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float) -> DriveResult:
     max_jump, min_rc = 0.0, 0
     entry_lane = None
     for _ in range(int(DISTANCE / STEP)):
-        min_rc = min(min_rc, lib.RM_PositionMoveForward(handle, STEP, selector))
+        rc = lib.RM_PositionMoveForward(handle, STEP, selector)
+        if rc == END_OF_ROAD and len(route) >= 3:
+            break  # the target road is a short dead end: the movement is done
+        min_rc = min(min_rc, rc)
         lib.RM_GetPositionData(handle, ctypes.byref(data))
         max_jump = max(max_jump, abs(math.hypot(data.x - prev[0], data.y - prev[1]) - STEP))
         if data.roadId != route[-1]:

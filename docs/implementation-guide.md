@@ -4,9 +4,9 @@ A walkthrough of the `pre-generation-maps` changes. Every command below was run
 in the dev container (124 runs). The script and full log are in
 `out/try/tryall.sh` and `out/try/tryall.log`, and every output is in `out/try/`.
 
-All the commands work. One real problem came up: on networks grown on maps,
-`drive-check` fails, so `pipeline --maps --drive-check` fails too (see
-[Issues found](#issues-found)).
+All the commands work. The two problems the first run found are fixed (see
+[Fixed issues](#fixed-issues)); the numbers below are from the run after the
+fixes.
 
 ---
 
@@ -168,10 +168,10 @@ only gets heights from them: one hilly run reached a 47.7 % grade, which
 
 | Parameter (default) | Meaning | Result on this map |
 |---|---|---|
-| `highways` (true) | Grow highways first (needs a population map) | `false`: 410 nodes instead of 460 |
+| `highways` (true) | Grow highways first (needs a population map) | `false`: 353 nodes instead of 460 |
 | `highway_length` (150) | Length of one segment [m] | 250: 384 nodes |
 | `highway_rays` (7) | Directions tried at each highway end | 3: 435 |
-| `highway_max_turn_deg` (25) | Half-angle of the fan of directions | 10: 443, 3 bridges |
+| `highway_max_turn_deg` (25) | Half-angle of the fan of directions | 10: 443, 2 bridges |
 | `highway_max_detour_deg` (60) | Fallback turn when nothing in the fan fits | Must satisfy turn ≤ detour < 90; 90 is rejected |
 | `highway_ray_length` (800), `highway_ray_samples` (8) | How far the population rays look, and samples per ray | 400: 474; 4: 497 |
 | `highway_branch_prob` (0.1), `highway_branch_delay` (6) | Chance of a new highway branch, and its queue delay | 0.3: 486; 2: 431 |
@@ -179,7 +179,7 @@ only gets heights from them: one hilly run reached a 47.7 % grade, which
 | `highway_lanes` ([2, 2]), `highway_speed` (22.2) | Lane counts and speed [m/s] | Same topology (460); only attributes change |
 | `max_bridge_length` (250) | Longest water crossing a highway may bridge [m] | 50: no change, since this map needs no long bridge |
 | `street_min_density` (500) | Streets stop below this density | 2000: 338 |
-| `avoid_vegetation` (true) | Keep streets out of parks | `false`: 465 |
+| `avoid_vegetation` (true) | Keep streets out of parks | `false`: 457 |
 | `prune_factor` (0.4) | A street that hits water or vegetation keeps at least this share of its length | 0.8: 395 |
 | `max_grade` (0.15) | Steepest allowed rise over run; 0 means no limit | 0.05: only 48 nodes |
 
@@ -215,7 +215,7 @@ cli drape out/net_flat.json --map-file elevation=out/coast_elev.npz \
 ```bash
 cli build-xodr out/net_draped.json out/net_draped.xodr                  # 6375 <elevation> records; continuity checks z and grade
 cli build-xodr out/net_draped.json out/net_m4.xodr --junction-margin 4
-cli drive-check out/net_draped.xodr                                     # currently fails, see Issues found
+cli drive-check out/net_draped.xodr                                     # 3127/3127 movements drive through
 ```
 
 ### Phase 5: 3D scene (`ground`)
@@ -259,6 +259,7 @@ cli pipeline lsystem --preset city --allow-traps --maps --flat
 cli pipeline lsystem --preset city --allow-traps --maps --buildings        # writes pl_buildings.osgt (219 buildings)
 cli pipeline lsystem --preset city --allow-traps --maps --ground           # writes pl_scene.osgt
 cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings --simulate --sim-vehicles 20 --sim-duration 10
+cli pipeline lsystem --preset city --allow-traps --maps --drive-check     # 4209/4209 movements drive through
 cli pipeline manhattan --avenues 4 --streets 4 --maps --ground             # maps used for heights only
 ```
 
@@ -271,23 +272,48 @@ cli pipeline manhattan --avenues 4 --streets 4 --maps --ground             # map
 | `--ground` | Write a ground mesh; needs an elevation map, otherwise a clear error |
 | `--buildings` | Write buildings (on the ground when there are maps) |
 | `--flat` | No heights |
+| `--drive-check` | Also drive every junction movement with esmini's RoadManager |
 
 All of these runs passed. The schema check was skipped because
 `OPENDRIVE_XSD` isn't set.
 
 ---
 
-## Issues found
+## Fixed issues
 
-1. **`drive-check` fails on networks grown on maps.** On the hand-built
-   network, 3102 of 3127 movements passed. With `pipeline --maps --drive-check`,
-   4177 of 4209 passed, so the pipeline reports FAILED. Elevation is not the
-   cause: the same graph built flat fails the same 25 movements, and the
-   network grown without maps passes 5591 of 5591. The failing roads are short
-   edges between junctions, such as highway road 363 (47 m) and street road
-   527 (41 m). esmini reports `lane on entry None`, which suggests the junction
-   trims leave very little road on these edges. Unit tests don't catch this;
-   it's worth fixing, or covering with a test, before you commit.
-2. Minor: with `highways=false` the drape still found one bridge, although
-   streets are supposed to stop at water. It's probably a street clipping a
-   water cell. Check `out/try/net_highways.json` if it matters to you.
+Both were found by the first run of these commands and are covered by tests now.
+
+1. **`drive-check` failed on networks grown on maps** (3102 of 3127
+   movements, and `pipeline --maps --drive-check` reported FAILED). The
+   network was fine; the check itself was wrong in two ways. Both made esmini
+   return `ERROR_END_OF_ROAD` (−2):
+   - It started every drive 20 m before the junction. Junction trims leave
+     some roads between two junctions only 9–19 m long, so for left lanes
+     (which drive towards `s = 0`) the start lay beyond the road's end.
+     The approach is now at most half the road.
+   - A movement into a short dead end (e.g. a 30 m spur) ran off the end of
+     the target road before the 60 m drive was over. Reaching the end of the
+     road after the target road is entered now just ends the drive.
+
+   Fix: `roadgen/sim/drive_check.py`. Test:
+   `tests/test_junctions.py::test_esmini_drives_short_roads_and_dead_ends`
+   (fails with the old check, 8 false failures). Now 3127/3127 and 4209/4209
+   pass; the network without maps still passes 5591/5591.
+
+2. **Streets could cross narrow water.** `legal_street` checks a proposed
+   street segment for water, but `connect` may then snap its end to an
+   existing node or road, and the snapped segment was not checked again. With
+   `highways=false` an avenue jumped 10 m of water, which drape then turned
+   into a bridge. Snapped street segments that touch water are now rejected
+   (their end points are ignored, because a street may join a highway node on
+   a bridge). Fix: `roadgen/generators/lsystem.py` (`_Growth.connect`,
+   `_MapView.crosses_water`). Test:
+   `tests/test_lsystem_maps.py::test_snapped_streets_do_not_cross_water`.
+   Networks grown on maps change slightly (the numbers above are updated);
+   without maps lsystem output is unchanged.
+
+   The only street "bridges" left in the outputs are by design:
+   - a 2.5 m stretch where a street ends on a highway bridge node next to the
+     shore;
+   - manhattan networks, which don't read maps while growing, so their roads
+     cross water as bridges.

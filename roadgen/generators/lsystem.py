@@ -498,6 +498,9 @@ class _Growth:
             end_node = None
         if not self.acceptable(a, end, end_node, split):
             return None
+        # legal_street checked the proposed segment; snapping may move it over water.
+        if axis != HIGHWAY and kind != "free" and self.maps.crosses_water(self.pos[a], end, ends=False):
+            return None
         if kind == "split":
             end_node = self.split_edge(split, end)
         elif kind == "free":
@@ -574,11 +577,14 @@ class _MapView:
             grade = grade[land[1:] & land[:-1]]
         return bool(grade.size) and float(grade.max()) > self.p.max_grade
 
-    def crosses_water(self, a: Point, b: Point) -> bool:
+    def crosses_water(self, a: Point, b: Point, ends: bool = True) -> bool:
+        """Whether a -> b touches water; ends=False ignores both end points
+        (existing nodes, which may sit on a highway bridge)."""
         if self.terrain is None:
             return False
         x, y, _ = self._line(a, b)
-        return bool(np.any(self.sample(self.terrain, x, y) == WATER))
+        wet = self.sample(self.terrain, x, y) == WATER
+        return bool(np.any(wet if ends else wet[1:-1]))
 
     def _illegal_for_streets(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         cls = self.sample(self.terrain, x, y)

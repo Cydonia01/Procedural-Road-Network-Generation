@@ -11,6 +11,7 @@ These pages explain how each part works and why it was built that way.
 | [Getting started](getting-started.md) | Install with Docker or natively, then run the first pipeline |
 | [Architecture](architecture.md) | Pipeline stages, design rules, module map, files produced |
 | [CLI reference](cli-reference.md) | Every `python -m cli` command and flag |
+| [Input maps and heights walkthrough](implementation-guide.md) | Reading order for the maps / heights code, every new command tried phase by phase |
 
 ## Pipeline stages
 

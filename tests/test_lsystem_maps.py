@@ -207,6 +207,24 @@ def test_city_on_generated_maps_builds_valid_xodr(tmp_path, seed):
     assert check_continuity(xodr) == []
 
 
+def test_snapped_streets_do_not_cross_water():
+    """A street end snapped onto an existing node must not jump a narrow strip of
+    water (found with these maps: drape made a bridge on an avenue)."""
+    from roadgen.maps.drape import drape
+
+    grid = GridSpec((0.0, 0.0), (3000.0, 3000.0), 10.0)
+    maps = MapSet()
+    for kind, name, preset in (("terrain", "noise", "coastal"), ("elevation", "fbm", None),
+                               ("population", "centers", None)):
+        layer = make_map(kind, name, grid, 0, preset=preset,
+                         defaults=section(DEFAULTS, "maps", kind, name), upstream=maps)
+        maps = MapSet(**{**maps.layers(), kind: layer})
+    p = LSystemParams.preset("city", highways=False)
+    g = drape(LSystemGenerator().generate(p, 0, maps), maps.elevation, maps.terrain)
+    assert len(g.edges) > 100
+    assert [eid for eid, e in g.edges.items() if e.bridges] == []
+
+
 def test_map_bounds_cover_the_rotated_area():
     p = LSystemParams(extent=(1000.0, 500.0), origin=(100.0, 200.0), rotation_deg=90.0)
     x0, y0, x1, y1 = LSystemGenerator().map_bounds(p)

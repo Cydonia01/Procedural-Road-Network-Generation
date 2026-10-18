@@ -80,7 +80,8 @@ same logic its traffic uses, through `libesminiRMLib` loaded with `ctypes`.
 
 For every movement in the `.roadmap.json`:
 
-1. Place a position 20 m before the junction in the incoming lane.
+1. Place a position 20 m before the junction in the incoming lane (at most
+   half the road, as roads between close junctions can be shorter).
 2. Move forward in 0.5 m steps for 60 m. The junction selector is aimed at
    the movement's `turn_angle`, so exits of the same kind at a 5-way junction
    are told apart.
@@ -89,7 +90,8 @@ For every movement in the `.roadmap.json`:
      road;
    - the lane on entering the target road is the expected lane;
    - no step jumps by more than 5 cm;
-   - esmini never returns an error code.
+   - esmini never returns an error code. Running off the end of a dead-end
+     target road only ends the drive early.
 
 Failures are logged with the route esmini actually took. Selector angles were
 calibrated empirically against esmini 3.9.

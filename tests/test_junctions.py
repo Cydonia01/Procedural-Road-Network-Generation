@@ -385,3 +385,33 @@ def test_esmini_drives_angled_junctions(tmp_path, name):
     results = drive_movements(path)
     assert len(results) == len(builder.movements)
     assert [r.describe() for r in results if not r.ok] == []
+
+
+def short_roads_graph():
+    """Two 4-ways 35 m apart (the road between them is ~17 m after trimming,
+    shorter than drive_check.APPROACH) and a 30 m dead-end spur off the second."""
+    from roadgen.graph.model import Edge, Node, RoadGraph
+
+    g = RoadGraph()
+    points = [(0, 0), (35, 0), (-100, 0), (0, 100), (0, -100), (135, 0), (35, -100), (35, 30)]
+    for i, (x, y) in enumerate(points, 1):
+        g.add_node(Node(i, float(x), float(y)))
+    for k, (a, b) in enumerate([(1, 2), (3, 1), (1, 4), (5, 1), (2, 6), (7, 2), (2, 8)], 1):
+        g.add_edge(Edge(k, a, b, "avenue", 2, 2))
+    return g
+
+
+@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+def test_esmini_drives_short_roads_and_dead_ends(tmp_path):
+    from roadgen.sim.drive_check import APPROACH, drive_movements
+
+    builder = OpenDriveBuilder("short_roads")
+    builder.build(short_roads_graph())
+    path = tmp_path / "short_roads.xodr"
+    builder.write(path)
+    lengths = {int(r.get("id")): float(r.get("length"))
+               for r in etree.parse(str(path)).getroot().findall("road")}
+    assert lengths[builder.edge_to_road[1]] < APPROACH
+    results = drive_movements(path)
+    assert len(results) == len(builder.movements)
+    assert [r.describe() for r in results if not r.ok] == []
