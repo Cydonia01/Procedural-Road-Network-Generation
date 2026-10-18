@@ -248,6 +248,16 @@ def test_edge_too_short_for_junction(tmp_path):
         OpenDriveBuilder().build(graph)
 
 
+def test_cli_reports_unbuildable_graph(tmp_path, caplog):
+    from roadgen.graph.io import save_json
+
+    graph = load_json(FIXTURES / "single_4way.json")
+    graph.nodes[2].x = -4.0
+    save_json(graph, tmp_path / "short.json")
+    assert main(["build-xodr", str(tmp_path / "short.json"), str(tmp_path / "short.xodr")]) == 1
+    assert "build: edge" in caplog.text and "too short" in caplog.text
+
+
 # --- validators catch broken files ------------------------------------------------
 
 
@@ -414,4 +424,21 @@ def test_esmini_drives_short_roads_and_dead_ends(tmp_path):
     assert lengths[builder.edge_to_road[1]] < APPROACH
     results = drive_movements(path)
     assert len(results) == len(builder.movements)
+    assert [r.describe() for r in results if not r.ok] == []
+
+
+@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+def test_esmini_drives_long_connecting_roads(tmp_path):
+    """A big junction's connecting roads can be longer than the approach plus
+    a fixed distance; the drive must still reach the target road."""
+    from roadgen.sim.drive_check import APPROACH, drive_movements
+
+    builder = OpenDriveBuilder("big_junction", junction_margin=30.0)
+    builder.build(load_json(FIXTURES / "single_4way.json"))
+    path = tmp_path / "big_junction.xodr"
+    builder.write(path)
+    lengths = {int(r.get("id")): float(r.get("length"))
+               for r in etree.parse(str(path)).getroot().findall("road")}
+    assert max(lengths[m.connecting_road] for m in builder.movements) > 60.0 - APPROACH
+    results = drive_movements(path)
     assert [r.describe() for r in results if not r.ok] == []

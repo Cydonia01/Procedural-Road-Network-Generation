@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import logging
+import re
 import subprocess
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,12 +15,13 @@ from typing import Iterator, Optional, Sequence
 
 import yaml
 
-from roadgen.config import load_config, section
+from roadgen.config import load_config, merge, section
 from roadgen.generators.base import generator_names, get_generator, load_params, presets_of
 from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
 from roadgen.graph.plot import plot_graph
+from roadgen.history import History, run_params
 from roadgen.maps.base import get_map_generator, make_map, map_generator_names
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
 from roadgen.opendrive.builder import OpenDriveBuilder
@@ -66,7 +69,11 @@ def build_and_validate(
         name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin
     )
     with timed("build xodr"):
-        builder.build(graph)
+        try:
+            builder.build(graph)
+        except ValueError as e:  # e.g. an edge too short for the junctions at its ends
+            log.error("build: %s", e)
+            return [f"build: {e}"]
     with timed("write xodr"):
         sidecar = builder.write(xodr_path)
     log.info(
@@ -483,6 +490,10 @@ def cmd_view(args: argparse.Namespace) -> int:
     # Explicit size: without it the first window is 0x0, which VirtualGL
     # (gui-mac container) can't render into.
     cmd += ["--window", *map(str, args.cfg["esmini"]["window"])]
+    if args.scenegraph:  # drawn next to the roads odrviewer still generates itself
+        cmd += ["--model", args.scenegraph, "--enforce_generate_model"]
+    if args.duration is not None:
+        cmd += ["--duration", str(args.duration)]
     log.info("running %s", " ".join(cmd))
     return subprocess.run(cmd).returncode
 
@@ -590,10 +601,24 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli", description="Road network tools")
     parser.add_argument("-v", "--verbose", action="store_true", help="debug logging")
     add_config_arg(parser)
+    parser.add_argument("--note", help="description stored with this run in the history")
+    parser.add_argument("--no-history", action="store_true",
+                        help="don't record this run in the history (see `history`)")
     parser.set_defaults(cfg=cfg)
     sub = parser.add_subparsers(dest="command", required=True)
     margin = cfg["opendrive"]["junction_margin"]
     scenario, esmini, pipeline = cfg["scenario"], cfg["esmini"], cfg["pipeline"]
+
+    p = sub.add_parser("history", help="list recorded runs (hash, note, command)")
+    p.add_argument("--grep", metavar="TEXT", help="only runs whose note or command contains TEXT")
+    p.set_defaults(func=cmd_history)
+
+    p = sub.add_parser("replay", help="run a recorded command again from its hash "
+                                      "(also: python -m cli HASH)")
+    p.add_argument("hash", help="run hash or a unique prefix of it (4+ digits)")
+    p.add_argument("--show", action="store_true",
+                   help="print the command and its recorded config file instead of running it")
+    p.set_defaults(func=cmd_replay)
 
     p = sub.add_parser("plot-graph", help="render a RoadGraph JSON to an image")
     p.add_argument("input", help="RoadGraph JSON file")
@@ -771,6 +796,10 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("input", help=".xodr file")
     p.add_argument("--density", type=float, default=esmini["view_density"],
                    help="cars per 100 m (default %(default)s)")
+    p.add_argument("--scenegraph", help="3D model to show with the roads, e.g. <prefix>_buildings.osgt "
+                                        "or <prefix>_scene.osgt (ground + buildings)")
+    p.add_argument("--duration", type=float,
+                   help="close the viewer after this many seconds [s] (default: when closed)")
     p.set_defaults(func=cmd_view)
 
     p = sub.add_parser(
@@ -849,21 +878,106 @@ def _add_manhattan_args(p: argparse.ArgumentParser, d: dict) -> None:
                    help=f"(default {d['ring_lanes']})")
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+# Commands that only report: never recorded in the history.
+NOT_RECORDED = frozenset({"generators", "maps", "history", "replay"})
+HASH_ARG = re.compile(r"[0-9a-fA-F]{4,64}")
+GLOBAL_VALUE_FLAGS = ("--note",)  # global flags that take a value
+
+
+def history_of(cfg: dict) -> Optional[History]:
+    """The run history from config (history.file) or $ROADGEN_HISTORY; None if off."""
+    return History.from_env(cfg["history"]["file"])
+
+
+def cmd_history(args: argparse.Namespace) -> int:
+    history = history_of(args.cfg)
+    if history is None:
+        log.info("run history is off")
+        return 0
+    runs = history.runs()
+    if args.grep:
+        runs = [r for r in runs if args.grep in r.note or args.grep in r.command_line()]
+    for r in runs:
+        print(f"{r.hash}  {r.note}" if r.note else r.hash)
+        print(f"    {r.command_line()}")
+    log.info("%d runs in %s", len(runs), history.path)
+    return 0
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    history = history_of(args.cfg)
+    if history is None:
+        raise SystemExit("error: run history is off")
+    try:
+        run = history.get(args.hash)
+    except (KeyError, ValueError) as e:
+        raise SystemExit(f"error: {e.args[0]}") from e
+    if args.show:
+        print(run.command_line())
+        if run.config_file:
+            print(f"(config file {run.config_file} at the time; its content is in the history)")
+        return 0
+    log.info("replaying %s: %s", run.hash, run.command_line())
+    # Exactly the recorded configuration; keys added to defaults.yaml since then come from it.
+    return main(run.argv, merge(load_config(), run.config), expected_hash=run.hash)
+
+
+def _bare_hash(argv: list[str], commands: Sequence[str]) -> list[str]:
+    """`cli HASH ...` -> `cli replay HASH ...`."""
+    k = 0
+    while k < len(argv) and argv[k].startswith("-"):
+        k += 2 if argv[k] in GLOBAL_VALUE_FLAGS else 1
+    if k < len(argv) and argv[k] not in commands and HASH_ARG.fullmatch(argv[k]):
+        return [*argv[:k], "replay", *argv[k:]]
+    return argv
+
+
+def _record(args: argparse.Namespace, argv: list[str], config_file: Optional[str],
+            expected_hash: Optional[str]) -> None:
+    history = history_of(args.cfg)
+    if history is None or args.no_history or args.command in NOT_RECORDED:
+        return
+    # Store the command without the flags that don't change its result.
+    strip = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    strip.add_argument("-v", "--verbose", action="store_true")
+    strip.add_argument("--note")
+    strip.add_argument("--no-history", action="store_true")
+    _, argv = strip.parse_known_args(argv)
+    try:
+        h, new = history.record(argv, run_params(vars(args)), args.cfg, config_file, args.note)
+    except (OSError, ValueError) as e:
+        log.warning("run history: %s", e)
+        return
+    if expected_hash is not None and h != expected_hash:
+        log.warning("inputs differ from run %s (defaults.yaml gained keys since); recorded as %s",
+                    expected_hash, h)
+    log.info("run %s %s %s", h, "recorded in" if new else "already in", history.path)
+
+
+def main(argv: Optional[Sequence[str]] = None, config: Optional[dict] = None,
+         expected_hash: Optional[str] = None) -> int:
+    """Run one command. config replaces defaults.yaml + --config (used by replay)."""
     # Read --config first: the parser's defaults (and --help) depend on it.
     pre = argparse.ArgumentParser(add_help=False)
     add_config_arg(pre)
-    known, _ = pre.parse_known_args(argv)
-    try:
-        config = load_config(known.config_file)
-    except (OSError, ValueError, yaml.YAMLError) as e:
-        raise SystemExit(f"error: --config: {e}") from e
-    args = build_parser(config).parse_args(argv)
+    known, rest = pre.parse_known_args(list(sys.argv[1:] if argv is None else argv))
+    if config is None:
+        try:
+            config = load_config(known.config_file)
+        except (OSError, ValueError, yaml.YAMLError) as e:
+            raise SystemExit(f"error: --config: {e}") from e
+    parser = build_parser(config)
+    commands = next(a.choices for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    rest = _bare_hash(rest, list(commands))
+    args = parser.parse_args(rest)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    return args.func(args)
+    rc = args.func(args)
+    if rc == 0:
+        _record(args, rest, known.config_file, expected_hash)
+    return rc
 
 
 if __name__ == "__main__":

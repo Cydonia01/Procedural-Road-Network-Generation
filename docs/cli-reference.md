@@ -9,6 +9,8 @@ Global options must come **before** the command, e.g. `python -m cli -v pipeline
 |--------|---------|
 | `-v, --verbose` | Debug logging |
 | `--config FILE` | YAML file overriding default parameters |
+| `--note TEXT` | Description stored with this run in the [run history](#history) |
+| `--no-history` | Don't record this run in the run history |
 
 ### Defaults and `--config`
 
@@ -56,6 +58,8 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 | [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize |
 | [`bench`](#bench) | Scalability sweep from a YAML config |
 | [`bench-plot`](#bench-plot) | Plot a benchmark `results.csv` |
+| [`history`](#history) | List recorded runs (hash, note, command) |
+| [`replay`](#replay) | Run a recorded command again from its hash (also `python -m cli HASH`) |
 
 ## generators
 
@@ -204,8 +208,14 @@ python -m cli drive-check NETWORK.xodr      # needs NETWORK.roadmap.json
 ## view
 
 ```bash
-python -m cli view NETWORK.xodr [--density CARS_PER_100M]   # default density 1
+python -m cli view NETWORK.xodr [--density CARS_PER_100M] [--scenegraph FILE.osgt] [--duration S]
 ```
+
+| Option | Meaning |
+|--------|---------|
+| `--density` | Random cars per 100 m of lane (default 1) |
+| `--scenegraph FILE.osgt` | 3D model shown with the roads: `PREFIX_buildings.osgt`, or `PREFIX_scene.osgt` (ground + buildings) from `pipeline --buildings` / `--ground` or `ground`. odrviewer still draws the roads itself |
+| `--duration S` | Close the viewer after S seconds; by default it stays open until you close it |
 
 Needs a display. In Docker, the `dev` service has none (`odrviewer` exits
 immediately), so use the GUI service for your OS:
@@ -266,3 +276,49 @@ python -m cli bench-plot RESULTS.csv [--out-dir DIR]     # default: <results dir
 |----------|---------|---------|
 | `ESMINI_HOME` | everything esmini-related | esmini root containing `bin/` (falls back to `./esmini`) |
 | `OPENDRIVE_XSD` | schema check | Path to the ASAM OpenDRIVE XSD |
+
+## history
+
+```bash
+python -m cli history [--grep TEXT]
+```
+
+Every command that **succeeds** (exit code 0) is recorded in a run history,
+`runs/history.json` by default (`history.file` in the config; the
+environment variable `ROADGEN_HISTORY` overrides it, and `ROADGEN_HISTORY=off`
+turns recording off). Commands that fail, or that only list things
+(`generators`, `maps`, `history`, `replay`), are not recorded.
+
+A run is stored under a 12-digit hash of its inputs: every parsed parameter,
+defaults included, and the effective configuration (`defaults.yaml` merged
+with `--config`). Different ways of writing the same inputs therefore share
+one entry and are never stored twice: an explicit default, flags in another
+order, `-v` or a different `--note`. A different seed, output path or config
+value is a new run. Each configuration is stored once in the file, and the
+runs that used it point to it.
+
+`history` lists the runs, oldest first, with their notes and command lines;
+`--grep` keeps the runs whose note or command contains TEXT. Each successful
+command also logs its hash:
+
+```
+INFO roadgen.cli: run 3fa2c81b9d04 recorded in runs/history.json
+```
+
+## replay
+
+```bash
+python -m cli replay HASH [--show]
+python -m cli HASH                 # the same
+```
+
+Runs a recorded command again. A unique prefix of 4 or more digits is
+enough. The recorded configuration is used as it was, even if
+`defaults.yaml` or the `--config` file changed since (or the file is gone).
+Only the code is not recorded, so a result can still change when the code
+does. If `defaults.yaml` gained keys since the run was recorded, the replay
+logs that its inputs differ and records itself under a new hash. `--show`
+prints the command instead of running it. A command that reads files reads
+them from where they are now, so replay the runs that write them first.
+See [runs/README.md](../runs/README.md) for the example runs.
+

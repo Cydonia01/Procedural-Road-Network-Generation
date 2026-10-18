@@ -175,6 +175,9 @@ esmini:
   camera: top                   # camera mode for `simulate --gui`
   view_density: 1.0             # cars per 100 m in `view`
 
+history:  # every successful CLI run, under a hash of its inputs (`history`, `replay`)
+  file: runs/history.json   # $ROADGEN_HISTORY overrides; "off" disables
+
 pipeline:
   sim_vehicles: 50      # --simulate: number of vehicles
   sim_duration: 30.0    # --simulate: simulated time [s]

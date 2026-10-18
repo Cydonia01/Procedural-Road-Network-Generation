@@ -240,3 +240,19 @@ def test_cli_view_without_esmini(monkeypatch, tmp_path):
     monkeypatch.delenv("ESMINI_HOME", raising=False)
     monkeypatch.setattr("roadgen.sim.esmini._BUNDLED_ESMINI", tmp_path / "no-esmini")
     assert main(["view", "missing.xodr"]) == 1
+
+
+def test_cli_view_passes_scenegraph_and_duration(monkeypatch, tmp_path):
+    import subprocess
+
+    calls = []
+    monkeypatch.setattr("cli.esmini_binary", lambda name: tmp_path / name)
+    monkeypatch.setattr(subprocess, "run", lambda cmd: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0))
+    assert main(["view", "net.xodr", "--scenegraph", "net_scene.osgt", "--duration", "5"]) == 0
+    cmd = calls[0]
+    assert cmd[cmd.index("--model") + 1] == "net_scene.osgt"
+    assert "--enforce_generate_model" in cmd  # roads are still drawn
+    assert cmd[cmd.index("--duration") + 1] == "5.0"
+    calls.clear()
+    assert main(["view", "net.xodr"]) == 0
+    assert "--model" not in calls[0] and "--duration" not in calls[0]

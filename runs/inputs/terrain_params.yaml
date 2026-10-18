@@ -1,0 +1,7 @@
+# Parameter file for `map terrain noise --params` (preset + overrides).
+preset: coastal
+params:
+  coast_angle_deg: 180.0   # sea in the west
+  rivers: 1
+  river_width: 70.0
+  vegetation_fraction: 0.2

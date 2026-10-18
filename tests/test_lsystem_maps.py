@@ -207,6 +207,13 @@ def test_city_on_generated_maps_builds_valid_xodr(tmp_path, seed):
     assert check_continuity(xodr) == []
 
 
+def test_no_growth_is_reported(caplog):
+    """Too steep everywhere around the seed: an empty graph, with a warning saying why."""
+    g = grow(MapSet(elevation=elevation(0.5 * np.hypot(X - 500.0, Y - 300.0))))  # 50 % cone at the seed
+    assert not g.edges
+    assert "no road could be grown" in caplog.text
+
+
 def test_snapped_streets_do_not_cross_water():
     """A street end snapped onto an existing node must not jump a narrow strip of
     water (found with these maps: drape made a bridge on an avenue)."""

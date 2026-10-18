@@ -82,9 +82,9 @@ For every movement in the `.roadmap.json`:
 
 1. Place a position 20 m before the junction in the incoming lane (at most
    half the road, as roads between close junctions can be shorter).
-2. Move forward in 0.5 m steps for 60 m. The junction selector is aimed at
-   the movement's `turn_angle`, so exits of the same kind at a 5-way junction
-   are told apart.
+2. Move forward in 0.5 m steps through the connecting road and 20 m beyond.
+   The junction selector is aimed at the movement's `turn_angle`, so exits of
+   the same kind at a 5-way junction are told apart.
 3. The movement **passes** if:
    - the route is incoming road → expected connecting road → expected target
      road;

@@ -112,6 +112,13 @@ python -m cli drive-check out/single_4way.xodr
 python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 -o out/grid10x10.xosc
 python -m cli simulate out/grid10x10.xosc            # headless: timing, errors, .dat/.csv/.log
 python -m cli simulate out/grid10x10.xosc --gui      # watch it
+python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings -o out/organic
+python -m cli view out/organic.xodr --scenegraph out/organic_buildings.osgt   # roads, random cars and buildings
+
+# Run history: every successful command is recorded under a hash of its inputs
+python -m cli history                                # list runs (hash, note, command)
+python -m cli 0bafbe99d5d4                           # replay one: the coastal terrain map example
+python -m cli --note "my run" pipeline ...           # describe a run; --no-history skips recording
 
 # Scalability benchmark
 python -m cli bench configs/bench_smoke.yaml         # ~1 minute
@@ -149,6 +156,7 @@ Precedence, lowest first: `defaults.yaml` < `--config` file < `--preset` <
 | [Scenarios & simulation](docs/scenarios-and-simulation.md) | `.xosc` generation, esmini runner, 3D buildings |
 | [Scalability benchmark](docs/benchmarking.md) | Sweep config, results CSV, plots |
 | [CLI reference](docs/cli-reference.md) | All commands and flags |
+| [Example runs](runs/README.md) | Recorded examples for every phase, from input maps to the esmini GUI, replayable by hash |
 | [Docker environment](docs/docker.md) | Container setup, Linux/macOS GUI |
 | [Development guide](docs/development.md) | Tests, coding rules, project phases, known issues |
 
@@ -166,7 +174,9 @@ roadgen/
   sim/          esmini runner and RoadManager drive-check
   scene/        3D buildings and ground (.osgt)
   bench/        scalability benchmark and plots
+  history.py    run history: hashes of successful commands, replay
 configs/        benchmark configs
+runs/           run history (history.json), example runs and their inputs
 tests/          pytest suite and RoadGraph fixtures
 docs/           documentation
 ```

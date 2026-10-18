@@ -131,7 +131,9 @@ the input maps), and the code follows them throughout:
 cli.py                     command-line entry point (python -m cli ...)
 pyproject.toml             package metadata and dependencies
 configs/                   benchmark sweep configs (YAML)
+runs/                      run history (history.json), example runs and their inputs
 roadgen/
+  history.py               run history: hashes of successful CLI runs, replay
   graph/
     model.py               Node, Edge, RoadGraph dataclasses
     io.py                  JSON (de)serialization, schema_version 1

@@ -729,7 +729,13 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         rng = np.random.default_rng(seed)
         growth = _Growth(params, rng, maps)
         growth.run()
-        return self._to_graph(growth, params, seed, maps)
+        graph = self._to_graph(growth, params, seed, maps)
+        if not graph.edges:
+            log.warning("lsystem: no road could be grown from the seed point; on input maps it is "
+                        "usually too steep around it (max_grade %.2f), or water, vegetation or "
+                        "too few people (street_min_density) block every direction",
+                        params.max_grade)
+        return graph
 
     def map_bounds(self, params: LSystemParams) -> Bounds:
         """World bounding box of the (rotated) growth area."""

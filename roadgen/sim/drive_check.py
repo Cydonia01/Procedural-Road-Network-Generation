@@ -2,7 +2,8 @@
 
 For each movement in the builder's sidecar, a position is placed in the
 incoming lane 20 m (at most half the road) before the junction and moved
-forward in small steps with esmini's junction selector aimed at the movement.
+forward in small steps with esmini's junction selector aimed at the movement,
+through the connecting road and 20 m beyond.
 A movement passes when esmini routes it over the expected connecting road
 into the expected lane, the position never jumps, and esmini never reports
 an error. Reaching the end of a dead-end target road just ends the drive.
@@ -28,7 +29,7 @@ PathLike = Union[str, Path]
 
 APPROACH = 20.0  # m before the junction (at most half the incoming road)
 STEP = 0.5  # m per move
-DISTANCE = 60.0  # m driven in total
+DRIVE_ON = 20.0  # m driven on after the connecting road (less if the target road ends)
 JUMP_TOL = 0.05  # m deviation from STEP that counts as a jump
 END_OF_ROAD = -2  # esmini Position::ReturnCode::ERROR_END_OF_ROAD
 
@@ -99,12 +100,13 @@ def drive_movements(xodr_path: PathLike, lib_path: Optional[PathLike] = None) ->
     if lib.RM_Init(str(xodr_path).encode()) != 0:
         raise RuntimeError(f"esmini RoadManager failed to load {xodr_path}")
     try:
-        return [_drive(lib, m, lengths[m["from_road"]]) for m in movements]
+        return [_drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]])
+                for m in movements]
     finally:
         lib.RM_Close()
 
 
-def _drive(lib: ctypes.CDLL, m: dict, road_length: float) -> DriveResult:
+def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: float) -> DriveResult:
     # Aim the junction selector at the movement's actual heading change when
     # known (several exits can share a kind at 5-way junctions).
     if "turn_angle" in m:
@@ -122,7 +124,9 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float) -> DriveResult:
     route, prev = [data.roadId], (data.x, data.y)
     max_jump, min_rc = 0.0, 0
     entry_lane = None
-    for _ in range(int(DISTANCE / STEP)):
+    # Through the junction however long its connecting road is, then a bit further.
+    distance = approach + connecting_length + DRIVE_ON
+    for _ in range(math.ceil(distance / STEP)):
         rc = lib.RM_PositionMoveForward(handle, STEP, selector)
         if rc == END_OF_ROAD and len(route) >= 3:
             break  # the target road is a short dead end: the movement is done
