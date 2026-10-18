@@ -6,6 +6,7 @@ scenarios, and runs them in the esmini simulator for large-scale traffic and
 scalability experiments. We do NOT use OpenStreetMap; all networks are generated.
 
 Pipeline:
+  Input maps (terrain, elevation, population) -> Generator (optional input)
   Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validator
                                                        -> Scenario Builder -> .xosc -> esmini (headless) -> metrics
 
@@ -26,7 +27,8 @@ Repo layout:
   roadgen/
     graph/        model.py, io.py, plot.py
     generators/   base.py, manhattan.py
-    opendrive/    builder.py, lanes.py, junctions.py, geometry.py
+    maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, drape.py
+    opendrive/    builder.py, lanes.py, junctions.py, geometry.py, elevation.py
     validate/     schema.py, topology.py, continuity.py
     scenario/     xosc_builder.py
     sim/          runner.py

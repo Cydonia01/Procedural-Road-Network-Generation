@@ -1,8 +1,8 @@
 # Generators
 
-A generator turns a frozen **params dataclass** and a **seed** into a
-[`RoadGraph`](road-graph.md). Generators are deterministic and never touch
-OpenDRIVE.
+A generator turns a frozen **params dataclass** and a **seed**, plus
+optional [input maps](maps.md), into a [`RoadGraph`](road-graph.md).
+Generators are deterministic and never touch OpenDRIVE.
 
 ```bash
 python -m cli generators          # list generators, presets and every parameter
@@ -15,8 +15,16 @@ class RoadNetworkGenerator(ABC, Generic[P]):
     name: ClassVar[str]           # set by @register
     params_type: ClassVar[type]   # the params dataclass
     description: ClassVar[str]
+    uses_maps: ClassVar[bool] = False
     def generate(self, params: P, seed: int) -> RoadGraph: ...
+    def map_bounds(self, params: P) -> Optional[Bounds]: ...   # (x0, y0, x1, y1) or None
 ```
+
+- **Input maps.** A generator that reads maps sets `uses_maps = True`,
+  accepts `generate(params, seed, maps: Optional[MapSet] = None)` and
+  returns its world area from `map_bounds(params)`. The CLI builds or loads
+  the maps for that area first ([architecture](architecture.md#input-maps-and-the-order-of-stages)).
+  Generators without `uses_maps` are never passed maps.
 
 - **Registry.** `@register("name")` makes a generator available to the CLI
   and to configs. `generator_names()` and `get_generator(name)` look it up.
@@ -119,7 +127,8 @@ probability `branch_prob`, branch perpendicular both ways (time +
 `angle_jitter_deg` adds noise without drift.
 
 Roads along local y become **avenues** (`major_*` lanes and speed). Roads
-along local x become **streets** (`minor_*`). Spatial hashing keeps the
+along local x become **streets** (`minor_*`). With maps there are also
+**highways** (`highway_*`, see [below](#input-maps)). Spatial hashing keeps the
 neighbour queries fast. Generation stops after `max_segments`.
 
 | Parameter | Default | Meaning |
@@ -141,11 +150,88 @@ Presets:
 - `grid_organic`: the same goal with heading and length noise and 15% of
   branches skipped. Produces irregular blocks, and dead ends are likely
   (use `--allow-traps`).
+- `city`: a 3000 × 2400 m area with a noisy grid and a `min_angle_deg` (40)
+  that lets streets branch off curved highways. Meant for `--maps`.
 
 ```bash
 python -m cli pipeline lsystem --preset grid
 python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
+python -m cli pipeline lsystem --preset city --seed 1 --allow-traps --maps
+python -m cli pipeline lsystem --preset city --allow-traps --maps \
+    --map-set terrain.coast_strength=0.8 --map-set terrain.water_fraction=0.3 \
+    --map-set population.n_centers=4 --set max_grade=0.2
 ```
+
+
+
+### Input maps
+
+Given a `MapSet` (`pipeline lsystem --maps`, or `--map-file`), growth follows
+the paper's global goals and local constraints (Sections 3.2–3.3). The
+pipeline builds the maps in order (terrain → elevation → population, see
+[Input maps](maps.md#design)), so they agree with each other. Each map
+is optional. **Without maps the output is exactly the grid growth above.**
+
+**Phase 1: highways** (only with a population map and `highways: true`).
+The seed shoots `SEED_RAYS` = 16 rays and starts two highways: one in the
+most populated direction, one in the best direction at least 90° away. At
+each free highway end:
+
+1. **Global goal (population).** A fan of `highway_rays` directions within
+   ±`highway_max_turn_deg` of the current heading is ranked by
+   Σ population(sample) / distance over `highway_ray_samples` samples up to
+   `highway_ray_length` (Figure 4 in the paper).
+2. **Local constraints.** These are checked in rank order, and the first
+   direction that passes wins:
+   - **water:** a segment may cross one stretch of water up to
+     `max_bridge_length`. It is stretched to the far shore if it would end in
+     water, and its edge id goes into `metadata["bridges"]`;
+   - **grade:** at most `max_grade` on land (bridges are level);
+   - **density:** the end needs at least `highway_min_density`;
+   - **detour:** if no direction in the fan passes, directions up to
+     ±`highway_max_detour_deg` are tried, smallest turn first. The paper
+     calls this "rotate the segment within a maximal angle"; the highway
+     goes around a lake or along a hill's contour;
+   - then the usual intersect / snap / angle checks. A highway that meets
+     another road stops there.
+3. **Follow-ups.** The highway continues (time + 1). On each side it branches
+   into a new highway with `highway_branch_prob` (time +
+   `highway_branch_delay`). With `branch_prob` it also spawns a grid street
+   along the grid axis closest to its normal. Those streets wait for phase 2.
+
+**Phase 2: streets.** This is the grid growth above, seeded at the start
+point and at every street spawned by a highway. Additional checks:
+
+- **terrain:** a street that would enter water (or vegetation, with
+  `avoid_vegetation`) is pruned to the last legal sample. This happens only
+  if at least `prune_factor` of its length (and `min_segment_length`) is
+  left; otherwise the street is dropped. A pruned street does not continue
+  straight but may still branch, so streets line the shore;
+- **population:** streets stop where the density at their end is below
+  `street_min_density` ("when an area with no population is reached, the
+  streets stop growing");
+- **grade:** no `GRADE_BASELINE` = 25 m stretch steeper than `max_grade`.
+  Bumps shorter than that are treated as smoothed out by grading.
+
+If the seed point lies in water or vegetation, it moves to the nearest legal
+cell inside the area. A map that doesn't cover the whole area logs a warning,
+and its edge values are used outside it. Map sampling uses half the finest
+cell size as its step.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `highways` | true | Grow highways first (needs a population map) |
+| `highway_length` | 150 | Segment length [m] |
+| `highway_rays`, `highway_max_turn_deg`, `highway_max_detour_deg` | 7, 25, 60 | Direction fan and detour [deg] |
+| `highway_ray_length`, `highway_ray_samples` | 800, 8 | Population rays |
+| `highway_branch_prob`, `highway_branch_delay` | 0.1, 6 | New highways per side and segment |
+| `highway_min_density` | 1500 | Highways stop below this [people/km²] |
+| `highway_lanes`, `highway_speed` | (2, 2), 22.2 | Road properties (road class `highway`) |
+| `max_bridge_length` | 250 | Longest water crossing [m] |
+| `street_min_density` | 500 | Streets stop below this [people/km²] |
+| `avoid_vegetation` | true | Streets stay out of parks / forest |
+| `prune_factor` | 0.4 | Share of a street that must remain after pruning |
+| `max_grade` | 0.15 | Max rise / run along any road; 0 disables |
 
 ## Adding a generator
 
@@ -157,6 +243,9 @@ python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --bu
 3. Call `assign_node_kinds(graph)` and fill `graph.metadata` (`name`,
    `generator`, `seed`, `params`).
 4. Import the module in `roadgen/generators/__init__.py`.
+   To read input maps, set `uses_maps = True`, take `maps: Optional[MapSet]`
+   in `generate`, implement `map_bounds`, and sample with
+   `MapLayer.sample(x, y)` (world coordinates).
 5. Add tests: determinism, `graph.validate() == []`, and building the graph
    with `OpenDriveBuilder` without errors.
 

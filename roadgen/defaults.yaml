@@ -48,6 +48,108 @@ generators:
     lane_width: 3.5
     major_speed: 13.9
     minor_speed: 11.1
+    # Input maps (pipeline --maps / --map-file); ignored without maps.
+    highways: true             # grow highways first; needs a population map
+    highway_length: 150.0      # [m] per segment
+    highway_rays: 7            # directions tried per highway end
+    highway_max_turn_deg: 25.0 # fan half-angle around the current direction
+    highway_max_detour_deg: 60.0  # if nothing in the fan fits, turn up to this much
+    highway_ray_length: 800.0  # [m] how far the population rays look
+    highway_ray_samples: 8     # population samples per ray
+    highway_branch_prob: 0.1   # new highway per side per segment
+    highway_branch_delay: 6
+    highway_min_density: 1500.0  # highways stop below this [people/km^2]
+    highway_lanes: [2, 2]
+    highway_speed: 22.2        # [m/s] (80 km/h)
+    max_bridge_length: 250.0   # [m] of water a highway may cross
+    street_min_density: 500.0  # streets stop below this [people/km^2]
+    avoid_vegetation: true     # streets stay out of parks / forest
+    prune_factor: 0.4          # a street hitting water / vegetation keeps >= this share
+    max_grade: 0.15            # max rise / run along a road (over 25 m); 0 = no limit
+
+maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and pipeline --maps
+  grid:
+    origin: [0.0, 0.0]         # lower-left corner [m] (`map` command)
+    size: [3000.0, 3000.0]     # width, height [m] (`map` command)
+    cell_size: 10.0            # [m]
+    margin: 200.0              # pipeline: map extends this far beyond the road network [m]
+  pipeline:                    # generator per kind for `pipeline --maps`, built in this order,
+                               # each on the maps before it
+    terrain: noise
+    elevation: fbm
+    population: centers
+  terrain:
+    noise:
+      scale: 1500.0            # size of the largest water bodies [m]
+      octaves: 5
+      lacunarity: 2.0
+      gain: 0.5
+      warp: 0.3                # domain warp strength, in units of scale
+      water_fraction: 0.12     # lakes / sea share of the map (before rivers)
+      coast_strength: 0.0      # 0 = scattered lakes, 1 = straight coast on one side
+      coast_angle_deg: null    # direction of the sea [deg from +x]; null = random
+      smoothing: 2             # 3x3 majority passes on lakes / sea
+      rivers: 1
+      river_width: 50.0        # [m]
+      river_meander: 150.0     # sideways amplitude of the meanders [m]
+      river_wavelength: 1800.0 # length of one meander [m]
+      vegetation_fraction: 0.15  # share of the land that is park / forest
+      vegetation_scale: 400.0  # size of parks / forests [m]
+    image:                     # `path` is required (--set path=... / --map-set terrain.path=...)
+      water_color: [0.23, 0.48, 0.78]  # RGB in [0, 1]; pixels take the nearest class
+      land_color: [0.91, 0.87, 0.78]
+      vegetation_color: [0.42, 0.62, 0.29]
+      gray_threshold: 0.5      # grayscale images are a water / land mask
+      water_is_dark: true
+  elevation:
+    fbm:
+      min_elevation: 0.0       # [m]
+      max_elevation: 80.0      # [m]
+      scale: 1500.0            # size of the largest hills [m]
+      octaves: 6
+      lacunarity: 2.0
+      gain: 0.5                # amplitude falloff per octave; higher = rougher
+      warp: 0.2
+      ridge: 0.0               # blend of ridged multifractal (mountain crests), [0, 1]
+      exponent: 1.0            # > 1 flattens valleys, sharpens peaks
+      erosion_iterations: 20   # thermal erosion passes
+      talus_deg: 30.0          # slopes steeper than this erode
+      erosion_rate: 0.5        # share of the excess moved per pass, (0, 0.5]
+      # On a terrain map (pipeline): water lies flat at min_elevation, land rises from it
+      shore_width: 600.0       # land reaches full height this far from water [m]
+      shore_height: 2.0        # land at the shore, above the water surface [m]
+    image:
+      min_elevation: 0.0       # [m] at black
+      max_elevation: 100.0     # [m] at white
+      stretch: false           # map the raster's own min..max instead of 0..1
+  population:
+    centers:
+      n_centers: 3
+      peak_density: 15000.0    # main centre [people/km^2]
+      decay_length: 700.0      # main centre's exponential decay length [m]
+      profile: exponential     # exponential (Clark 1951) | gaussian
+      secondary_weight: [0.3, 0.7]  # other centres' peak relative to the main one
+      min_center_distance: 800.0    # [m]
+      center_margin: 0.15      # keep centres this share of the map size off the edges
+      noise_amount: 0.35       # relative fBm variation, [0, 1]
+      noise_scale: 400.0       # size of the variation [m]
+      base_density: 50.0       # rural floor [people/km^2]
+      # On terrain / elevation maps (pipeline): nobody on water, centres on habitable land
+      vegetation_factor: 0.1   # density multiplier in parks / forest, [0, 1]
+      max_slope_deg: 20.0      # density falls linearly to 0 at this slope [deg]; 0 = no limit
+    image:
+      min_density: 0.0         # [people/km^2] at black
+      max_density: 20000.0     # [people/km^2] at white
+
+drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/maps.md)
+  sample_spacing: 20.0     # max distance between profile points along a road [m]
+  smoothing: 80.0          # roads follow the terrain averaged over this length [m]
+  bridge_clearance: 2.0    # min bridge deck height above the water surface [m]
+
+ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground`)
+  cell_size: 20.0          # mesh resolution [m]
+  road_margin: 2.0         # ground levelled this far beyond each road's edge [m]
+  below_road: 0.3          # ground under roads and junctions sits this far down [m]
 
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]

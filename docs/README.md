@@ -1,8 +1,8 @@
 # Documentation
 
-Detailed documentation for **roadgen**, the procedural road network pipeline
-of the CMPE492 project. The [top-level README](../README.md) has the short
-version. These pages explain how each part works and why it was built that way.
+Detailed documentation for **roadgen**, the procedural road network pipeline.
+The [top-level README](../README.md) has the short version.
+These pages explain how each part works and why it was built that way.
 
 ## Start here
 
@@ -19,6 +19,7 @@ Read these in pipeline order:
 | Page | Stage |
 |------|-------|
 | [RoadGraph data model](road-graph.md) | The generator-agnostic graph and its JSON format |
+| [Input maps](maps.md) | Terrain, elevation and population maps (procedural or from images), data sources |
 | [Generators](generators.md) | `manhattan` and `lsystem`, presets, parameter files, writing a new generator |
 | [OpenDRIVE builder](opendrive.md) | RoadGraph → `.xodr`: roads, lanes, junctions, id scheme, `.roadmap.json` |
 | [Validation](validation.md) | Traffic connectivity, topology, continuity, XSD schema, esmini drive-check |

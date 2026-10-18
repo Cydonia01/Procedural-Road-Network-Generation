@@ -58,8 +58,10 @@ geometry, `laneOffset` and polynomial lane widths itself.
 
 For every lane with a predecessor or successor link to another road, the lane
 center must match at the contact point within **1 cm in position** and
-**0.01 rad in travel heading**. A connecting-road lane without a lane link is
-also an error.
+**0.01 rad in travel heading**. Its **height** (from `<elevationProfile>`;
+0 without one) must match within 1 cm, and its **grade** in the travel
+direction within 0.01. A connecting-road lane without a lane link is also an
+error.
 
 ## XSD schema
 

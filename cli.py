@@ -19,6 +19,8 @@ from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESET
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
 from roadgen.graph.plot import plot_graph
+from roadgen.maps.base import get_map_generator, make_map, map_generator_names
+from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.connectivity import check_traffic_connectivity
@@ -151,16 +153,111 @@ def default_output(args: argparse.Namespace) -> Path:
     return Path("out") / name
 
 
-def generate_graph(args: argparse.Namespace) -> RoadGraph:
+def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLayer]]:
+    """The network, and the input maps requested by the map flags.
+
+    A generator that reads maps (uses_maps) gets them, built on a grid around
+    the area it reports. For any other generator the maps are only built
+    afterwards, around the finished network, for reference.
+    """
+    gen = get_generator(args.generator)
     params = generator_params(args)
+    chosen, files = map_requests(args)
+    layers: dict[str, MapLayer] = {}
+    maps = None
+    margin, cell = args.cfg["maps"]["grid"]["margin"], args.cfg["maps"]["grid"]["cell_size"]
+    if (chosen or files) and gen.uses_maps:
+        layers = input_maps(args, GridSpec.from_bounds(gen.map_bounds(params), margin, cell),
+                            chosen, files)
+        maps = MapSet(**layers)
+    elif chosen or files:
+        log.info("%s does not read input maps; building them around the network for reference",
+                 args.generator)
     with timed(f"generate {args.generator}"):
-        graph = get_generator(args.generator).generate(params, args.seed)
+        graph = gen.generate(params, args.seed, maps=maps) if maps else gen.generate(params, args.seed)
     log.info("generated %d nodes, %d edges", len(graph.nodes), len(graph.edges))
-    return graph
+    if (chosen or files) and not maps:
+        layers = input_maps(args, GridSpec.around(graph, margin, cell), chosen, files)
+    if "elevation" in layers and not args.flat:
+        graph = drape_graph(graph, layers, args.cfg)
+    return graph, layers
+
+
+def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
+    """Heights from the elevation (and terrain) map into the graph."""
+    from roadgen.maps.drape import DrapeParams, drape
+
+    with timed("drape"):
+        return drape(graph, layers["elevation"], layers.get("terrain"),
+                     DrapeParams(**section(cfg, "drape")))
+
+
+def map_requests(args: argparse.Namespace) -> tuple[dict[str, str], dict[str, str]]:
+    """(kind -> generator name) from --maps / --terrain / ..., (kind -> .npz) from --map-file.
+
+    A --map-file wins over a generator for the same kind.
+    """
+    files: dict[str, str] = {}
+    for item in getattr(args, "map_file", None) or []:
+        kind, sep, path = item.partition("=")
+        if not sep or kind not in MAP_KINDS:
+            raise SystemExit(f"error: --map-file expects <kind>=FILE.npz with kind in {MAP_KINDS}")
+        files[kind] = path
+    use_defaults = getattr(args, "maps", False)
+    chosen = {
+        kind: getattr(args, kind, None) or (args.cfg["maps"]["pipeline"][kind] if use_defaults else None)
+        for kind in MAP_KINDS if kind not in files
+    }
+    return {k: v for k, v in chosen.items() if v}, files
+
+
+def input_maps(args: argparse.Namespace, grid: GridSpec, chosen: dict[str, str],
+               files: dict[str, str]) -> dict[str, MapLayer]:
+    """Loaded and generated map layers, built in MAP_KINDS order (terrain ->
+    elevation -> population), each generated one on the layers before it.
+
+    A loaded file is used as it is, but still feeds the kinds after it.
+    """
+    overrides: dict[str, dict] = {kind: {} for kind in MAP_KINDS}
+    for key, value in parse_set(getattr(args, "map_set", None)).items():
+        kind, sep, field = key.partition(".")
+        if not sep or kind not in MAP_KINDS:
+            raise SystemExit(f"error: --map-set expects <kind>.<key>=value with kind in {MAP_KINDS}")
+        overrides[kind][field] = value
+    layers = {}
+    for kind in MAP_KINDS:
+        if kind in files:
+            try:
+                layer = load_npz(files[kind])
+            except (OSError, ValueError, KeyError) as e:
+                raise SystemExit(f"error: --map-file {kind}: {e}") from e
+            if layer.kind != kind:
+                raise SystemExit(f"error: --map-file {kind}: {files[kind]} holds a {layer.kind} map")
+            layer.metadata = {**layer.metadata, "source": files[kind]}
+            layers[kind] = layer
+        elif kind in chosen:
+            layers[kind] = build_map(kind, chosen[kind], grid, args.seed, args.cfg,
+                                     overrides=overrides[kind], upstream=MapSet(**layers))
+    return layers
+
+
+def maps_metadata(layers: dict[str, MapLayer], prefix: Optional[Path]) -> dict[str, dict]:
+    """graph.metadata["maps"]: generator and file of each map."""
+    out = {}
+    for kind, layer in layers.items():
+        entry = {"generator": layer.metadata.get("generator")}
+        if prefix is not None:
+            entry["file"] = f"{prefix.name}_{kind}.npz"
+        if "source" in layer.metadata:
+            entry["source"] = layer.metadata["source"]
+        out[kind] = entry
+    return out
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
-    graph = generate_graph(args)
+    graph, layers = generate_graph(args)
+    if layers:
+        graph.metadata["maps"] = maps_metadata(layers, None)
     output = Path(args.output) if args.output else default_output(args).with_suffix(".json")
     save_json(graph, output)
     log.info("wrote %s", output)
@@ -170,24 +267,36 @@ def cmd_generate(args: argparse.Namespace) -> int:
 def cmd_pipeline(args: argparse.Namespace) -> int:
     """Generate, then write <prefix>.json/.png/.xodr and run all validators."""
     prefix = Path(args.output) if args.output else default_output(args)
-    graph = generate_graph(args)
+    graph, layers = generate_graph(args)
     errors = graph.validate()
     for err in errors:
         log.error("graph: %s", err)
     errors += check_traffic(graph, args.allow_traps)
+    for kind, layer in layers.items():  # PREFIX_<kind>.npz / .png with the roads on top
+        write_map(layer, Path(f"{prefix}_{kind}"), graph)
+    if layers:
+        graph.metadata["maps"] = maps_metadata(layers, prefix)
     save_json(graph, prefix.with_suffix(".json"))
     with timed("plot"):
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
     errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd)
     scenegraph = None
-    if args.buildings:
+    if args.ground:
+        if "elevation" not in layers:
+            raise SystemExit("error: --ground needs an elevation map (--maps, --elevation or --map-file)")
+        scenegraph = Path(f"{prefix}_scene.osgt")
+        write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
+                    args.junction_margin)
+    elif args.buildings:
         from roadgen.scene.buildings import BuildingParams, export_buildings
 
         scenegraph = Path(f"{prefix}_buildings.osgt")
+        # Buildings stand on the ground only if the roads do.
+        ground = layers.get("elevation") if graph.has_elevation else None
         with timed("buildings"):
             params = BuildingParams(seed=args.seed, **section(args.cfg, "buildings"))
-            n = export_buildings(graph, scenegraph, params)
+            n = export_buildings(graph, scenegraph, params, ground, layers.get("terrain"))
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
         errors += ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
@@ -195,6 +304,136 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         errors += simulate_network(xodr, args, scenegraph)
     log.info("pipeline %s (%s)", "FAILED" if errors else "passed", prefix)
     return 1 if errors else 0
+
+
+def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
+                seed: int, buildings: bool, junction_margin: float) -> None:
+    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile."""
+    from roadgen.scene.buildings import BuildingParams, building_mesh
+    from roadgen.scene.ground import GroundParams, ground_mesh
+    from roadgen.scene.osgt import Mesh, write_osgt
+
+    elevation, terrain = layers["elevation"], layers.get("terrain")
+    with timed("scene"):
+        meshes = [ground_mesh(elevation, terrain, graph, GroundParams(**section(cfg, "ground")),
+                              junction_margin)]
+        n = 0
+        if buildings:
+            params = BuildingParams(seed=seed, **section(cfg, "buildings"))
+            tris, normals, n = building_mesh(graph, params, elevation, terrain)
+            meshes.append(Mesh("buildings", tris, normals, tuple(params.color)))
+        write_osgt(path, meshes)
+    log.info("wrote %s (ground%s)", path, f" + {n} buildings" if buildings else "")
+
+
+def load_layers(items: Optional[list[str]], flag: str = "--map-file") -> dict[str, MapLayer]:
+    """KIND=FILE.npz items -> {kind: layer}."""
+    layers = {}
+    for item in items or []:
+        kind, sep, path = item.partition("=")
+        if not sep or kind not in MAP_KINDS:
+            raise SystemExit(f"error: {flag} expects <kind>=FILE.npz with kind in {MAP_KINDS}")
+        try:
+            layers[kind] = load_npz(path)
+        except (OSError, ValueError, KeyError) as e:
+            raise SystemExit(f"error: {flag} {kind}: {e}") from e
+        if layers[kind].kind != kind:
+            raise SystemExit(f"error: {flag} {kind}: {path} holds a {layers[kind].kind} map")
+    return layers
+
+
+def cmd_drape(args: argparse.Namespace) -> int:
+    layers = load_layers(args.map_file)
+    if "elevation" not in layers:
+        raise SystemExit("error: drape needs --map-file elevation=FILE.npz")
+    graph = drape_graph(load_json(args.input), layers, args.cfg)
+    output = Path(args.output) if args.output else Path(args.input).with_suffix(".draped.json")
+    save_json(graph, output)
+    log.info("wrote %s", output)
+    return 0
+
+
+def cmd_ground(args: argparse.Namespace) -> int:
+    layers = load_layers(args.map_file)
+    if "elevation" not in layers:
+        raise SystemExit("error: ground needs --map-file elevation=FILE.npz")
+    graph = load_json(args.graph) if args.graph else RoadGraph()
+    write_scene(graph, layers, Path(args.output), args.cfg, args.seed,
+                args.buildings and bool(graph.edges), args.junction_margin)
+    return 0
+
+
+def build_map(kind: str, name: str, grid: GridSpec, seed: int, cfg: dict,
+              path: Optional[str] = None, preset: Optional[str] = None,
+              overrides: Optional[dict] = None, upstream: Optional[MapSet] = None) -> MapLayer:
+    try:
+        with timed(f"{kind} map ({name})"):
+            return make_map(kind, name, grid, seed, path, preset, overrides,
+                            section(cfg, "maps", kind, name), upstream)
+    except TypeError as e:  # missing required fields, e.g. an image's path
+        raise SystemExit(f"error: {kind} map {name!r}: {e}") from e
+    except (ValueError, FileNotFoundError) as e:
+        raise SystemExit(f"error: {kind} map {name!r}: {e}") from e
+
+
+def write_map(layer: MapLayer, prefix: Path, graph: Optional[RoadGraph] = None) -> None:
+    """<prefix>.npz and a <prefix>.png preview."""
+    from roadgen.maps.plot import plot_map
+
+    save_npz(layer, prefix.with_suffix(".npz"))
+    plot_map(layer, prefix.with_suffix(".png"), graph)
+    log.info("wrote %s and .png (%s)", prefix.with_suffix(".npz"), layer.summary())
+
+
+def cmd_map(args: argparse.Namespace) -> int:
+    """Generate one map on the grid from --origin/--size/--cell-size (or config)."""
+    g = args.cfg["maps"]["grid"]
+    try:
+        grid = GridSpec(tuple(args.origin or g["origin"]), tuple(args.size or g["size"]),
+                        args.cell_size or g["cell_size"])
+    except ValueError as e:
+        raise SystemExit(f"error: {e}") from e
+    layer = build_map(args.kind, args.map_generator, grid, args.seed, args.cfg,
+                      args.params, args.preset, parse_set(args.set), upstream_maps(args))
+    graph = load_json(args.graph) if args.graph else None
+    name = "_".join(filter(None, [args.kind, args.map_generator, args.preset])) + f"_s{args.seed}"
+    write_map(layer, Path(args.output) if args.output else Path("out") / name, graph)
+    return 0
+
+
+def upstream_maps(args: argparse.Namespace) -> MapSet:
+    """`map --on KIND=FILE.npz`: the earlier maps of the pipeline to build on."""
+    earlier = MAP_KINDS[:MAP_KINDS.index(args.kind)]
+    items = getattr(args, "on", None) or []
+    if any(item.partition("=")[0] not in earlier for item in items):
+        raise SystemExit(f"error: --on expects <kind>=FILE.npz with kind in {earlier} "
+                         f"(the maps before {args.kind})")
+    return MapSet(**load_layers(items, "--on"))
+
+
+def cmd_plot_map(args: argparse.Namespace) -> int:
+    from roadgen.maps.plot import plot_map
+
+    graph = load_json(args.graph) if args.graph else None
+    plot_map(load_npz(args.input), args.output, graph)
+    log.info("wrote %s", args.output)
+    return 0
+
+
+def cmd_maps(args: argparse.Namespace) -> int:
+    """List registered map generators per kind with their presets and parameters."""
+    for kind in MAP_KINDS:
+        print(f"[{kind}]")
+        for name in map_generator_names(kind):
+            gen = get_map_generator(kind, name)
+            print(f"{name}: {gen.description}")
+            presets = presets_of(gen.params_type)
+            print(f"  presets: {', '.join(presets) if presets else '-'}")
+            defaults = section(args.cfg, "maps", kind, name)
+            for f in dataclasses.fields(gen.params_type):
+                default = repr(defaults[f.name]) if f.name in defaults else "required"
+                print(f"  {f.name} = {default}")
+    return 0
 
 
 def simulate_network(xodr: Path, args: argparse.Namespace, scenegraph: Optional[Path]) -> list[str]:
@@ -409,13 +648,77 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g.add_argument("--buildings", action="store_true",
                        help="also export building boxes per block to <prefix>_buildings.osgt "
                             "(used as SceneGraphFile by --simulate)")
+        g.add_argument("--ground", action="store_true",
+                       help="also export a 3D ground mesh from the maps (with the --buildings on it) "
+                            "to <prefix>_scene.osgt (used as SceneGraphFile by --simulate)")
         g.add_argument("--simulate", action="store_true",
                        help="also run a short headless esmini simulation with random traffic")
+        _add_pipeline_map_args(g, cfg)
         g.add_argument("--sim-vehicles", type=int, default=pipeline["sim_vehicles"],
                        help="(default %(default)s)")
         g.add_argument("--sim-duration", type=float, default=pipeline["sim_duration"],
                        help="[s] (default %(default)s)")
         g.set_defaults(func=cmd_pipeline)
+
+    p = sub.add_parser("drape", help="give a RoadGraph heights from an elevation map")
+    p.add_argument("input", help="RoadGraph JSON file")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
+                   help="elevation map (required) and terrain map (bridges), repeatable")
+    p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.draped.json)")
+    p.set_defaults(func=cmd_drape)
+
+    p = sub.add_parser("ground", help="3D ground mesh (.osgt) from maps, levelled under a network")
+    p.add_argument("output", help="output .osgt")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
+                   help="elevation map (required) and terrain map (colors), repeatable")
+    p.add_argument("--graph", help="draped RoadGraph JSON: ground is levelled under its roads")
+    p.add_argument("--buildings", action="store_true", help="add the --graph's buildings")
+    p.add_argument("--seed", type=int, default=cfg["seed"], help="building heights (default %(default)s)")
+    p.add_argument(
+        "--junction-margin", type=float, default=margin,
+        help="as used for the .xodr [m] (default %(default)s)",
+    )
+    p.set_defaults(func=cmd_ground)
+
+    p = sub.add_parser("maps", help="list map generators (terrain, elevation, population)")
+    p.set_defaults(func=cmd_maps)
+
+    p = sub.add_parser("map", help="generate one input map (.npz + .png)")
+    kinds = p.add_subparsers(dest="kind", required=True)
+    grid = cfg["maps"]["grid"]
+    for kind in MAP_KINDS:
+        k = kinds.add_parser(kind, help=f"generate a {kind} map")
+        names = k.add_subparsers(dest="map_generator", required=True)
+        for name in map_generator_names(kind):
+            gen = get_map_generator(kind, name)
+            m = names.add_parser(name, help=gen.description)
+            m.add_argument("--seed", type=int, default=cfg["seed"], help="(default %(default)s)")
+            m.add_argument("--params", help="YAML with parameter values (or preset: + params:)")
+            m.add_argument("--preset", choices=presets_of(gen.params_type) or None,
+                           help="start from a named parameter set")
+            m.add_argument("--set", action="append", metavar="KEY=VALUE",
+                           help="override one parameter (repeatable), e.g. --set water_fraction=0.3")
+            m.add_argument("--origin", type=float, nargs=2, metavar=("X", "Y"),
+                           help=f"lower-left corner [m] (default {grid['origin']})")
+            m.add_argument("--size", type=float, nargs=2, metavar=("W", "H"),
+                           help=f"[m] (default {grid['size']})")
+            m.add_argument("--cell-size", type=float, help=f"[m] (default {grid['cell_size']})")
+            m.add_argument("--graph", help="RoadGraph JSON to draw on the preview")
+            if kind != MAP_KINDS[0]:
+                earlier = MAP_KINDS[:MAP_KINDS.index(kind)]
+                m.add_argument("--on", action="append", metavar="KIND=FILE.npz",
+                               help=f"build on an earlier map of the pipeline (repeatable; "
+                                    f"kind in {', '.join(earlier)}), e.g. --on terrain=out/coast.npz")
+            m.add_argument("-o", "--output",
+                           help="output prefix; writes <prefix>.npz and .png "
+                                "(default: out/<kind>_<name>[_<preset>]_s<seed>)")
+            m.set_defaults(func=cmd_map)
+
+    p = sub.add_parser("plot-map", help="render a map .npz to an image")
+    p.add_argument("input", help="map .npz written by map/pipeline")
+    p.add_argument("output", help="output image (e.g. out/terrain.png)")
+    p.add_argument("--graph", help="RoadGraph JSON to draw on top")
+    p.set_defaults(func=cmd_plot_map)
 
     p = sub.add_parser("scenario", help="generate an OpenSCENARIO file with many vehicles")
     p.add_argument("input", help=".xodr written by build-xodr/pipeline (needs its .roadmap.json)")
@@ -486,11 +789,31 @@ def _add_generator_args(p: argparse.ArgumentParser, name: str, cfg: dict) -> Non
     p.add_argument("--params", help="YAML with parameter values (or preset: + params:)")
     p.add_argument("--set", action="append", metavar="KEY=VALUE",
                    help="override one parameter (repeatable), e.g. --set rotation_deg=15")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz",
+                   help="input map to use, written by `map` or a pipeline (repeatable), "
+                        "e.g. --map-file terrain=out/coast.npz")
+    p.add_argument("--flat", action="store_true",
+                   help="keep the roads flat even with an elevation map (no heights in the graph)")
     if name == "manhattan":
         _add_manhattan_args(p, section(cfg, "generators", "manhattan"))
     else:
         presets = presets_of(gen.params_type)
         p.add_argument("--preset", choices=presets or None, help="start from a named parameter set")
+
+
+def _add_pipeline_map_args(p: argparse.ArgumentParser, cfg: dict) -> None:
+    defaults = cfg["maps"]["pipeline"]
+    p.add_argument("--maps", action="store_true",
+                   help="generate terrain, elevation (on the terrain) and population (on both) "
+                        "maps first and grow the network "
+                        "on them (lsystem); other generators get them for reference only "
+                        f"({', '.join(f'{k}: {v}' for k, v in defaults.items())})")
+    for kind in MAP_KINDS:
+        p.add_argument(f"--{kind}", choices=map_generator_names(kind), metavar="NAME",
+                       help=f"generate a {kind} map with this generator (lsystem grows on it) "
+                            f"({', '.join(map_generator_names(kind))}); overrides --maps")
+    p.add_argument("--map-set", action="append", metavar="KIND.KEY=VALUE",
+                   help="override one map parameter (repeatable), e.g. --map-set terrain.rivers=2")
 
 
 def _add_manhattan_args(p: argparse.ArgumentParser, d: dict) -> None:

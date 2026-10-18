@@ -13,6 +13,7 @@ its edges. Coordinates are in metres, headings in radians and speeds in m/s.
 | `id` | int | Unique node id |
 | `x`, `y` | float | Position [m] |
 | `kind` | `"junction"` / `"dead_end"` / `"auto"` | Informational. Generators set it from the degree (1 → `dead_end`, ≥3 → `junction`, otherwise `auto`) |
+| `z` | float, default 0 | Height [m]. At a junction it is the height of the whole (flat) junction area. Set by [drape](maps.md#heights-from-the-maps-to-esmini) |
 
 The builder ignores `kind`. It decides from the **degree**: degree 1 is a dead
 end, and every node of degree ≥2 becomes an OpenDRIVE junction.
@@ -25,11 +26,13 @@ A road between two nodes. **Forward lanes run `from_node → to_node`**.
 |-------|---------|---------|
 | `id` | – | Unique edge id |
 | `from_node`, `to_node` | – | Endpoint node ids |
-| `road_class` | – | `"avenue"` (major) or `"street"` (minor). Used for plotting and stats |
+| `road_class` | – | `"highway"` (lsystem with a population map), `"avenue"` (major) or `"street"` (minor). Used for plotting and stats |
 | `lanes_forward` | – | Lanes driving from → to |
 | `lanes_backward` | – | Lanes driving to → from |
 | `lane_width` | 3.5 | [m] |
 | `speed_limit` | 13.9 | [m/s] (≈ 50 km/h) |
+| `profile` | `[]` | Heights [m] at evenly spaced points strictly between the nodes: point k of n lies `k · length / (n + 1)` from `from_node`. Empty means straight between the node heights |
+| `bridges` | `[]` | Stretches over water, as `(start, end)` distances [m] from `from_node`. Written as OpenDRIVE `<bridge>` objects |
 
 Properties: `total_lanes`, and `is_one_way`, which is true when exactly one
 of the lane counts is 0.
@@ -47,7 +50,10 @@ of the lane counts is 0.
 | `validate()` | List of errors: missing endpoint nodes, zero length, duplicate edges between the same pair of nodes, negative lane counts, edges with no lanes |
 
 Generators fill `metadata` with `name`, `generator`, `seed` and the full
-`params`, so every graph records how it was made. The builder uses
+`params`, so every graph records how it was made. A graph grown on input
+maps also has `maps` (per kind: `generator`, `file`, and `source` for a
+`--map-file`) and, from `lsystem`, `bridges`: the ids of highway edges that
+cross water. The builder uses
 `metadata["name"]` as the OpenDRIVE header name.
 
 ## JSON format
@@ -74,7 +80,12 @@ Nodes and edges are written sorted by id. The format is versioned. Loading any
 }
 ```
 
-Fields with defaults (`kind`, `lane_width`, `speed_limit`) may be omitted.
+Fields with defaults (`kind`, `lane_width`, `speed_limit`, `z`, `profile`,
+`bridges`) may be omitted. `z`, `profile` and `bridges` are only written when
+set, so a flat graph's JSON has no height fields at all.
+`RoadGraph.edge_profile(edge_id)` returns (distances, heights) along an edge,
+with both endpoints included, and `RoadGraph.has_elevation` tells whether any
+height is set.
 Hand-written graphs like this one are useful for testing the builder in
 isolation. See `tests/fixtures/` for junction shapes (T, Y, skewed 4-way,
 5-way stars, one-way crossings).

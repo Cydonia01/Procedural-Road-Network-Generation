@@ -5,11 +5,14 @@ from __future__ import annotations
 import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Generic, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Generic, Optional, TypeVar, Union
 
 import yaml
 
 from roadgen.graph.model import NodeKind, RoadGraph
+
+if TYPE_CHECKING:  # roadgen.maps imports this module
+    from roadgen.maps.model import Bounds
 
 P = TypeVar("P")
 G = TypeVar("G", bound="type[RoadNetworkGenerator]")
@@ -22,14 +25,24 @@ class RoadNetworkGenerator(ABC, Generic[P]):
     produce an identical graph. They never touch OpenDRIVE. A params class
     may offer named presets via a ``preset(name, **overrides)`` classmethod
     and a ``PRESETS`` mapping.
+
+    Generators that read input maps (terrain, elevation, population) set
+    ``uses_maps = True``, accept ``generate(params, seed, maps=MapSet(...))``
+    and report the area they grow in through ``map_bounds``; the pipeline
+    builds the maps for that area first. Others are called without maps.
     """
 
     name: ClassVar[str]
     params_type: ClassVar[type]
     description: ClassVar[str] = ""
+    uses_maps: ClassVar[bool] = False
 
     @abstractmethod
     def generate(self, params: P, seed: int) -> RoadGraph: ...
+
+    def map_bounds(self, params: P) -> Optional[Bounds]:
+        """World (x0, y0, x1, y1) the network can occupy, if known before generating."""
+        return None
 
 
 # --- registry --------------------------------------------------------------------------

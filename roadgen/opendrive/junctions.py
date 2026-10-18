@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 from scenariogeneration import xodr
 
@@ -225,22 +225,23 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int) ->
 
 
 def build_junction(
-    junction_id: int, ends: list[RoadEnd], first_road_id: int
+    junction_id: int, ends: list[RoadEnd], first_road_id: int, z: Optional[float] = None
 ) -> tuple[xodr.Junction, list[xodr.Road], list[Movement]]:
+    """Junction, connecting roads and movements; with z, connecting roads lie flat at z [m]."""
     by_edge = {e.edge_id: e for e in ends}
     junction = xodr.Junction(f"junction_{junction_id}", junction_id)
     roads: list[xodr.Road] = []
     movements = plan_movements(junction_id, ends, first_road_id)
     for m in movements:
         a, b = by_edge[m.from_edge], by_edge[m.to_edge]
-        roads.append(_connecting_road(m, a, b))
+        roads.append(_connecting_road(m, a, b, z))
         conn = xodr.Connection(m.from_road, m.connecting_road, xodr.ContactPoint.start)
         conn.add_lanelink(m.from_lane, -1)
         junction.add_connection(conn)
     return junction, roads, movements
 
 
-def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd) -> xodr.Road:
+def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd, z: Optional[float] = None) -> xodr.Road:
     start = a.lane_pose(m.from_lane, incoming=True)
     end = b.lane_pose(m.to_lane, incoming=False)
     geometry, length = _path_geometry(start, end)
@@ -269,6 +270,8 @@ def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd) -> xodr.Road:
     road.add_predecessor(xodr.ElementType.road, m.from_road, _CONTACT[a.contact])
     road.add_successor(xodr.ElementType.road, m.to_road, _CONTACT[b.contact])
     road.add_type(ROAD_TYPE, speed=min(a.speed_limit, b.speed_limit), speed_unit="m/s")
+    if z is not None:
+        road.add_elevation(0.0, z, 0.0, 0.0, 0.0)
     return road
 
 

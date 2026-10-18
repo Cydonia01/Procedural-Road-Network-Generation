@@ -42,6 +42,11 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 |---------|---------|
 | [`generators`](#generators) | List generators, presets and parameters |
 | [`generate`](#generate) | Generator → RoadGraph JSON |
+| [`maps`](#maps) | List map generators, presets and parameters |
+| [`map`](#map) | Generate one input map (`.npz` + `.png`) |
+| [`plot-map`](#plot-map) | Map `.npz` → image |
+| [`drape`](#drape) | Heights from an elevation map into a RoadGraph |
+| [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps, levelled under a network |
 | [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate (→ buildings → drive-check → simulate) |
 | [`plot-graph`](#plot-graph) | RoadGraph JSON → image |
 | [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
@@ -74,6 +79,8 @@ Default output: `out/<name>[_<preset>]_s<seed>.json`.
 | `--preset NAME` | Start from a named parameter set |
 | `--params FILE.yaml` | Parameter file (fields, or `preset:` + `params:`) |
 | `--set KEY=VALUE` | Override one parameter. Repeatable, and the value is parsed as YAML |
+| `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`), written by `map` or a pipeline run. Repeatable. Only `lsystem` reads maps ([details](maps.md)). With an elevation map the graph also gets heights ([drape](maps.md#heights-from-the-maps-to-esmini)) |
+| `--flat` | Keep the roads flat even with an elevation map |
 
 ### Manhattan-only flags
 
@@ -108,11 +115,70 @@ validators and logs the time each stage took. Default prefix:
 | `--allow-traps` | Report traffic traps / unreachable roads as warnings instead of errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2.0) |
-| `--buildings` | Also write `PREFIX_buildings.osgt` |
+| `--buildings` | Also write `PREFIX_buildings.osgt`. With maps, buildings stand on the ground and none stand on water |
+| `--ground` | Also write `PREFIX_scene.osgt`: a ground mesh from the maps, levelled under the roads, with the `--buildings` on it. Used as SceneGraphFile by `--simulate`. Needs an elevation map |
 | `--drive-check` | Also run drive-check (only if there are no errors so far) |
 | `--simulate` | Also write `PREFIX.xosc` and run it headless (only if there are no errors so far) |
 | `--sim-vehicles N` | Vehicles for `--simulate` (default 50) |
 | `--sim-duration S` | Simulated seconds for `--simulate` (default 30) |
+| `--maps` | Generate terrain, elevation (on the terrain) and population (on both) maps (generators from `maps.pipeline`) first, on a grid around the generator's area, and grow the network on them. Written to `PREFIX_<kind>.npz` / `.png`. Generators that don't read maps get them around the finished network, for reference |
+| `--terrain`, `--elevation`, `--population NAME` | Same for one kind, with generator `NAME` (overrides `--maps` for that kind) |
+| `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
+
+With an elevation map the network gets heights before it is written, unless
+`--flat` is given: nodes, profiles along the edges and bridges over water
+([details](maps.md#heights-from-the-maps-to-esmini)).
+
+## maps
+
+```bash
+python -m cli maps
+```
+
+## map
+
+```bash
+python -m cli map <terrain|elevation|population> <generator> [options] [-o PREFIX]
+```
+
+Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
+`out/<kind>_<name>[_<preset>]_s<seed>`. See [Input maps](maps.md).
+
+| Option | Meaning |
+|--------|---------|
+| `--seed N`, `--preset NAME`, `--params FILE.yaml`, `--set KEY=VALUE` | As for generators |
+| `--origin X Y` | Lower-left corner [m] (default `maps.grid.origin`) |
+| `--size W H` | Map size [m] (default `maps.grid.size`) |
+| `--cell-size M` | Cell size [m] (default `maps.grid.cell_size`) |
+| `--graph FILE.json` | Draw this RoadGraph on the preview |
+| `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population), e.g. `map elevation fbm --on terrain=out/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
+
+## drape
+
+```bash
+python -m cli drape NET.json --map-file elevation=E.npz [--map-file terrain=T.npz] [-o OUT.json]
+```
+
+Gives a RoadGraph heights from an elevation map (and bridges from a terrain
+map). Default output: `NET.draped.json`. Parameters: `drape:` in the config.
+
+## ground
+
+```bash
+python -m cli ground OUT.osgt --map-file elevation=E.npz [--map-file terrain=T.npz] \
+    [--graph NET.json [--buildings]] [--seed N] [--junction-margin M]
+```
+
+A 3D ground mesh from the maps, colored by terrain class. With `--graph` (a
+draped network), the ground is levelled under its roads; `--buildings` adds
+its buildings on top. Use the result as `scenario --scenegraph`. Parameters:
+`ground:` in the config.
+
+## plot-map
+
+```bash
+python -m cli plot-map INPUT.npz OUTPUT.png [--graph FILE.json]
+```
 
 ## plot-graph
 

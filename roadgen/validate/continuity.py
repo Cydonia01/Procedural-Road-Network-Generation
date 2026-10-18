@@ -1,7 +1,8 @@
 """Lane-level geometric continuity across road links.
 
 For every lane with a predecessor/successor lane link to another road, the
-lane-center position and travel heading must agree at the contact point.
+lane-center position, travel heading, height and grade (from
+<elevationProfile>; 0 without one) must agree at the contact point.
 The .xodr is evaluated independently of the builder (line, arc and
 paramPoly3 geometries, laneOffset and polynomial lane widths).
 """
@@ -17,6 +18,8 @@ from lxml import etree
 
 POS_TOL = 0.01  # m
 HDG_TOL = 0.01  # rad
+Z_TOL = 0.01  # m
+GRADE_TOL = 0.01  # rise / run
 _FD_STEP = 1e-4
 
 PathLike = Union[str, Path]
@@ -75,6 +78,15 @@ class RoadEval:
             c, sn = math.cos(h0), math.sin(h0)
             return x0 + pu * c - pv * sn, y0 + pu * sn + pv * c, h0 + math.atan2(dv, du)
         raise NotImplementedError(f"road {self.id}: geometry <{child.tag}> not supported")
+
+    def elevation(self, s: float) -> tuple[float, float]:
+        """(height [m], dz/ds) of the reference line at s."""
+        rec = _piecewise(self.road.findall("elevationProfile/elevation"), s, "s")
+        if rec is None:
+            return 0.0, 0.0
+        ds = s - float(rec.get("s"))
+        b, c, d = (float(rec.get(k, 0)) for k in ("b", "c", "d"))
+        return _poly(rec, ds), b + 2 * c * ds + 3 * d * ds * ds
 
     def lane_ids(self, s: float) -> set[int]:
         section = self._section(s)
@@ -166,4 +178,11 @@ def _compare(
     dh = _angle_diff(a.lane_travel_heading(lane_a, s_a), b.lane_travel_heading(lane_b, s_b))
     if dh > HDG_TOL:
         errors.append(f"{where}: heading mismatch {dh:.4f} rad")
+    (za, ga), (zb, gb) = a.elevation(s_a), b.elevation(s_b)
+    if abs(za - zb) > Z_TOL:
+        errors.append(f"{where}: height mismatch {abs(za - zb):.4f} m")
+    # Grade in the travel direction: right lanes (< 0) drive along +s.
+    ga, gb = (ga if lane_a < 0 else -ga), (gb if lane_b < 0 else -gb)
+    if abs(ga - gb) > GRADE_TOL:
+        errors.append(f"{where}: grade mismatch {abs(ga - gb):.4f}")
     return errors
