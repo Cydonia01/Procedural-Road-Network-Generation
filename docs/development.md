@@ -70,6 +70,8 @@ Each phase had acceptance checks before the next one started.
 | 5 | Agent scenarios | `scenario/`, `sim/runner.py` |
 | 6 | Scalability experiments | `bench/` |
 | 7 (optional) | Pluggable generators and 3D | `generators/base.py`, `lsystem.py`, `scene/` |
+| 8 | Procedural input maps (terrain, elevation, population) | `maps/` |
+| 9 | Map-driven growth: highways, bridges, terrain / density / grade constraints | `lsystem.py`, `generators/base.py` |
 
 ## Known issues
 

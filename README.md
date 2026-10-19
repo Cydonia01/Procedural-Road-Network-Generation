@@ -1,12 +1,14 @@
 # Procedural-Road-Network-Generation
 
-CMPE492 Project. **roadgen** is a Python pipeline that procedurally generates
+**roadgen** is a Python pipeline that procedurally generates
 road networks, converts them to ASAM OpenDRIVE (`.xodr`), builds OpenSCENARIO
 (`.xosc`) traffic scenarios, and runs them headless in
 [esmini](https://github.com/esmini/esmini) for large-scale traffic and
 scalability experiments. All networks are generated; OpenStreetMap is not used.
 
 ```
+Input maps (terrain, elevation, population; procedural or from images)
+   |
 Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
                                                     -> Scenario Builder -> .xosc -> esmini -> metrics
 ```
@@ -17,6 +19,14 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
   - `manhattan`: parametric grids with one-way patterns, multi-lane avenues,
     a ring road, jitter, dropped streets, and a Midtown-like preset.
   - `lsystem`: Parish & Müller style growth.
+- **Input maps** (after Parish & Müller): pluggable generators, built as a
+  linear pipeline so the maps agree: a water/land/vegetation map (lakes,
+  coast, rivers, parks), then an elevation map on it (fBm, ridged
+  multifractal, thermal erosion; water in the valleys), then a population
+  density map on both (polycentric Clark model; nobody on water or steep
+  slopes). Real maps can be read from images.
+  `lsystem` grows on them: highways seek population peaks and bridge
+  rivers, and streets stop at shores, parks, steep slopes and empty land.
 - **OpenDRIVE builder:**
   - junctions with any number of arms, at any angle down to 10°;
   - one connecting road per lane movement, with arc-like cubic curves;
@@ -28,7 +38,10 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
   - a drive-through of every junction movement with esmini's own RoadManager.
 - **Scenarios:** hundreds to thousands of vehicles, with random junction
   choices or shortest-path routes.
-- **3D buildings:** optional, one extruded block per city block.
+- **Heights:** with an elevation map the roads follow the terrain
+  (`<elevationProfile>`, flat junction areas, `<bridge>` over water).
+- **3D scene:** optional buildings, one extruded block per city block, and a
+  ground mesh from the maps, both standing on the terrain.
 - **Benchmark:** resumable scalability sweep measuring real-time factor, load
   time and peak memory, with report plots.
 
@@ -86,6 +99,12 @@ python -m cli generators                                       # list generators
 python -m cli pipeline manhattan --avenues 10 --streets 10 --seed 1 -o out/grid10x10
 python -m cli pipeline manhattan --preset manhattan_like --seed 1
 python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
+python -m cli pipeline lsystem --preset city --allow-traps --maps   # grown on terrain/elevation/population maps
+
+# Input maps on their own
+python -m cli maps                                   # list map generators, presets, parameters
+python -m cli map terrain noise --preset coastal --seed 3 -o out/coast
+python -m cli map elevation fbm --preset hilly
 
 # Individual stages
 python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
@@ -93,6 +112,13 @@ python -m cli drive-check out/single_4way.xodr
 python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 -o out/grid10x10.xosc
 python -m cli simulate out/grid10x10.xosc            # headless: timing, errors, .dat/.csv/.log
 python -m cli simulate out/grid10x10.xosc --gui      # watch it
+python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings -o out/organic
+python -m cli view out/organic.xodr --scenegraph out/organic_buildings.osgt   # roads, random cars and buildings
+
+# Run history: every successful command is recorded under a hash of its inputs
+python -m cli history                                # list runs (hash, note, command)
+python -m cli 0bafbe99d5d4                           # replay one: the coastal terrain map example
+python -m cli --note "my run" pipeline ...           # describe a run; --no-history skips recording
 
 # Scalability benchmark
 python -m cli bench configs/bench_smoke.yaml         # ~1 minute
@@ -124,11 +150,13 @@ Precedence, lowest first: `defaults.yaml` < `--config` file < `--preset` <
 | [Architecture](docs/architecture.md) | Pipeline, design rules, module map, output files |
 | [RoadGraph](docs/road-graph.md) | Data model and JSON format |
 | [Generators](docs/generators.md) | `manhattan`, `lsystem`, presets, adding a generator |
+| [Input maps](docs/maps.md) | Terrain, elevation and population maps; where to get real ones |
 | [OpenDRIVE builder](docs/opendrive.md) | Roads, lanes, junction geometry, id scheme, sidecar |
 | [Validation](docs/validation.md) | Connectivity, topology, continuity, schema, drive-check |
 | [Scenarios & simulation](docs/scenarios-and-simulation.md) | `.xosc` generation, esmini runner, 3D buildings |
 | [Scalability benchmark](docs/benchmarking.md) | Sweep config, results CSV, plots |
 | [CLI reference](docs/cli-reference.md) | All commands and flags |
+| [Example runs](runs/README.md) | Recorded examples for every phase, from input maps to the esmini GUI, replayable by hash |
 | [Docker environment](docs/docker.md) | Container setup, Linux/macOS GUI |
 | [Development guide](docs/development.md) | Tests, coding rules, project phases, known issues |
 
@@ -139,13 +167,16 @@ cli.py          command-line entry point (python -m cli ...)
 roadgen/
   graph/        RoadGraph model, JSON I/O, plotting
   generators/   procedural network generators (registry, manhattan, lsystem)
+  maps/         input maps: terrain, elevation, population (registry, noise, image loaders)
   opendrive/    RoadGraph -> OpenDRIVE builder (lanes, junctions, geometry)
   validate/     connectivity / topology / continuity / schema checks
   scenario/     OpenSCENARIO builder
   sim/          esmini runner and RoadManager drive-check
-  scene/        3D buildings
+  scene/        3D buildings and ground (.osgt)
   bench/        scalability benchmark and plots
+  history.py    run history: hashes of successful commands, replay
 configs/        benchmark configs
+runs/           run history (history.json), example runs and their inputs
 tests/          pytest suite and RoadGraph fixtures
 docs/           documentation
 ```

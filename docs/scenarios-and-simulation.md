@@ -103,6 +103,18 @@ city blocks to the 3D view.
 4. Each footprint is **extruded** to a random height between 12 and 60 m.
    The roof is triangulated by ear clipping (Delaunay fallback for holes),
    and the walls get outward normals.
+5. With maps (`pipeline --maps`), a building **stands on the ground**: its
+   base is 1 m below the lowest ground under it, and its height is added to
+   the highest. Footprints touching water are dropped.
+
+### Ground
+
+`pipeline --ground` (or the `ground` command) adds the terrain itself:
+`roadgen/scene/ground.py` turns the elevation map into a triangle mesh
+(`ground.cell_size`, 20 m), colored by terrain class, and levels it 0.3 m
+below every road and junction area, so the ground never covers a road.
+Under bridges it is left alone. Ground and buildings go into one
+`PREFIX_scene.osgt`, because esmini takes a single SceneGraphFile.
 
 Formats:
 
@@ -114,4 +126,7 @@ Formats:
 ```bash
 python -m cli pipeline manhattan --avenues 5 --streets 5 --buildings --simulate -o out/city
 python -m cli simulate out/city.xosc --gui
+# Hilly city: roads follow the terrain, ground and buildings in the 3D view
+python -m cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings --simulate -o out/hills
+python -m cli simulate out/hills.xosc --gui
 ```

@@ -10,7 +10,7 @@ from matplotlib.figure import Figure
 
 from roadgen.graph.model import RoadGraph
 
-ROAD_CLASS_COLORS = {"avenue": "#d62728", "street": "#1f77b4"}
+ROAD_CLASS_COLORS = {"highway": "#ff7f0e", "avenue": "#d62728", "street": "#1f77b4"}
 LINE_WIDTH_PER_LANE = 1.2
 ARROW_FRACTION = 0.3  # one-way arrow length relative to its edge
 NODE_COLORS = {"junction": "black", "dead_end": "gray", "auto": "white"}

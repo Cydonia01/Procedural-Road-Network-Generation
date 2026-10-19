@@ -27,6 +27,14 @@ python -m cli view out/single_4way.xodr --density 2
   two-arm junction in which every lane continues.
 - The header date is fixed (`1970-01-01T00:00:00`) for reproducible output.
   Road type is `town` with the edge's speed limit.
+- **Heights** are only written if the graph has any (`RoadGraph.has_elevation`,
+  set by [drape](maps.md#heights-from-the-maps-to-esmini)); a flat graph gives
+  exactly the same file as before. Each road's `<elevationProfile>` is a
+  monotone cubic Hermite fit (PCHIP) to its edge's heights, flat at both
+  ends at the node's height (`opendrive/elevation.py`). Connecting roads lie
+  flat at their junction node's height, so all roads of a junction meet at
+  the same height and grade. `Edge.bridges` become `<objects><bridge
+  type="concrete">` records on the road.
 
 ### Id scheme
 

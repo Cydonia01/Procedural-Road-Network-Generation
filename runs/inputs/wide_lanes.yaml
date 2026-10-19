@@ -1,0 +1,7 @@
+# Config file for `--config`: overrides roadgen/defaults.yaml.
+generators:
+  manhattan:
+    lane_width: 3.75
+buildings:
+  min_height: 15.0
+  max_height: 60.0

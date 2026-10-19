@@ -6,6 +6,10 @@ its half-width plus a setback, so dead-end roads inside a block stay clear
 too; convex corners are rounded so buildings keep clear of the turning
 paths inside junctions. Each footprint is extruded to a random height.
 
+Given an elevation map, a building stands on the ground: its base is
+FOUNDATION below the lowest ground under it, and its height is added to the
+highest. Given a terrain map, footprints touching water are dropped.
+
 Formats:
 - .osgt (OpenSceneGraph ASCII, z-up): loads in esmini as SceneGraphFile in
   an .xosc. esmini's bundled OSG has no .obj reader. With a SceneGraphFile
@@ -19,7 +23,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Union
+from typing import Iterator, Optional, Union
 
 import numpy as np
 from shapely.geometry import LineString, MultiPolygon, Polygon
@@ -28,12 +32,16 @@ from shapely.ops import polygonize, triangulate, unary_union
 
 from roadgen.config import DEFAULTS, section
 from roadgen.graph.model import Edge, RoadGraph
+from roadgen.maps.model import WATER, MapLayer
+from roadgen.scene.osgt import Mesh
+from roadgen.scene.osgt import write_osgt as write_meshes
 
 log = logging.getLogger(__name__)
 
 PathLike = Union[str, Path]
 
 _D = section(DEFAULTS, "buildings")
+FOUNDATION = 1.0  # [m] a building's base goes this far below the lowest ground under it
 
 
 @dataclass(frozen=True)
@@ -154,7 +162,10 @@ def roof_triangles(poly: Polygon) -> list[tuple[tuple[float, float], ...]]:
 Vec3 = tuple[float, float, float]
 
 
-def building_mesh(graph: RoadGraph, params: BuildingParams = BuildingParams()) -> tuple[list[tuple[Vec3, Vec3, Vec3]], list[Vec3], int]:
+def building_mesh(
+    graph: RoadGraph, params: BuildingParams = BuildingParams(),
+    elevation: Optional[MapLayer] = None, terrain: Optional[MapLayer] = None,
+) -> tuple[list[tuple[Vec3, Vec3, Vec3]], list[Vec3], int]:
     """(triangles, one normal per triangle, number of buildings), z-up world coordinates.
 
     Triangles are counter-clockwise seen from outside the building.
@@ -164,10 +175,20 @@ def building_mesh(graph: RoadGraph, params: BuildingParams = BuildingParams()) -
     heights = rng.uniform(params.min_height, params.max_height, size=len(polys))
     tris: list[tuple[Vec3, Vec3, Vec3]] = []
     normals: list[Vec3] = []
+    count = 0
     for poly, h in zip(polys, heights):
-        h = float(h)
+        xs, ys = np.array(poly.exterior.coords).T
+        p = poly.representative_point()
+        xs, ys = np.append(xs, p.x), np.append(ys, p.y)
+        if terrain is not None and np.any(terrain.sample(xs, ys) == WATER):
+            continue
+        base, top = 0.0, float(h)
+        if elevation is not None:
+            ground = elevation.sample(xs, ys)
+            base, top = float(ground.min()) - FOUNDATION, float(ground.max()) + float(h)
+        count += 1
         for tri in roof_triangles(poly):
-            tris.append(tuple((x, y, h) for x, y in tri))  # type: ignore[arg-type]
+            tris.append(tuple((x, y, top) for x, y in tri))  # type: ignore[arg-type]
             normals.append((0.0, 0.0, 1.0))
         # Walls: exterior CCW and holes CW, so (dy, -dx) always points out of the solid.
         for ring in [poly.exterior, *poly.interiors]:
@@ -178,47 +199,15 @@ def building_mesh(graph: RoadGraph, params: BuildingParams = BuildingParams()) -
                 if length < 1e-6:
                     continue
                 nrm = (dy / length, -dx / length, 0.0)
-                a, b, c, d = (x0, y0, 0.0), (x1, y1, 0.0), (x1, y1, h), (x0, y0, h)
+                a, b, c, d = (x0, y0, base), (x1, y1, base), (x1, y1, top), (x0, y0, top)
                 tris += [(a, b, c), (a, c, d)]
                 normals += [nrm, nrm]
-    return tris, normals, len(polys)
+    return tris, normals, count
 
 
 def write_osgt(path: Path, tris, normals, color: tuple[float, float, float]) -> None:
-    """OpenSceneGraph ASCII scene (.osgt, serializer version 161 / OSG 3.6), z-up.
-
-    One Geode holding one Geometry: per-vertex positions and normals, an
-    overall color, and a single DrawArrays(GL_TRIANGLES).
-    """
-    n = 3 * len(tris)
-
-    def array(uid: int, kind: str, binding: str, rows: list[str]) -> list[str]:
-        return [f"        osg::{kind} {{", f"          UniqueID {uid} ",
-                f"          Binding {binding} ", f"          vector {len(rows)} {{",
-                *(f"            {r} " for r in rows), "          }", "        }"]
-
-    r, g, b = color
-    out = [
-        "#Ascii Scene ", "#Version 161 ", "#Generator roadgen 0.1 ", "",  # name + version
-        "osg::Geode {", "  UniqueID 1 ", '  Name "buildings" ', "  Drawables 1 {",
-        "    osg::Geometry {", "      UniqueID 2 ",
-        "      PrimitiveSetList 1 {", "        osg::DrawArrays {", "          UniqueID 3 ",
-        "          Mode TRIANGLES ", "          First 0 ", f"          Count {n} ",
-        "        }", "      }",
-        "      VertexArray TRUE {",
-        *array(4, "Vec3Array", "BIND_PER_VERTEX",
-               [f"{x:.3f} {y:.3f} {z:.3f}" for tri in tris for x, y, z in tri]),
-        "      }",
-        "      NormalArray TRUE {",
-        *array(5, "Vec3Array", "BIND_PER_VERTEX",
-               [f"{x:.4f} {y:.4f} {z:.4f}" for nrm in normals for x, y, z in (nrm, nrm, nrm)]),
-        "      }",
-        "      ColorArray TRUE {",
-        *array(6, "Vec4Array", "BIND_OVERALL", [f"{r:.3f} {g:.3f} {b:.3f} 1"]),
-        "      }",
-        "    }", "  }", "}", "",
-    ]
-    path.write_text("\n".join(out))
+    """Buildings alone as an OpenSceneGraph ASCII scene (see roadgen.scene.osgt)."""
+    write_meshes(path, [Mesh("buildings", tris, normals, tuple(color))])
 
 
 def write_obj(path: Path, tris, normals, color: tuple[float, float, float], y_up: bool) -> None:
@@ -240,14 +229,17 @@ def write_obj(path: Path, tris, normals, color: tuple[float, float, float], y_up
     path.write_text("\n".join(lines) + "\n")
 
 
-def export_buildings(graph: RoadGraph, path: PathLike, params: BuildingParams = BuildingParams()) -> int:
+def export_buildings(
+    graph: RoadGraph, path: PathLike, params: BuildingParams = BuildingParams(),
+    elevation: Optional[MapLayer] = None, terrain: Optional[MapLayer] = None,
+) -> int:
     """Write buildings to .osgt (loadable by esmini as SceneGraphFile) or .obj.
 
     Returns the number of buildings.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tris, normals, count = building_mesh(graph, params)
+    tris, normals, count = building_mesh(graph, params, elevation, terrain)
     if path.suffix == ".osgt":
         write_osgt(path, tris, normals, params.color)
     elif path.suffix == ".obj":

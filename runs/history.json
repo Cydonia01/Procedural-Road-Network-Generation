@@ -1,0 +1,1712 @@
+{
+ "schema_version": 1,
+ "runs": {
+  "0bafbe99d5d4": {
+   "argv": [
+    "map",
+    "terrain",
+    "noise",
+    "--preset",
+    "coastal",
+    "--seed",
+    "3",
+    "--origin",
+    "-200",
+    "-200",
+    "--size",
+    "3400",
+    "2800",
+    "-o",
+    "out/examples/maps/coast_terrain"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | terrain noise, preset coastal (sea on one side)",
+   "recorded": "2026-10-18T21:58:06+00:00"
+  },
+  "606b0af80169": {
+   "argv": [
+    "map",
+    "elevation",
+    "fbm",
+    "--preset",
+    "rolling",
+    "--seed",
+    "3",
+    "--origin",
+    "-200",
+    "-200",
+    "--size",
+    "3400",
+    "2800",
+    "--on",
+    "terrain=out/examples/maps/coast_terrain.npz",
+    "-o",
+    "out/examples/maps/coast_elevation"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | elevation fbm, preset rolling, on the coastal terrain (water lies flat in the valleys)",
+   "recorded": "2026-10-18T21:58:08+00:00"
+  },
+  "38855ef051e8": {
+   "argv": [
+    "map",
+    "population",
+    "centers",
+    "--preset",
+    "polycentric",
+    "--seed",
+    "3",
+    "--origin",
+    "-200",
+    "-200",
+    "--size",
+    "3400",
+    "2800",
+    "--on",
+    "terrain=out/examples/maps/coast_terrain.npz",
+    "--on",
+    "elevation=out/examples/maps/coast_elevation.npz",
+    "-o",
+    "out/examples/maps/coast_population"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | population centers, preset polycentric, on the coastal terrain + elevation",
+   "recorded": "2026-10-18T21:58:10+00:00"
+  },
+  "afa63898b118": {
+   "argv": [
+    "map",
+    "terrain",
+    "noise",
+    "--preset",
+    "river_city",
+    "--seed",
+    "5",
+    "-o",
+    "out/examples/maps/river_terrain"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | terrain noise, preset river_city (one wide river)",
+   "recorded": "2026-10-18T21:58:12+00:00"
+  },
+  "46527fce93ae": {
+   "argv": [
+    "map",
+    "elevation",
+    "fbm",
+    "--preset",
+    "rolling",
+    "--seed",
+    "5",
+    "--on",
+    "terrain=out/examples/maps/river_terrain.npz",
+    "-o",
+    "out/examples/maps/river_elevation"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | elevation fbm, preset rolling, on the river terrain",
+   "recorded": "2026-10-18T21:58:14+00:00"
+  },
+  "1acdb8132abd": {
+   "argv": [
+    "map",
+    "population",
+    "centers",
+    "--preset",
+    "monocentric",
+    "--seed",
+    "5",
+    "--on",
+    "terrain=out/examples/maps/river_terrain.npz",
+    "--on",
+    "elevation=out/examples/maps/river_elevation.npz",
+    "-o",
+    "out/examples/maps/river_population"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | population centers, preset monocentric, on the river terrain + elevation",
+   "recorded": "2026-10-18T21:58:16+00:00"
+  },
+  "d9472794ba8d": {
+   "argv": [
+    "map",
+    "terrain",
+    "noise",
+    "--preset",
+    "lakes",
+    "--seed",
+    "2",
+    "-o",
+    "out/examples/maps/lakes_terrain"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | terrain noise, preset lakes",
+   "recorded": "2026-10-18T21:58:18+00:00"
+  },
+  "f8b98efafc21": {
+   "argv": [
+    "map",
+    "terrain",
+    "noise",
+    "--preset",
+    "inland",
+    "--seed",
+    "2",
+    "-o",
+    "out/examples/maps/inland_terrain"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | terrain noise, preset inland (no water)",
+   "recorded": "2026-10-18T21:58:19+00:00"
+  },
+  "8b3c9ff417ee": {
+   "argv": [
+    "map",
+    "elevation",
+    "fbm",
+    "--preset",
+    "mountainous",
+    "--seed",
+    "4",
+    "--size",
+    "4000",
+    "3000",
+    "--cell-size",
+    "20",
+    "-o",
+    "out/examples/maps/mountains_elevation"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | elevation fbm, preset mountainous, 4 x 3 km at 20 m cells",
+   "recorded": "2026-10-18T21:58:21+00:00"
+  },
+  "bf97c6d5a67a": {
+   "argv": [
+    "map",
+    "elevation",
+    "fbm",
+    "--preset",
+    "flat",
+    "-o",
+    "out/examples/maps/flat_elevation"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | elevation fbm, preset flat",
+   "recorded": "2026-10-18T21:58:23+00:00"
+  },
+  "b35f78867469": {
+   "argv": [
+    "map",
+    "population",
+    "centers",
+    "--preset",
+    "sprawl",
+    "--seed",
+    "6",
+    "-o",
+    "out/examples/maps/sprawl_population"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | population centers, preset sprawl",
+   "recorded": "2026-10-18T21:58:25+00:00"
+  },
+  "41284a1707f8": {
+   "argv": [
+    "map",
+    "terrain",
+    "noise",
+    "--seed",
+    "8",
+    "--set",
+    "water_fraction=0.2",
+    "--set",
+    "coast_strength=0.5",
+    "--set",
+    "coast_angle_deg=270",
+    "--set",
+    "rivers=2",
+    "--set",
+    "river_width=60",
+    "--set",
+    "vegetation_fraction=0.25",
+    "-o",
+    "out/examples/maps/bare_terrain"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | terrain noise, bare parameters: two rivers, half a coast, more parks",
+   "recorded": "2026-10-18T21:58:27+00:00"
+  },
+  "7cc86bc90ff1": {
+   "argv": [
+    "map",
+    "elevation",
+    "fbm",
+    "--seed",
+    "8",
+    "--set",
+    "max_elevation=120",
+    "--set",
+    "ridge=0.6",
+    "--set",
+    "exponent=1.4",
+    "--set",
+    "erosion_iterations=0",
+    "-o",
+    "out/examples/maps/bare_elevation"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | elevation fbm, bare parameters: ridged crests up to 120 m, no erosion",
+   "recorded": "2026-10-18T21:58:29+00:00"
+  },
+  "ed86d6583618": {
+   "argv": [
+    "map",
+    "population",
+    "centers",
+    "--seed",
+    "8",
+    "--set",
+    "n_centers=4",
+    "--set",
+    "profile=gaussian",
+    "--set",
+    "peak_density=10000",
+    "--set",
+    "decay_length=500",
+    "-o",
+    "out/examples/maps/bare_population"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | population centers, bare parameters: four gaussian centres",
+   "recorded": "2026-10-18T21:58:31+00:00"
+  },
+  "4bb9f95b3f34": {
+   "argv": [
+    "map",
+    "terrain",
+    "noise",
+    "--params",
+    "runs/inputs/terrain_params.yaml",
+    "--seed",
+    "9",
+    "-o",
+    "out/examples/maps/params_terrain"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | terrain noise from a parameter file (coastal preset, sea in the west, a river)",
+   "recorded": "2026-10-18T21:58:33+00:00"
+  },
+  "ac718cb7b9a3": {
+   "argv": [
+    "map",
+    "terrain",
+    "image",
+    "--set",
+    "path=runs/inputs/terrain.png",
+    "-o",
+    "out/examples/maps/image_terrain"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | terrain image: lake, river and park drawn in runs/inputs/terrain.png",
+   "recorded": "2026-10-18T21:58:35+00:00"
+  },
+  "30196fef574c": {
+   "argv": [
+    "map",
+    "elevation",
+    "image",
+    "--set",
+    "path=runs/inputs/heightmap.png",
+    "--set",
+    "max_elevation=60",
+    "--on",
+    "terrain=out/examples/maps/image_terrain.npz",
+    "-o",
+    "out/examples/maps/image_elevation"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | elevation image: runs/inputs/heightmap.png scaled to 0..60 m, on the image terrain",
+   "recorded": "2026-10-18T21:58:36+00:00"
+  },
+  "e04a70fc66a8": {
+   "argv": [
+    "map",
+    "population",
+    "centers",
+    "--seed",
+    "10",
+    "--set",
+    "n_centers=2",
+    "--on",
+    "terrain=out/examples/maps/image_terrain.npz",
+    "--on",
+    "elevation=out/examples/maps/image_elevation.npz",
+    "-o",
+    "out/examples/maps/image_population"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "1 maps | population centers, two centres, on the image terrain + elevation",
+   "recorded": "2026-10-18T21:58:38+00:00"
+  },
+  "234f458fa465": {
+   "argv": [
+    "generate",
+    "manhattan",
+    "--preset",
+    "manhattan_like",
+    "--seed",
+    "1",
+    "-o",
+    "out/examples/net/manhattan_like.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | manhattan, preset manhattan_like (one-way avenues, rotated 29 deg)",
+   "recorded": "2026-10-18T21:58:40+00:00"
+  },
+  "41a5766b33f2": {
+   "argv": [
+    "generate",
+    "manhattan",
+    "--avenues",
+    "6",
+    "--streets",
+    "12",
+    "--avenue-spacing",
+    "220",
+    "--street-spacing",
+    "90",
+    "--rotation",
+    "15",
+    "--jitter",
+    "3",
+    "--edge-drop",
+    "0.05",
+    "--boundary",
+    "loop",
+    "--seed",
+    "2",
+    "-o",
+    "out/examples/net/manhattan_ring.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | manhattan, bare parameters: 6 x 12 grid, ring road, jitter, dropped streets",
+   "recorded": "2026-10-18T21:58:41+00:00"
+  },
+  "65095a3342b1": {
+   "argv": [
+    "generate",
+    "manhattan",
+    "--avenues",
+    "5",
+    "--streets",
+    "8",
+    "-o",
+    "out/examples/net/manhattan_wide.json"
+   ],
+   "config": "0289d44bb30e",
+   "config_file": "runs/inputs/wide_lanes.yaml",
+   "note": "2 network | manhattan with --config runs/inputs/wide_lanes.yaml (3.75 m lanes)",
+   "recorded": "2026-10-18T21:58:43+00:00"
+  },
+  "c5d6a17157d3": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--preset",
+    "grid",
+    "-o",
+    "out/examples/net/lsystem_grid.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem, preset grid (a 10 x 10 grid grown from a corner)",
+   "recorded": "2026-10-18T21:58:44+00:00"
+  },
+  "25ceb2f2b113": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--preset",
+    "grid_organic",
+    "--seed",
+    "2",
+    "-o",
+    "out/examples/net/organic.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem, preset grid_organic (wobbly, some branches missing)",
+   "recorded": "2026-10-18T21:58:46+00:00"
+  },
+  "93e4d1ab27eb": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--preset",
+    "city",
+    "--seed",
+    "1",
+    "-o",
+    "out/examples/net/city_nomaps.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem, preset city without maps (flat grid streets only)",
+   "recorded": "2026-10-18T21:58:48+00:00"
+  },
+  "fb1176624cbf": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--seed",
+    "3",
+    "--set",
+    "extent=[1500,900]",
+    "--set",
+    "block_size=[180,70]",
+    "--set",
+    "angle_jitter_deg=4",
+    "--set",
+    "length_jitter=0.1",
+    "--set",
+    "rotation_deg=20",
+    "-o",
+    "out/examples/net/lsystem_bare.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem, bare parameters: rotated 20 deg, jittered headings and lengths",
+   "recorded": "2026-10-18T21:58:49+00:00"
+  },
+  "6b4975a09dbc": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--preset",
+    "city",
+    "--seed",
+    "4",
+    "--map-file",
+    "terrain=out/examples/maps/coast_terrain.npz",
+    "--map-file",
+    "elevation=out/examples/maps/coast_elevation.npz",
+    "--map-file",
+    "population=out/examples/maps/coast_population.npz",
+    "-o",
+    "out/examples/net/coast_city.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem city grown on the coastal maps: highways towards the centres, heights (draped)",
+   "recorded": "2026-10-18T21:58:51+00:00"
+  },
+  "341748593655": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--preset",
+    "city",
+    "--seed",
+    "4",
+    "--map-file",
+    "terrain=out/examples/maps/coast_terrain.npz",
+    "--map-file",
+    "elevation=out/examples/maps/coast_elevation.npz",
+    "--map-file",
+    "population=out/examples/maps/coast_population.npz",
+    "--flat",
+    "-o",
+    "out/examples/net/coast_city_flat.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem city on the coastal maps, --flat (same roads, no heights)",
+   "recorded": "2026-10-18T21:58:53+00:00"
+  },
+  "7dba22fed774": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--preset",
+    "city",
+    "--seed",
+    "5",
+    "--map-file",
+    "terrain=out/examples/maps/river_terrain.npz",
+    "--map-file",
+    "elevation=out/examples/maps/river_elevation.npz",
+    "--map-file",
+    "population=out/examples/maps/river_population.npz",
+    "-o",
+    "out/examples/net/river_city.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem city grown on the river maps",
+   "recorded": "2026-10-18T21:58:55+00:00"
+  },
+  "a1e8bf08e1f0": {
+   "argv": [
+    "generate",
+    "lsystem",
+    "--preset",
+    "city",
+    "--seed",
+    "10",
+    "--map-file",
+    "terrain=out/examples/maps/image_terrain.npz",
+    "--map-file",
+    "elevation=out/examples/maps/image_elevation.npz",
+    "--map-file",
+    "population=out/examples/maps/image_population.npz",
+    "--set",
+    "highways=false",
+    "--set",
+    "max_grade=0.08",
+    "-o",
+    "out/examples/net/image_city.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | lsystem city on the image maps, no highways, max grade 8 %",
+   "recorded": "2026-10-18T21:58:57+00:00"
+  },
+  "bd2b5bb35ba0": {
+   "argv": [
+    "drape",
+    "out/examples/net/coast_city_flat.json",
+    "--map-file",
+    "elevation=out/examples/maps/coast_elevation.npz",
+    "--map-file",
+    "terrain=out/examples/maps/coast_terrain.npz",
+    "-o",
+    "out/examples/net/coast_city_draped.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | drape the flat coastal city with the coastal elevation + terrain",
+   "recorded": "2026-10-18T21:58:58+00:00"
+  },
+  "2df710c322a3": {
+   "argv": [
+    "plot-graph",
+    "out/examples/net/coast_city.json",
+    "out/examples/net/coast_city.png"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | plot the coastal city graph",
+   "recorded": "2026-10-18T21:59:00+00:00"
+  },
+  "5979b8407e41": {
+   "argv": [
+    "plot-graph",
+    "out/examples/net/manhattan_ring.json",
+    "out/examples/net/manhattan_ring.png",
+    "--node-ids"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | plot the manhattan ring with node ids",
+   "recorded": "2026-10-18T21:59:02+00:00"
+  },
+  "ff542f4b9b0f": {
+   "argv": [
+    "plot-map",
+    "out/examples/maps/coast_population.npz",
+    "out/examples/net/coast_city_on_population.png",
+    "--graph",
+    "out/examples/net/coast_city.json"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "2 network | the coastal population map with the coastal city on top",
+   "recorded": "2026-10-18T21:59:03+00:00"
+  },
+  "063741241dea": {
+   "argv": [
+    "build-xodr",
+    "out/examples/net/manhattan_like.json",
+    "out/examples/net/manhattan_like.xodr"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | build-xodr: manhattan_like",
+   "recorded": "2026-10-18T21:59:07+00:00"
+  },
+  "e1d927634e4a": {
+   "argv": [
+    "build-xodr",
+    "out/examples/net/manhattan_ring.json",
+    "out/examples/net/manhattan_ring.xodr"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | build-xodr: manhattan ring",
+   "recorded": "2026-10-18T21:59:09+00:00"
+  },
+  "f42f1db9a3c6": {
+   "argv": [
+    "build-xodr",
+    "out/examples/net/organic.json",
+    "out/examples/net/organic.xodr",
+    "--junction-margin",
+    "3"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | build-xodr: lsystem grid_organic, junction margin 3 m",
+   "recorded": "2026-10-18T21:59:11+00:00"
+  },
+  "13ebf755086b": {
+   "argv": [
+    "build-xodr",
+    "out/examples/net/coast_city.json",
+    "out/examples/net/coast_city.xodr"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | build-xodr: coastal city with elevation profiles",
+   "recorded": "2026-10-18T21:59:15+00:00"
+  },
+  "783b23109fbf": {
+   "argv": [
+    "drive-check",
+    "out/examples/net/coast_city.xodr"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | drive-check: every junction movement of the coastal city in esmini",
+   "recorded": "2026-10-18T21:59:33+00:00"
+  },
+  "a095a6febcd9": {
+   "argv": [
+    "pipeline",
+    "manhattan",
+    "--preset",
+    "manhattan_like",
+    "--seed",
+    "1",
+    "-o",
+    "out/examples/pl/manhattan_like"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | pipeline: manhattan_like -> json, png, xodr, all validators",
+   "recorded": "2026-10-18T21:59:36+00:00"
+  },
+  "3ef2d6aaf62f": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "grid",
+    "--drive-check",
+    "-o",
+    "out/examples/pl/grid"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | pipeline: lsystem grid + drive-check",
+   "recorded": "2026-10-18T21:59:40+00:00"
+  },
+  "2baedd8c0c60": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "city",
+    "--allow-traps",
+    "--maps",
+    "--seed",
+    "7",
+    "-o",
+    "out/examples/pl/city_maps"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | pipeline: lsystem city on generated maps (--maps), seed 7",
+   "recorded": "2026-10-18T21:59:46+00:00"
+  },
+  "dad31cfc7e79": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "city",
+    "--allow-traps",
+    "--terrain",
+    "noise",
+    "--elevation",
+    "fbm",
+    "--population",
+    "centers",
+    "--map-set",
+    "terrain.rivers=2",
+    "--map-set",
+    "elevation.max_elevation=60",
+    "--map-set",
+    "population.n_centers=1",
+    "--seed",
+    "4",
+    "-o",
+    "out/examples/pl/city_rivers"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | pipeline: lsystem city, maps chosen per kind with --map-set overrides",
+   "recorded": "2026-10-18T21:59:50+00:00"
+  },
+  "84edfeb2622e": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "city",
+    "--allow-traps",
+    "--seed",
+    "5",
+    "--map-file",
+    "terrain=out/examples/maps/river_terrain.npz",
+    "--map-file",
+    "elevation=out/examples/maps/river_elevation.npz",
+    "--map-file",
+    "population=out/examples/maps/river_population.npz",
+    "--drive-check",
+    "-o",
+    "out/examples/pl/river_city"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "3 xodr | pipeline: lsystem city on the river map files + drive-check",
+   "recorded": "2026-10-18T22:00:42+00:00"
+  },
+  "7096c372e1bf": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "grid_organic",
+    "--seed",
+    "2",
+    "--allow-traps",
+    "--buildings",
+    "-o",
+    "out/examples/pl/organic_buildings"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "4 scene | pipeline: lsystem grid_organic + buildings (.osgt)",
+   "recorded": "2026-10-18T22:00:44+00:00"
+  },
+  "495cd073e19e": {
+   "argv": [
+    "pipeline",
+    "manhattan",
+    "--preset",
+    "manhattan_like",
+    "--seed",
+    "1",
+    "--buildings",
+    "-o",
+    "out/examples/pl/manhattan_buildings"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "4 scene | pipeline: manhattan_like + buildings",
+   "recorded": "2026-10-18T22:00:48+00:00"
+  },
+  "a75ac46317f5": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "city",
+    "--allow-traps",
+    "--maps",
+    "--seed",
+    "7",
+    "--ground",
+    "--buildings",
+    "-o",
+    "out/examples/pl/city_scene"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "4 scene | pipeline: lsystem city on generated maps + ground mesh + buildings",
+   "recorded": "2026-10-18T22:00:54+00:00"
+  },
+  "df96fadf942a": {
+   "argv": [
+    "ground",
+    "out/examples/scene/coast_city_scene.osgt",
+    "--map-file",
+    "elevation=out/examples/maps/coast_elevation.npz",
+    "--map-file",
+    "terrain=out/examples/maps/coast_terrain.npz",
+    "--graph",
+    "out/examples/net/coast_city.json",
+    "--buildings",
+    "--seed",
+    "3"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "4 scene | ground: coastal terrain levelled under the coastal city, with its buildings",
+   "recorded": "2026-10-18T22:00:57+00:00"
+  },
+  "83a249752387": {
+   "argv": [
+    "ground",
+    "out/examples/scene/mountains.osgt",
+    "--map-file",
+    "elevation=out/examples/maps/mountains_elevation.npz"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "4 scene | ground: bare mountainous terrain, no roads",
+   "recorded": "2026-10-18T22:00:59+00:00"
+  },
+  "e698213b661a": {
+   "argv": [
+    "scenario",
+    "out/examples/net/manhattan_like.xodr",
+    "-o",
+    "out/examples/net/manhattan_like.xosc",
+    "--vehicles",
+    "100",
+    "--duration",
+    "30"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "5 scenario | manhattan_like, 100 vehicles, random junction choices",
+   "recorded": "2026-10-18T22:01:00+00:00"
+  },
+  "be58277cc05b": {
+   "argv": [
+    "scenario",
+    "out/examples/pl/manhattan_like.xodr",
+    "-o",
+    "out/examples/pl/manhattan_like_routes.xosc",
+    "--vehicles",
+    "80",
+    "--mode",
+    "explicit_routes",
+    "--speed-min",
+    "8",
+    "--speed-max",
+    "14",
+    "--min-gap",
+    "15",
+    "--duration",
+    "30",
+    "--seed",
+    "2"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "5 scenario | manhattan_like pipeline, 80 vehicles on explicit shortest-path routes, 8-14 m/s",
+   "recorded": "2026-10-18T22:01:02+00:00"
+  },
+  "b829a179eecb": {
+   "argv": [
+    "scenario",
+    "out/examples/pl/organic_buildings.xodr",
+    "-o",
+    "out/examples/pl/organic_buildings.xosc",
+    "--vehicles",
+    "60",
+    "--duration",
+    "30",
+    "--scenegraph",
+    "out/examples/pl/organic_buildings_buildings.osgt"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "5 scenario | grid_organic with its buildings as scene graph",
+   "recorded": "2026-10-18T22:01:04+00:00"
+  },
+  "9f82122169a2": {
+   "argv": [
+    "scenario",
+    "out/examples/pl/manhattan_buildings.xodr",
+    "-o",
+    "out/examples/pl/manhattan_buildings.xosc",
+    "--vehicles",
+    "100",
+    "--duration",
+    "30",
+    "--scenegraph",
+    "out/examples/pl/manhattan_buildings_buildings.osgt"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "5 scenario | manhattan_like with its buildings as scene graph",
+   "recorded": "2026-10-18T22:01:05+00:00"
+  },
+  "68fefd666ab7": {
+   "argv": [
+    "scenario",
+    "out/examples/net/coast_city.xodr",
+    "-o",
+    "out/examples/net/coast_city.xosc",
+    "--vehicles",
+    "80",
+    "--duration",
+    "30",
+    "--scenegraph",
+    "out/examples/scene/coast_city_scene.osgt"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "5 scenario | coastal city on its ground + buildings scene",
+   "recorded": "2026-10-18T22:01:07+00:00"
+  },
+  "cb9d940b0849": {
+   "argv": [
+    "scenario",
+    "out/examples/pl/city_scene.xodr",
+    "-o",
+    "out/examples/pl/city_scene.xosc",
+    "--vehicles",
+    "80",
+    "--duration",
+    "30",
+    "--scenegraph",
+    "out/examples/pl/city_scene_scene.osgt"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "5 scenario | generated-maps city on its ground + buildings scene",
+   "recorded": "2026-10-18T22:01:09+00:00"
+  },
+  "0bc96a18db4c": {
+   "argv": [
+    "simulate",
+    "out/examples/net/manhattan_like.xosc"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | manhattan_like, random traffic",
+   "recorded": "2026-10-18T22:01:18+00:00"
+  },
+  "5ce2a2457ed7": {
+   "argv": [
+    "simulate",
+    "out/examples/pl/manhattan_like_routes.xosc",
+    "--timestep",
+    "0.02",
+    "--no-record",
+    "--no-csv"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | manhattan_like, explicit routes, 0.02 s timestep, no recording",
+   "recorded": "2026-10-18T22:01:28+00:00"
+  },
+  "5cc2b1ab4f3b": {
+   "argv": [
+    "simulate",
+    "out/examples/pl/organic_buildings.xosc"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | grid_organic with buildings",
+   "recorded": "2026-10-18T22:01:30+00:00"
+  },
+  "99b10e867a5f": {
+   "argv": [
+    "simulate",
+    "out/examples/pl/manhattan_buildings.xosc"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | manhattan_like with buildings",
+   "recorded": "2026-10-18T22:01:39+00:00"
+  },
+  "ac96d08ca541": {
+   "argv": [
+    "simulate",
+    "out/examples/net/coast_city.xosc"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | coastal city on ground + buildings",
+   "recorded": "2026-10-18T22:01:54+00:00"
+  },
+  "b53fa05dfae8": {
+   "argv": [
+    "simulate",
+    "out/examples/pl/city_scene.xosc"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | generated-maps city on ground + buildings",
+   "recorded": "2026-10-18T22:02:09+00:00"
+  },
+  "de96553ef40d": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "city",
+    "--allow-traps",
+    "--maps",
+    "--seed",
+    "7",
+    "--ground",
+    "--buildings",
+    "--simulate",
+    "--sim-vehicles",
+    "60",
+    "--sim-duration",
+    "20",
+    "-o",
+    "out/examples/pl/city_full"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | whole chain in one pipeline: maps, city, ground, buildings, esmini run",
+   "recorded": "2026-10-18T22:02:28+00:00"
+  },
+  "f035568101d1": {
+   "argv": [
+    "pipeline",
+    "manhattan",
+    "--preset",
+    "manhattan_like",
+    "--seed",
+    "1",
+    "--buildings",
+    "--simulate",
+    "--sim-vehicles",
+    "100",
+    "-o",
+    "out/examples/pl/manhattan_full"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "6 simulate | whole chain in one pipeline: manhattan_like with buildings, esmini run",
+   "recorded": "2026-10-18T22:02:40+00:00"
+  },
+  "909299126a95": {
+   "argv": [
+    "simulate",
+    "out/examples/pl/manhattan_buildings.xosc",
+    "--gui"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "7 gui | esmini: manhattan_like with buildings, top camera",
+   "recorded": "2026-10-18T22:03:12+00:00"
+  },
+  "2e45f514ec2e": {
+   "argv": [
+    "simulate",
+    "out/examples/net/coast_city.xosc",
+    "--gui"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "7 gui | esmini: coastal city on its ground + buildings",
+   "recorded": "2026-10-18T22:04:52+00:00"
+  },
+  "3369a331a99f": {
+   "argv": [
+    "view",
+    "out/examples/pl/manhattan_buildings.xodr",
+    "--scenegraph",
+    "out/examples/pl/manhattan_buildings_buildings.osgt"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "7 gui | odrviewer: manhattan_like with buildings, random cars",
+   "recorded": "2026-10-18T22:26:11+00:00"
+  },
+  "97f8879ee028": {
+   "argv": [
+    "view",
+    "out/examples/pl/organic_buildings.xodr",
+    "--scenegraph",
+    "out/examples/pl/organic_buildings_buildings.osgt",
+    "--density",
+    "2"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "7 gui | odrviewer: grid_organic with buildings, 2 cars / 100 m",
+   "recorded": "2026-10-18T22:26:16+00:00"
+  },
+  "6539301a9834": {
+   "argv": [
+    "view",
+    "out/examples/net/coast_city.xodr",
+    "--scenegraph",
+    "out/examples/scene/coast_city_scene.osgt"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "7 gui | odrviewer: coastal city with heights, on its ground + buildings",
+   "recorded": "2026-10-18T22:26:40+00:00"
+  },
+  "cbc76231e493": {
+   "argv": [
+    "view",
+    "out/examples/pl/city_full.xodr",
+    "--scenegraph",
+    "out/examples/pl/city_full_scene.osgt"
+   ],
+   "config": "1fce02eee248",
+   "config_file": null,
+   "note": "7 gui | odrviewer: the one-command city (maps, ground, buildings) from phase 6",
+   "recorded": "2026-10-18T22:26:58+00:00"
+  }
+ },
+ "configs": {
+  "1fce02eee248": {
+   "seed": 0,
+   "generators": {
+    "manhattan": {
+     "avenue_spacing": 250.0,
+     "street_spacing": 80.0,
+     "rotation_deg": 0.0,
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "avenue_lanes": [
+      2,
+      2
+     ],
+     "street_lanes": [
+      1,
+      1
+     ],
+     "lane_width": 3.5,
+     "avenue_speed": 13.9,
+     "street_speed": 11.1,
+     "jitter": 0.0,
+     "edge_drop_prob": 0.0,
+     "avenue_oneway_pattern": "none",
+     "street_oneway_pattern": "none",
+     "boundary_mode": "dead_end",
+     "ring_offset": 60.0,
+     "ring_lanes": [
+      2,
+      2
+     ]
+    },
+    "lsystem": {
+     "global_goal": "grid",
+     "extent": [
+      1000.0,
+      600.0
+     ],
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "rotation_deg": 0.0,
+     "start": [
+      0.5,
+      0.5
+     ],
+     "block_size": [
+      250.0,
+      80.0
+     ],
+     "branch_prob": 1.0,
+     "branch_delay": 3,
+     "angle_jitter_deg": 0.0,
+     "length_jitter": 0.0,
+     "snap_radius": 15.0,
+     "min_segment_length": 30.0,
+     "min_angle_deg": 30.0,
+     "max_segments": 20000,
+     "major_lanes": [
+      2,
+      2
+     ],
+     "minor_lanes": [
+      1,
+      1
+     ],
+     "lane_width": 3.5,
+     "major_speed": 13.9,
+     "minor_speed": 11.1,
+     "highways": true,
+     "highway_length": 150.0,
+     "highway_rays": 7,
+     "highway_max_turn_deg": 25.0,
+     "highway_max_detour_deg": 60.0,
+     "highway_ray_length": 800.0,
+     "highway_ray_samples": 8,
+     "highway_branch_prob": 0.1,
+     "highway_branch_delay": 6,
+     "highway_min_density": 1500.0,
+     "highway_lanes": [
+      2,
+      2
+     ],
+     "highway_speed": 22.2,
+     "max_bridge_length": 250.0,
+     "street_min_density": 500.0,
+     "avoid_vegetation": true,
+     "prune_factor": 0.4,
+     "max_grade": 0.15
+    }
+   },
+   "maps": {
+    "grid": {
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "size": [
+      3000.0,
+      3000.0
+     ],
+     "cell_size": 10.0,
+     "margin": 200.0
+    },
+    "pipeline": {
+     "terrain": "noise",
+     "elevation": "fbm",
+     "population": "centers"
+    },
+    "terrain": {
+     "noise": {
+      "scale": 1500.0,
+      "octaves": 5,
+      "lacunarity": 2.0,
+      "gain": 0.5,
+      "warp": 0.3,
+      "water_fraction": 0.12,
+      "coast_strength": 0.0,
+      "coast_angle_deg": null,
+      "smoothing": 2,
+      "rivers": 1,
+      "river_width": 50.0,
+      "river_meander": 150.0,
+      "river_wavelength": 1800.0,
+      "vegetation_fraction": 0.15,
+      "vegetation_scale": 400.0
+     },
+     "image": {
+      "water_color": [
+       0.23,
+       0.48,
+       0.78
+      ],
+      "land_color": [
+       0.91,
+       0.87,
+       0.78
+      ],
+      "vegetation_color": [
+       0.42,
+       0.62,
+       0.29
+      ],
+      "gray_threshold": 0.5,
+      "water_is_dark": true
+     }
+    },
+    "elevation": {
+     "fbm": {
+      "min_elevation": 0.0,
+      "max_elevation": 80.0,
+      "scale": 1500.0,
+      "octaves": 6,
+      "lacunarity": 2.0,
+      "gain": 0.5,
+      "warp": 0.2,
+      "ridge": 0.0,
+      "exponent": 1.0,
+      "erosion_iterations": 20,
+      "talus_deg": 30.0,
+      "erosion_rate": 0.5,
+      "shore_width": 600.0,
+      "shore_height": 2.0
+     },
+     "image": {
+      "min_elevation": 0.0,
+      "max_elevation": 100.0,
+      "stretch": false
+     }
+    },
+    "population": {
+     "centers": {
+      "n_centers": 3,
+      "peak_density": 15000.0,
+      "decay_length": 700.0,
+      "profile": "exponential",
+      "secondary_weight": [
+       0.3,
+       0.7
+      ],
+      "min_center_distance": 800.0,
+      "center_margin": 0.15,
+      "noise_amount": 0.35,
+      "noise_scale": 400.0,
+      "base_density": 50.0,
+      "vegetation_factor": 0.1,
+      "max_slope_deg": 20.0
+     },
+     "image": {
+      "min_density": 0.0,
+      "max_density": 20000.0
+     }
+    }
+   },
+   "drape": {
+    "sample_spacing": 20.0,
+    "smoothing": 80.0,
+    "bridge_clearance": 2.0
+   },
+   "ground": {
+    "cell_size": 20.0,
+    "road_margin": 2.0,
+    "below_road": 0.3
+   },
+   "opendrive": {
+    "junction_margin": 2.0
+   },
+   "scenario": {
+    "sim_duration": 60.0,
+    "spawn_mode": "random_lanes",
+    "speed_range": [
+     8.0,
+     13.9
+    ],
+    "min_spawn_gap": 10.0
+   },
+   "buildings": {
+    "setback": 3.0,
+    "corner_radius": 6.0,
+    "min_height": 12.0,
+    "max_height": 60.0,
+    "min_area": 150.0,
+    "color": [
+     0.78,
+     0.76,
+     0.72
+    ],
+    "y_up": true
+   },
+   "esmini": {
+    "timestep": 0.05,
+    "window": [
+     60,
+     60,
+     1280,
+     800
+    ],
+    "camera": "top",
+    "view_density": 1.0
+   },
+   "pipeline": {
+    "sim_vehicles": 50,
+    "sim_duration": 30.0,
+    "sim_timeout": 600.0
+   },
+   "bench": {
+    "sim_duration": 60.0,
+    "timestep": 0.05,
+    "spawn_mode": "random_lanes",
+    "min_spawn_gap": 10.0,
+    "speed_range": [
+     8.0,
+     13.9
+    ],
+    "timeout_s": 900.0,
+    "memory_cap_mb": 8192.0,
+    "network": {},
+    "out_dir": "out/bench"
+   }
+  },
+  "0289d44bb30e": {
+   "seed": 0,
+   "generators": {
+    "manhattan": {
+     "avenue_spacing": 250.0,
+     "street_spacing": 80.0,
+     "rotation_deg": 0.0,
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "avenue_lanes": [
+      2,
+      2
+     ],
+     "street_lanes": [
+      1,
+      1
+     ],
+     "lane_width": 3.75,
+     "avenue_speed": 13.9,
+     "street_speed": 11.1,
+     "jitter": 0.0,
+     "edge_drop_prob": 0.0,
+     "avenue_oneway_pattern": "none",
+     "street_oneway_pattern": "none",
+     "boundary_mode": "dead_end",
+     "ring_offset": 60.0,
+     "ring_lanes": [
+      2,
+      2
+     ]
+    },
+    "lsystem": {
+     "global_goal": "grid",
+     "extent": [
+      1000.0,
+      600.0
+     ],
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "rotation_deg": 0.0,
+     "start": [
+      0.5,
+      0.5
+     ],
+     "block_size": [
+      250.0,
+      80.0
+     ],
+     "branch_prob": 1.0,
+     "branch_delay": 3,
+     "angle_jitter_deg": 0.0,
+     "length_jitter": 0.0,
+     "snap_radius": 15.0,
+     "min_segment_length": 30.0,
+     "min_angle_deg": 30.0,
+     "max_segments": 20000,
+     "major_lanes": [
+      2,
+      2
+     ],
+     "minor_lanes": [
+      1,
+      1
+     ],
+     "lane_width": 3.5,
+     "major_speed": 13.9,
+     "minor_speed": 11.1,
+     "highways": true,
+     "highway_length": 150.0,
+     "highway_rays": 7,
+     "highway_max_turn_deg": 25.0,
+     "highway_max_detour_deg": 60.0,
+     "highway_ray_length": 800.0,
+     "highway_ray_samples": 8,
+     "highway_branch_prob": 0.1,
+     "highway_branch_delay": 6,
+     "highway_min_density": 1500.0,
+     "highway_lanes": [
+      2,
+      2
+     ],
+     "highway_speed": 22.2,
+     "max_bridge_length": 250.0,
+     "street_min_density": 500.0,
+     "avoid_vegetation": true,
+     "prune_factor": 0.4,
+     "max_grade": 0.15
+    }
+   },
+   "maps": {
+    "grid": {
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "size": [
+      3000.0,
+      3000.0
+     ],
+     "cell_size": 10.0,
+     "margin": 200.0
+    },
+    "pipeline": {
+     "terrain": "noise",
+     "elevation": "fbm",
+     "population": "centers"
+    },
+    "terrain": {
+     "noise": {
+      "scale": 1500.0,
+      "octaves": 5,
+      "lacunarity": 2.0,
+      "gain": 0.5,
+      "warp": 0.3,
+      "water_fraction": 0.12,
+      "coast_strength": 0.0,
+      "coast_angle_deg": null,
+      "smoothing": 2,
+      "rivers": 1,
+      "river_width": 50.0,
+      "river_meander": 150.0,
+      "river_wavelength": 1800.0,
+      "vegetation_fraction": 0.15,
+      "vegetation_scale": 400.0
+     },
+     "image": {
+      "water_color": [
+       0.23,
+       0.48,
+       0.78
+      ],
+      "land_color": [
+       0.91,
+       0.87,
+       0.78
+      ],
+      "vegetation_color": [
+       0.42,
+       0.62,
+       0.29
+      ],
+      "gray_threshold": 0.5,
+      "water_is_dark": true
+     }
+    },
+    "elevation": {
+     "fbm": {
+      "min_elevation": 0.0,
+      "max_elevation": 80.0,
+      "scale": 1500.0,
+      "octaves": 6,
+      "lacunarity": 2.0,
+      "gain": 0.5,
+      "warp": 0.2,
+      "ridge": 0.0,
+      "exponent": 1.0,
+      "erosion_iterations": 20,
+      "talus_deg": 30.0,
+      "erosion_rate": 0.5,
+      "shore_width": 600.0,
+      "shore_height": 2.0
+     },
+     "image": {
+      "min_elevation": 0.0,
+      "max_elevation": 100.0,
+      "stretch": false
+     }
+    },
+    "population": {
+     "centers": {
+      "n_centers": 3,
+      "peak_density": 15000.0,
+      "decay_length": 700.0,
+      "profile": "exponential",
+      "secondary_weight": [
+       0.3,
+       0.7
+      ],
+      "min_center_distance": 800.0,
+      "center_margin": 0.15,
+      "noise_amount": 0.35,
+      "noise_scale": 400.0,
+      "base_density": 50.0,
+      "vegetation_factor": 0.1,
+      "max_slope_deg": 20.0
+     },
+     "image": {
+      "min_density": 0.0,
+      "max_density": 20000.0
+     }
+    }
+   },
+   "drape": {
+    "sample_spacing": 20.0,
+    "smoothing": 80.0,
+    "bridge_clearance": 2.0
+   },
+   "ground": {
+    "cell_size": 20.0,
+    "road_margin": 2.0,
+    "below_road": 0.3
+   },
+   "opendrive": {
+    "junction_margin": 2.0
+   },
+   "scenario": {
+    "sim_duration": 60.0,
+    "spawn_mode": "random_lanes",
+    "speed_range": [
+     8.0,
+     13.9
+    ],
+    "min_spawn_gap": 10.0
+   },
+   "buildings": {
+    "setback": 3.0,
+    "corner_radius": 6.0,
+    "min_height": 15.0,
+    "max_height": 60.0,
+    "min_area": 150.0,
+    "color": [
+     0.78,
+     0.76,
+     0.72
+    ],
+    "y_up": true
+   },
+   "esmini": {
+    "timestep": 0.05,
+    "window": [
+     60,
+     60,
+     1280,
+     800
+    ],
+    "camera": "top",
+    "view_density": 1.0
+   },
+   "pipeline": {
+    "sim_vehicles": 50,
+    "sim_duration": 30.0,
+    "sim_timeout": 600.0
+   },
+   "bench": {
+    "sim_duration": 60.0,
+    "timestep": 0.05,
+    "spawn_mode": "random_lanes",
+    "min_spawn_gap": 10.0,
+    "speed_range": [
+     8.0,
+     13.9
+    ],
+    "timeout_s": 900.0,
+    "memory_cap_mb": 8192.0,
+    "network": {},
+    "out_dir": "out/bench"
+   }
+  }
+ }
+}

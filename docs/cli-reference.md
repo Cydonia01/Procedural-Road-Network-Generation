@@ -9,6 +9,8 @@ Global options must come **before** the command, e.g. `python -m cli -v pipeline
 |--------|---------|
 | `-v, --verbose` | Debug logging |
 | `--config FILE` | YAML file overriding default parameters |
+| `--note TEXT` | Description stored with this run in the [run history](#history) |
+| `--no-history` | Don't record this run in the run history |
 
 ### Defaults and `--config`
 
@@ -42,6 +44,11 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 |---------|---------|
 | [`generators`](#generators) | List generators, presets and parameters |
 | [`generate`](#generate) | Generator → RoadGraph JSON |
+| [`maps`](#maps) | List map generators, presets and parameters |
+| [`map`](#map) | Generate one input map (`.npz` + `.png`) |
+| [`plot-map`](#plot-map) | Map `.npz` → image |
+| [`drape`](#drape) | Heights from an elevation map into a RoadGraph |
+| [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps, levelled under a network |
 | [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate (→ buildings → drive-check → simulate) |
 | [`plot-graph`](#plot-graph) | RoadGraph JSON → image |
 | [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
@@ -51,6 +58,8 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 | [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize |
 | [`bench`](#bench) | Scalability sweep from a YAML config |
 | [`bench-plot`](#bench-plot) | Plot a benchmark `results.csv` |
+| [`history`](#history) | List recorded runs (hash, note, command) |
+| [`replay`](#replay) | Run a recorded command again from its hash (also `python -m cli HASH`) |
 
 ## generators
 
@@ -74,6 +83,8 @@ Default output: `out/<name>[_<preset>]_s<seed>.json`.
 | `--preset NAME` | Start from a named parameter set |
 | `--params FILE.yaml` | Parameter file (fields, or `preset:` + `params:`) |
 | `--set KEY=VALUE` | Override one parameter. Repeatable, and the value is parsed as YAML |
+| `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`), written by `map` or a pipeline run. Repeatable. Only `lsystem` reads maps ([details](maps.md)). With an elevation map the graph also gets heights ([drape](maps.md#heights-from-the-maps-to-esmini)) |
+| `--flat` | Keep the roads flat even with an elevation map |
 
 ### Manhattan-only flags
 
@@ -108,11 +119,70 @@ validators and logs the time each stage took. Default prefix:
 | `--allow-traps` | Report traffic traps / unreachable roads as warnings instead of errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2.0) |
-| `--buildings` | Also write `PREFIX_buildings.osgt` |
+| `--buildings` | Also write `PREFIX_buildings.osgt`. With maps, buildings stand on the ground and none stand on water |
+| `--ground` | Also write `PREFIX_scene.osgt`: a ground mesh from the maps, levelled under the roads, with the `--buildings` on it. Used as SceneGraphFile by `--simulate`. Needs an elevation map |
 | `--drive-check` | Also run drive-check (only if there are no errors so far) |
 | `--simulate` | Also write `PREFIX.xosc` and run it headless (only if there are no errors so far) |
 | `--sim-vehicles N` | Vehicles for `--simulate` (default 50) |
 | `--sim-duration S` | Simulated seconds for `--simulate` (default 30) |
+| `--maps` | Generate terrain, elevation (on the terrain) and population (on both) maps (generators from `maps.pipeline`) first, on a grid around the generator's area, and grow the network on them. Written to `PREFIX_<kind>.npz` / `.png`. Generators that don't read maps get them around the finished network, for reference |
+| `--terrain`, `--elevation`, `--population NAME` | Same for one kind, with generator `NAME` (overrides `--maps` for that kind) |
+| `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
+
+With an elevation map the network gets heights before it is written, unless
+`--flat` is given: nodes, profiles along the edges and bridges over water
+([details](maps.md#heights-from-the-maps-to-esmini)).
+
+## maps
+
+```bash
+python -m cli maps
+```
+
+## map
+
+```bash
+python -m cli map <terrain|elevation|population> <generator> [options] [-o PREFIX]
+```
+
+Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
+`out/<kind>_<name>[_<preset>]_s<seed>`. See [Input maps](maps.md).
+
+| Option | Meaning |
+|--------|---------|
+| `--seed N`, `--preset NAME`, `--params FILE.yaml`, `--set KEY=VALUE` | As for generators |
+| `--origin X Y` | Lower-left corner [m] (default `maps.grid.origin`) |
+| `--size W H` | Map size [m] (default `maps.grid.size`) |
+| `--cell-size M` | Cell size [m] (default `maps.grid.cell_size`) |
+| `--graph FILE.json` | Draw this RoadGraph on the preview |
+| `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population), e.g. `map elevation fbm --on terrain=out/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
+
+## drape
+
+```bash
+python -m cli drape NET.json --map-file elevation=E.npz [--map-file terrain=T.npz] [-o OUT.json]
+```
+
+Gives a RoadGraph heights from an elevation map (and bridges from a terrain
+map). Default output: `NET.draped.json`. Parameters: `drape:` in the config.
+
+## ground
+
+```bash
+python -m cli ground OUT.osgt --map-file elevation=E.npz [--map-file terrain=T.npz] \
+    [--graph NET.json [--buildings]] [--seed N] [--junction-margin M]
+```
+
+A 3D ground mesh from the maps, colored by terrain class. With `--graph` (a
+draped network), the ground is levelled under its roads; `--buildings` adds
+its buildings on top. Use the result as `scenario --scenegraph`. Parameters:
+`ground:` in the config.
+
+## plot-map
+
+```bash
+python -m cli plot-map INPUT.npz OUTPUT.png [--graph FILE.json]
+```
 
 ## plot-graph
 
@@ -138,8 +208,14 @@ python -m cli drive-check NETWORK.xodr      # needs NETWORK.roadmap.json
 ## view
 
 ```bash
-python -m cli view NETWORK.xodr [--density CARS_PER_100M]   # default density 1
+python -m cli view NETWORK.xodr [--density CARS_PER_100M] [--scenegraph FILE.osgt] [--duration S]
 ```
+
+| Option | Meaning |
+|--------|---------|
+| `--density` | Random cars per 100 m of lane (default 1) |
+| `--scenegraph FILE.osgt` | 3D model shown with the roads: `PREFIX_buildings.osgt`, or `PREFIX_scene.osgt` (ground + buildings) from `pipeline --buildings` / `--ground` or `ground`. odrviewer still draws the roads itself |
+| `--duration S` | Close the viewer after S seconds; by default it stays open until you close it |
 
 Needs a display. In Docker, the `dev` service has none (`odrviewer` exits
 immediately), so use the GUI service for your OS:
@@ -200,3 +276,49 @@ python -m cli bench-plot RESULTS.csv [--out-dir DIR]     # default: <results dir
 |----------|---------|---------|
 | `ESMINI_HOME` | everything esmini-related | esmini root containing `bin/` (falls back to `./esmini`) |
 | `OPENDRIVE_XSD` | schema check | Path to the ASAM OpenDRIVE XSD |
+
+## history
+
+```bash
+python -m cli history [--grep TEXT]
+```
+
+Every command that **succeeds** (exit code 0) is recorded in a run history,
+`runs/history.json` by default (`history.file` in the config; the
+environment variable `ROADGEN_HISTORY` overrides it, and `ROADGEN_HISTORY=off`
+turns recording off). Commands that fail, or that only list things
+(`generators`, `maps`, `history`, `replay`), are not recorded.
+
+A run is stored under a 12-digit hash of its inputs: every parsed parameter,
+defaults included, and the effective configuration (`defaults.yaml` merged
+with `--config`). Different ways of writing the same inputs therefore share
+one entry and are never stored twice: an explicit default, flags in another
+order, `-v` or a different `--note`. A different seed, output path or config
+value is a new run. Each configuration is stored once in the file, and the
+runs that used it point to it.
+
+`history` lists the runs, oldest first, with their notes and command lines;
+`--grep` keeps the runs whose note or command contains TEXT. Each successful
+command also logs its hash:
+
+```
+INFO roadgen.cli: run 3fa2c81b9d04 recorded in runs/history.json
+```
+
+## replay
+
+```bash
+python -m cli replay HASH [--show]
+python -m cli HASH                 # the same
+```
+
+Runs a recorded command again. A unique prefix of 4 or more digits is
+enough. The recorded configuration is used as it was, even if
+`defaults.yaml` or the `--config` file changed since (or the file is gone).
+Only the code is not recorded, so a result can still change when the code
+does. If `defaults.yaml` gained keys since the run was recorded, the replay
+logs that its inputs differ and records itself under a new hash. `--show`
+prints the command instead of running it. A command that reads files reads
+them from where they are now, so replay the runs that write them first.
+See [runs/README.md](../runs/README.md) for the example runs.
+

@@ -2,6 +2,9 @@
 
 Generators produce a RoadGraph; the OpenDRIVE builder consumes one. Coordinates
 are in meters, headings in radians, speeds in m/s.
+
+Heights are optional: a flat graph has every Node.z = 0 and no Edge.profile.
+roadgen.maps.drape fills them in from an elevation map.
 """
 
 from __future__ import annotations
@@ -11,9 +14,10 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import networkx as nx
+import numpy as np
 
 NodeKind = Literal["junction", "dead_end", "auto"]
-RoadClass = Literal["avenue", "street"]
+RoadClass = Literal["highway", "avenue", "street"]
 
 # Edges shorter than this are treated as zero-length.
 MIN_EDGE_LENGTH = 1e-6
@@ -25,6 +29,7 @@ class Node:
     x: float
     y: float
     kind: NodeKind = "auto"
+    z: float = 0.0  # height [m]; at a junction, of the whole (flat) junction area
 
 
 @dataclass
@@ -39,6 +44,11 @@ class Edge:
     lanes_backward: int
     lane_width: float = 3.5
     speed_limit: float = 13.9
+    # Heights [m] at evenly spaced points strictly between from_node and
+    # to_node (k * length / (n + 1), k = 1..n); empty = straight between node heights.
+    profile: list[float] = field(default_factory=list)
+    # Stretches over water as (start, end) distances [m] from from_node.
+    bridges: list[tuple[float, float]] = field(default_factory=list)
 
     @property
     def total_lanes(self) -> int:
@@ -94,6 +104,19 @@ class RoadGraph:
         a, b = self._endpoints(edge_id)
         return math.atan2(b.y - a.y, b.x - a.x)
 
+    def edge_profile(self, edge_id: int) -> tuple[np.ndarray, np.ndarray]:
+        """(distance from from_node [m], height [m]) of the edge, endpoints included."""
+        e = self.edges[edge_id]
+        a, b = self._endpoints(edge_id)
+        d = np.linspace(0.0, self.edge_length(edge_id), len(e.profile) + 2)
+        return d, np.array([a.z, *e.profile, b.z], dtype=float)
+
+    @property
+    def has_elevation(self) -> bool:
+        """Whether any node or edge has a height; False for a flat graph."""
+        return (any(n.z != 0.0 for n in self.nodes.values())
+                or any(e.profile for e in self.edges.values()))
+
     def to_networkx(self) -> nx.Graph:
         """Undirected graph with node/edge attributes copied from the model."""
         g = nx.Graph()
@@ -139,6 +162,9 @@ class RoadGraph:
                 errors.append(f"edge {eid}: negative lane count")
             if e.total_lanes < 1:
                 errors.append(f"edge {eid}: has no lanes")
+            if not missing and any(not 0 <= s0 < s1 <= self.edge_length(eid) + 1e-6
+                                   for s0, s1 in e.bridges):
+                errors.append(f"edge {eid}: bridge outside the edge")
         return errors
 
     def _endpoints(self, edge_id: int) -> tuple[Node, Node]:
