@@ -5,8 +5,9 @@ The elevation map is resampled to a triangle mesh every ``cell_size``
 metres and colored by terrain class (water / land / vegetation). Given a
 draped RoadGraph, the ground is levelled ``below_road`` under every road
 (out to ``road_margin`` beyond its edge plus one mesh cell) and under every
-junction area, using the same junction trims and profile fit as the
-OpenDRIVE builder, so the ground never pokes through a road. Under bridges
+junction area, using the same fitted roads, elevation and banking, junction
+trims and junction planes as the OpenDRIVE builder (roadgen.geometry), so
+the ground never pokes through a road. Under bridges
 the ground is left alone, and water is only ever lowered.
 """
 
@@ -18,15 +19,22 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from roadgen.config import DEFAULTS, section
+from roadgen.geometry.alignment import ChainAlignment, half_width, network_alignment
+from roadgen.geometry.design import DesignParams
+from roadgen.geometry.junction_space import DEFAULT_MARGIN as DEFAULT_JUNCTION_MARGIN
+from roadgen.geometry.profiles import bridge_spans
+from roadgen.geometry.vertical import (
+    chain_elevation,
+    chain_superelevation,
+    evaluate_many,
+    junction_planes,
+)
 from roadgen.graph.model import RoadGraph
 from roadgen.maps.model import LAND, WATER, MapLayer
 from roadgen.maps.terrain import TERRAIN_COLORS
-from roadgen.geometry.junction_space import node_trims
-from roadgen.opendrive.builder import DEFAULT_JUNCTION_MARGIN
-from roadgen.opendrive.elevation import evaluate, road_elevation
-from roadgen.scene.buildings import road_half_extent
 from roadgen.scene.osgt import IndexedMesh
 
 log = logging.getLogger(__name__)
@@ -47,7 +55,7 @@ class GroundParams:
 
 def ground_heights(elevation: MapLayer, graph: Optional[RoadGraph] = None,
                    params: GroundParams = GroundParams(), terrain: Optional[MapLayer] = None,
-                   junction_margin: float = DEFAULT_JUNCTION_MARGIN,
+                   junction_margin: float = DEFAULT_JUNCTION_MARGIN, design: DesignParams = DesignParams(),
                    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Mesh vertices (x, y, z), each of shape (rows, cols), levelled under graph's roads."""
     x0, x1, y0, y1 = elevation.grid.bounds
@@ -58,48 +66,64 @@ def ground_heights(elevation: MapLayer, graph: Optional[RoadGraph] = None,
     if graph is None or not graph.has_elevation:
         return x, y, z
     target = np.full(z.shape, np.inf)
-    trims = {n: node_trims(graph, n, junction_margin)
-             for n in sorted(graph.nodes) if graph.degree(n) >= 2}
+    try:
+        na = network_alignment(graph, design, junction_margin)
+    except ValueError as err:  # the builder rejects such a graph too
+        log.warning("ground: roads not levelled (%s)", err)
+        return x, y, z
+    planes = junction_planes(graph, na, design)
     reach_extra = params.road_margin + params.cell_size
-    for eid, e in sorted(graph.edges.items()):
-        a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
-        length = graph.edge_length(eid)
-        reach = road_half_extent(e) + reach_extra
-        idx = _near(x, y, (min(a.x, b.x) - reach, max(a.x, b.x) + reach),
-                    (min(a.y, b.y) - reach, max(a.y, b.y) + reach))
-        if idx is None:
-            continue
-        ux, uy = (b.x - a.x) / length, (b.y - a.y) / length
-        rx, ry = x[idx] - a.x, y[idx] - a.y
-        along, across = rx * ux + ry * uy, np.abs(rx * uy - ry * ux)
-        inside = (along >= 0) & (along <= length) & (across <= reach)
-        for s0, s1 in e.bridges:
-            inside &= (along < s0) | (along > s1)
-        if not inside.any():
-            continue
-        t0 = trims.get(e.from_node, {}).get(eid, 0.0)
-        t1 = trims.get(e.to_node, {}).get(eid, 0.0)
-        d, zs = graph.edge_profile(eid)
-        records = road_elevation(d, zs, t0, length - t1, a.z, b.z)
-        road_z = np.array([a.z if s <= t0 else b.z if s >= length - t1 else evaluate(records, s - t0)[0]
-                           for s in along[inside]])
-        sub = target[idx]
-        sub[inside] = np.minimum(sub[inside], road_z - params.below_road)
-        target[idx] = sub
-    for n, arm_trims in trims.items():
+    for ca in na.chains:
+        _level_chain(graph, ca, planes, design, x, y, target, params, reach_extra)
+    for n in na.junctions:
+        r = max(na.trims[n].values()) + reach_extra
         node = graph.nodes[n]
-        r = max(arm_trims.values()) + reach_extra
         idx = _near(x, y, (node.x - r, node.x + r), (node.y - r, node.y + r))
         if idx is None:
             continue
         disc = np.hypot(x[idx] - node.x, y[idx] - node.y) <= r
+        plane_z = planes[n].height(x[idx][disc], y[idx][disc])
         sub = target[idx]
-        sub[disc] = np.minimum(sub[disc], node.z - params.below_road)
+        sub[disc] = np.minimum(sub[disc], plane_z - params.below_road)
         target[idx] = sub
     level = np.isfinite(target)
     wet = terrain.sample(x, y) == WATER if terrain is not None else np.zeros(z.shape, bool)
     z = np.where(level & ~wet, target, np.where(level, np.minimum(z, target), z))
     return x, y, z
+
+
+def _level_chain(graph: RoadGraph, ca: ChainAlignment, planes, design: DesignParams,
+                 x: np.ndarray, y: np.ndarray, target: np.ndarray, params: GroundParams,
+                 reach_extra: float) -> None:
+    """Lower target under one chain road: below its surface (elevation and banking)
+    out to its widest half width plus reach_extra, except under bridges."""
+    smp = ca.alignment.sample(params.cell_size / 2)
+    reach = max(half_width(graph.edges[eid]) for eid in ca.chain.edge_ids) + reach_extra
+    idx = _near(x, y, (smp.x.min() - reach, smp.x.max() + reach), (smp.y.min() - reach, smp.y.max() + reach))
+    if idx is None:
+        return
+    px, py = x[idx].ravel(), y[idx].ravel()
+    dist, j = cKDTree(smp.xy()).query(np.column_stack([px, py]), distance_upper_bound=reach)
+    hit = np.isfinite(dist)
+    if not hit.any():
+        return
+    k = np.flatnonzero(hit)
+    jj = j[hit]
+    s = smp.s[jj]
+    keep = np.ones(len(s), bool)
+    for s0, length in bridge_spans(graph, ca):
+        keep &= (s < s0) | (s > s0 + length)
+    k, jj, s = k[keep], jj[keep], s[keep]
+    # Signed lateral offset (left positive) from the nearest centre-line sample.
+    h = smp.hdg[jj]
+    t = -(px[k] - smp.x[jj]) * np.sin(h) + (py[k] - smp.y[jj]) * np.cos(h)
+    road_z = evaluate_many(chain_elevation(graph, ca, planes), s)
+    sup = chain_superelevation(graph, ca, planes, design)
+    if sup:
+        road_z = road_z + t * np.tan(evaluate_many(sup, s))
+    sub = target[idx].ravel()
+    sub[k] = np.minimum(sub[k], road_z - params.below_road)
+    target[idx] = sub.reshape(target[idx].shape)
 
 
 def _near(x: np.ndarray, y: np.ndarray, xr: tuple[float, float],
@@ -114,9 +138,10 @@ def _near(x: np.ndarray, y: np.ndarray, xr: tuple[float, float],
 
 def ground_mesh(elevation: MapLayer, terrain: Optional[MapLayer] = None,
                 graph: Optional[RoadGraph] = None, params: GroundParams = GroundParams(),
-                junction_margin: float = DEFAULT_JUNCTION_MARGIN) -> IndexedMesh:
+                junction_margin: float = DEFAULT_JUNCTION_MARGIN,
+                design: DesignParams = DesignParams()) -> IndexedMesh:
     """Two triangles per mesh cell; smooth normals; colored by terrain class per vertex."""
-    x, y, z = ground_heights(elevation, graph, params, terrain, junction_margin)
+    x, y, z = ground_heights(elevation, graph, params, terrain, junction_margin, design)
     rows, cols = x.shape
     gy, gx = np.gradient(z, y[:, 0], x[0])
     normals = np.stack([-gx, -gy, np.ones_like(z)], axis=-1)

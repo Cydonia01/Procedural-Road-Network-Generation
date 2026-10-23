@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Union
 
 from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 
+from roadgen.geometry.alignment import network_alignment
 from roadgen.graph.model import RoadGraph
+
+log = logging.getLogger(__name__)
 
 ROAD_CLASS_COLORS = {"highway": "#ff7f0e", "avenue": "#d62728", "street": "#1f77b4"}
 LINE_WIDTH_PER_LANE = 1.2
@@ -21,17 +25,29 @@ def plot_graph(
     path: Union[str, Path],
     show_node_ids: bool = False,
     dpi: int = 150,
+    curved: bool = True,
 ) -> None:
-    """Render graph to an image file. Edges referencing missing nodes are skipped."""
+    """Render graph to an image file. Edges referencing missing nodes are skipped.
+
+    curved: draw the fitted roads (roadgen.geometry.alignment) as the
+    OpenDRIVE builder will build them; straight edges if the graph can't be
+    fitted (or with curved=False).
+    """
     fig = Figure(figsize=(8, 8))
     ax = fig.add_subplot()
 
+    na = None
+    if curved and not graph.validate():
+        try:
+            na = network_alignment(graph)
+        except ValueError as err:
+            log.debug("plot: drawing straight edges (%s)", err)
     segments, colors, widths, arrows = [], [], [], []
     for e in graph.edges.values():
         if e.from_node not in graph.nodes or e.to_node not in graph.nodes:
             continue
         a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
-        segments.append([(a.x, a.y), (b.x, b.y)])
+        segments.append(na.edge_line(graph, e.id) if na else [(a.x, a.y), (b.x, b.y)])
         colors.append(ROAD_CLASS_COLORS.get(e.road_class, "black"))
         widths.append(LINE_WIDTH_PER_LANE * max(e.total_lanes, 1))
         if e.is_one_way:

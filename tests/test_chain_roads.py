@@ -13,7 +13,7 @@ from roadgen.geometry.profiles import WidthPiece
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.metrics.geometry import geometry_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.elevation import evaluate
+from roadgen.geometry.vertical import evaluate
 from roadgen.validate.continuity import RoadEval, check_continuity
 from roadgen.validate.topology import check_topology
 
@@ -129,7 +129,7 @@ def test_heights_run_through_the_bend_node(tmp_path):
                  z={1: 0.0, 2: 6.0, 3: 0.0})
     b, _, root = build(g, tmp_path)
     ca = b.alignment.chains[0]
-    from roadgen.opendrive.elevation import Elevation
+    from roadgen.geometry.vertical import Elevation
 
     records = [Elevation(*(float(e.get(k)) for k in ("s", "a", "b", "c", "d")))
                for e in road(root).findall("elevationProfile/elevation")]

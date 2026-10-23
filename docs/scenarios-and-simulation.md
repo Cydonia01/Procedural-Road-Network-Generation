@@ -100,7 +100,8 @@ Outputs go next to the scenario: `<stem>.log`, `.stdout`, `.dat`, `.csv`.
 city blocks to the 3D view.
 
 1. **Blocks** are the bounded faces of the planar road graph (shapely
-   `polygonize`).
+   `polygonize`), drawn along the fitted roads, so buildings follow the
+   curves the builder builds.
 2. A block's **footprint** is the face minus every road widened by its half
    width plus a `setback` (3 m). Dead-end roads inside a block therefore stay
    clear too.

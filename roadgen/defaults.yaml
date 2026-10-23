@@ -167,6 +167,10 @@ design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AAS
   road_clearance: 1.0       # min gap between a fitted curve and any other road [m]
   max_corner_offset: 0.0    # max distance a curve may cut inside its corner [m]; 0 = no limit
 
+align:  # `align` step: radius caps for bends whose curve leaves legal ground (roadgen/maps/align.py)
+  max_grade: 0.15           # max terrain rise / run along a curve; 0 = no limit
+  grade_length: 25.0        # grades are measured over this distance [m]
+
 metrics:  # `metrics` command: geometry quality of an .xodr (roadgen/metrics/geometry.py)
   sample_step: 0.5          # spacing of curvature samples along a road [m]
   comfort_lat_acc: 3.0      # comfortable lateral acceleration [m/s^2]

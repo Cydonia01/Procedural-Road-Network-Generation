@@ -16,6 +16,7 @@ generators never touch OpenDRIVE. Plan and reasoning:
 | `chains.py` | Chains: runs of edges through two-road nodes that become one road |
 | `alignment.py` | Fitted reference lines of the chains: corners, room, clearance, stations |
 | `profiles.py` | Along-road profiles of a chain road: lane widths and tapers, speeds, heights, bridges |
+| `vertical.py` | Elevation fits (PCHIP), junction planes, chain elevation and banking |
 
 ## Design-speed rules (`design.py`)
 
@@ -77,8 +78,8 @@ end at the same node (esmini confuses the two ends of such a road): its
 middle node then stays a junction, splitting it in two.
 
 `alignment.py`, `network_alignment(graph)`: the **single source of truth for
-road shape**, used by the builder (and, from stage A4, the scene, drape and
-metrics). Per chain:
+road shape**, used by the builder, `align`, drape, the 3D ground and
+buildings and the graph plot. Per chain:
 
 1. The polyline through the chain's nodes is trimmed at its junction ends by
    `junction_trims`. Arms leaving a junction stay straight.
@@ -101,6 +102,10 @@ metrics). Per chain:
 Stations: every graph node maps to a station on its chain road (an inner node
 to its corner's midpoint), and distances along the straight polyline map
 piecewise linearly to stations: `edge_range`, `edge_station`, `node_station`.
+`NetworkAlignment.edge_points` gives the road position for distances along a
+straight edge (on the edge itself inside a junction trim), and `edge_line`
+an edge's stretch of the fitted road, extended to the junction node where its
+chain ends at one; drape, the scene and the plot use these.
 
 On the example cities, about 110–160 corners per network are fitted in about
 0.25 s. A corner of 60–135° (mostly grid corners) rarely has room for its

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import networkx as nx
 import numpy as np
@@ -29,7 +29,8 @@ class Node:
     x: float
     y: float
     kind: NodeKind = "auto"
-    z: float = 0.0  # height [m]; at a junction, of the whole (flat) junction area
+    z: float = 0.0  # height [m]; at a junction, of the junction area at the node
+    radius_cap: Optional[float] = None  # largest corner radius at this bend [m] (set by `align`)
 
 
 @dataclass

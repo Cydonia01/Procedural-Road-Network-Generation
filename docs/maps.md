@@ -266,23 +266,37 @@ flowchart LR
     E --> S
 ```
 
+0. **Align** (`roadgen/maps/align.py`, parameters under `align:`, CLI
+   `align`; the pipeline runs it whenever there are maps). Roads are built
+   along fitted curves ([road geometry](geometry.md#chains-and-fitted-roads))
+   that cut inside every bend, but the generator only checked its straight
+   segments. Each bend's curve is checked against the maps: it may not cross
+   water where the straight corner did not, and the terrain grade along it
+   (over `grade_length`, 25 m) may not exceed `max_grade` (0.15) where the
+   straight corner stayed within it. A bend that fails gets the largest
+   radius that passes as `Node.radius_cap`, which the builder, drape and
+   scene then all honour. Without maps nothing is written.
 1. **Drape** (`roadgen/maps/drape.py`, parameters under `drape:`). Every node
-   gets the elevation averaged over a disc `smoothing` (80 m) wide; at a
-   junction this is the height of the whole junction area. Every edge gets
-   heights every `sample_spacing` (20 m): the elevation averaged along the
-   road over `smoothing` (a road is graded, not draped over every bump),
-   shifted linearly so it meets its nodes' heights exactly.
-2. **Bridges.** Stretches of an edge over water (from the terrain map,
-   sampled at its own resolution) become `Edge.bridges`. On them the deck
+   gets the elevation averaged over a disc `smoothing` (80 m) wide, at the
+   node or, for a bend, at the fitted road's corner midpoint; at a junction
+   this is the height of the junction area. Every edge gets heights every
+   `sample_spacing` (20 m) along the straight edge, sampled under the fitted
+   road: the elevation averaged along the road over `smoothing` (a road is
+   graded, not draped over every bump), shifted linearly so it meets its
+   nodes' heights exactly.
+2. **Bridges.** Stretches of an edge's fitted road over water (from the
+   terrain map, sampled at its own resolution) become `Edge.bridges`. On them the deck
    runs straight from shore to shore and stays at least `bridge_clearance`
    (2 m) above the water surface. A node on water is raised the same way.
    The water surface is flat at `min_elevation` (see the elevation map
    above), so without this a bridge would dip down to the water.
-3. **Profiles** (`roadgen/opendrive/elevation.py`). The builder fits each
-   road's heights with a monotone cubic Hermite spline (PCHIP): height and
-   slope are continuous, and it never overshoots the samples. Both ends are
-   flat at the node's height. Connecting roads lie flat at their junction's
-   height, so every road of a junction meets at the same height and grade.
+3. **Profiles** (`roadgen/geometry/vertical.py`). The builder fits each
+   chain road's heights with a monotone cubic Hermite spline (PCHIP): height
+   and slope are continuous, and it never overshoots the samples. Bend nodes
+   are ordinary knots. A road ends on its junction's plane (flat at the
+   node's height unless sloped junctions are on), and connecting roads lie on
+   the same plane, so every road of a junction meets at the same height and
+   grade.
    Bridges become `<objects><bridge type="concrete">` records.
 4. **Validation.** The continuity check also compares height (1 cm) and
    grade (0.01) at every contact point. esmini's RoadManager reads the same
@@ -290,8 +304,9 @@ flowchart LR
 5. **Scene** (`roadgen/scene/`). esmini draws only roads, so `--ground`
    adds the terrain: a mesh from the elevation map every `ground.cell_size`
    (20 m), colored by terrain class, and levelled `below_road` (0.3 m)
-   under every road and junction area, using the builder's own junction
-   trims and profile fit, so the ground never covers a road. Under bridges
+   under every road and junction area, along the same fitted roads, junction
+   trims, junction planes and profile fit as the builder (a KD-tree finds
+   the nearest point of each road), so the ground never covers a road. Under bridges
    it is left alone. Buildings stand on the ground (base 1 m below the
    lowest ground under them) and none stand on water. Ground and buildings
    share one `PREFIX_scene.osgt`, because esmini takes a single

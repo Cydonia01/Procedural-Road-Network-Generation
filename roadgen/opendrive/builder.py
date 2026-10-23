@@ -31,6 +31,7 @@ from typing import Optional, Union
 from scenariogeneration import xodr
 
 from roadgen.config import DEFAULTS
+from roadgen.geometry import GEOMETRY_VERSION
 from roadgen.geometry.alignment import (
     ChainAlignment,
     NetworkAlignment,
@@ -38,14 +39,9 @@ from roadgen.geometry.alignment import (
 )
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.primitives import Piece
-from roadgen.geometry.profiles import (
-    bridge_spans,
-    height_samples,
-    lane_layout,
-    speed_profile,
-)
+from roadgen.geometry.profiles import bridge_spans, lane_layout, speed_profile
 from roadgen.graph.model import RoadGraph
-from roadgen.opendrive.elevation import road_elevation
+from roadgen.geometry.vertical import JunctionPlane, chain_elevation, flat_planes
 from roadgen.opendrive.junctions import Movement, RoadEnd, build_junction
 from roadgen.opendrive.lanes import make_lane_sections
 
@@ -58,7 +54,6 @@ ODR_REV_MINOR = "6"
 ROAD_TYPE = xodr.RoadType.town
 # scenariogeneration stamps datetime.now(); a fixed value keeps output reproducible.
 HEADER_DATE = "1970-01-01T00:00:00"
-GEOMETRY_VERSION = 2  # 1: one straight road per edge; 2: chain roads with lines, spirals, arcs
 DEFAULT_JUNCTION_MARGIN = DEFAULTS["opendrive"]["junction_margin"]
 
 PathLike = Union[str, Path]
@@ -98,8 +93,9 @@ class OpenDriveBuilder:
         bridges: dict[int, list[tuple[float, float]]] = {}
         ends: dict[int, list[RoadEnd]] = {n: [] for n in na.junctions}
         junctions = set(na.junctions)
+        planes = flat_planes(graph, na.junctions) if heights else None
         for road_id, ca in enumerate(na.chains, 1):
-            road, road_ends, spans = self._make_road(graph, ca, road_id, junctions, heights)
+            road, road_ends, spans = self._make_road(graph, ca, road_id, junctions, planes)
             if spans:
                 bridges[road_id] = spans
             for node_id, end in road_ends:
@@ -210,7 +206,8 @@ class OpenDriveBuilder:
 
     @staticmethod
     def _make_road(
-        graph: RoadGraph, ca: ChainAlignment, road_id: int, junctions: set[int], heights: bool = False,
+        graph: RoadGraph, ca: ChainAlignment, road_id: int, junctions: set[int],
+        planes: Optional[dict[int, JunctionPlane]] = None,
     ) -> tuple[xodr.Road, list[tuple[int, RoadEnd]], list[tuple[float, float]]]:
         """The chain's road, its ends at junctions, and its bridges as (s, length)."""
         planview = xodr.PlanView()
@@ -222,12 +219,8 @@ class OpenDriveBuilder:
         for s, speed in speed_profile(graph, ca):
             road.add_type(ROAD_TYPE, s=round(s, 6), speed=speed, speed_unit="m/s")
 
-        start, end = graph.nodes[ca.chain.start], graph.nodes[ca.chain.end]
-        if heights:
-            d, z = height_samples(graph, ca)
-            # road_elevation measures from the start node: shift stations by the trim.
-            for rec in road_elevation(d + ca.trim_start, z, ca.trim_start, ca.trim_start + ca.length,
-                                      start.z, end.z):
+        if planes is not None:
+            for rec in chain_elevation(graph, ca, planes):
                 road.add_elevation(*rec)
 
         ends = []

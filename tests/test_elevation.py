@@ -12,12 +12,13 @@ import pytest
 from lxml import etree
 
 from cli import main
+from roadgen.geometry.alignment import network_alignment
+from roadgen.geometry.vertical import evaluate, road_elevation
 from roadgen.graph.io import graph_from_dict, graph_to_dict, load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.drape import DrapeParams, drape
 from roadgen.maps.model import LAND, WATER, GridSpec, MapLayer, load_npz
 from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.elevation import evaluate, road_elevation
 from roadgen.scene.buildings import (
     FOUNDATION,
     BuildingParams,
@@ -101,10 +102,16 @@ def test_drape_follows_a_ramp_and_leaves_the_input_alone():
     before = copy.deepcopy(g)
     out = drape(g, SLOPE)
     assert g == before
+    na = network_alignment(g)
     for n in out.nodes.values():
-        assert n.z == pytest.approx(0.05 * n.x, abs=0.05)  # averaging keeps a plane
+        ca = na.of_edge(g.incident_edges(n.id)[0].id)
+        x = ca.alignment.pose(ca.node_station(n.id)).x if n.id in ca.chain.inner else n.x
+        assert n.z == pytest.approx(0.05 * x, abs=0.05)  # averaging keeps a plane
     d, z = out.edge_profile(1)
-    assert np.allclose(z, 0.05 * (100.0 + d), atol=0.05)
+    # Sampled under the fitted road: node 1 is a bend, so edge 1 starts on a curve.
+    x, y = network_alignment(g).edge_points(g, 1, d)
+    assert y[1] > 100.0 + 1.0  # the curve cuts inside the corner (towards node 4)
+    assert np.allclose(z[1:-1], 0.05 * x[1:-1], atol=0.05)
     assert len(d) - 1 == 20  # 400 m at <= 20 m spacing
     assert drape(g, SLOPE) == out  # deterministic
 
@@ -228,7 +235,8 @@ def test_ground_is_levelled_under_roads_and_keeps_water_low():
     x, y, z = ground_heights(VALLEY, g, p, t)
     x0, y0, plain = ground_heights(VALLEY, None, p)
     assert np.array_equal(x, x0) and np.array_equal(y, y0)
-    on_road = (np.abs(y - 100.0) < 3.0) & (x > 150.0) & (x < 400.0)  # edge 1, dry part
+    # Edge 1, dry and past its corner at node 1 (which takes at most 125 m of it).
+    on_road = (np.abs(y - 100.0) < 3.0) & (x > 250.0) & (x < 400.0)
     road_z = np.interp(x[on_road], *(100.0 + np.array(g.edge_profile(1)[0]), g.edge_profile(1)[1]))
     assert np.allclose(z[on_road], road_z - p.below_road, atol=0.25)
     far = (np.abs(y - 100.0) > 60.0) & (np.abs(y - 350.0) > 60.0)

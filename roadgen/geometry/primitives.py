@@ -155,6 +155,19 @@ class Alignment:
         piece, ds = self._locate(s)
         return float(piece.curvature(ds))
 
+    def points(self, s: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """(x, y, heading) at stations s (clipped to the alignment)."""
+        s = np.clip(np.asarray(s, dtype=float), 0.0, self.length)
+        idx = np.clip(np.searchsorted(self.stations, s, side="right") - 1, 0, len(self.pieces) - 1)
+        x, y, h = np.empty_like(s), np.empty_like(s), np.empty_like(s)
+        for i in np.unique(idx):
+            sel = idx == i
+            piece = self.pieces[i]
+            ds = np.clip(s[sel] - self.stations[i], 0.0, piece.length)
+            px, py = piece.xy(ds)
+            x[sel], y[sel], h[sel] = px, py, piece.heading(ds)
+        return x, y, h
+
     def sample(self, step: float) -> Sampled:
         """Every piece sampled at most step [m] apart, piece ends included once."""
         parts: list[tuple[np.ndarray, ...]] = []

@@ -12,7 +12,7 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 SCHEMA_VERSION = 1
 
 PathLike = Union[str, Path]
-_OPTIONAL: dict[str, Any] = {"z": 0.0, "profile": [], "bridges": []}  # field -> default
+_OPTIONAL: dict[str, Any] = {"z": 0.0, "radius_cap": None, "profile": [], "bridges": []}  # field -> default
 
 
 def graph_to_dict(graph: RoadGraph) -> dict[str, Any]:

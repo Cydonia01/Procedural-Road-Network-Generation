@@ -218,3 +218,30 @@ def test_random_polylines_fit_continuously(seed):
         _check_fit(g, ca)
         smp = ca.alignment.sample(1.0)
         assert np.all(np.isfinite(smp.x))
+
+
+def test_points_match_poses():
+    g = graph_of({1: (0, 0), 2: (300, 0), 3: (300, 300)}, [(1, 1, 2), (2, 2, 3)])
+    (ca,) = network_alignment(g).chains
+    s = np.linspace(0, ca.length, 37)
+    x, y, h = ca.alignment.points(s)
+    for k in range(len(s)):
+        p = ca.alignment.pose(float(s[k]))
+        assert (x[k], y[k]) == (pytest.approx(p.x), pytest.approx(p.y))
+
+
+def test_edge_points_and_lines_follow_the_curve_and_reach_junction_nodes():
+    pts = {1: (0, 0), 2: (300, 0), 3: (300, 300), 4: (-100, 0), 5: (0, 100), 6: (0, -100)}
+    g = graph_of(pts, [(1, 1, 2), (2, 2, 3), (3, 1, 4), (4, 1, 5), (5, 1, 6)])
+    na = network_alignment(g)
+    ca = na.of_edge(1)
+    x, y = na.edge_points(g, 1, np.array([0.0, 150.0, 300.0]))
+    assert (x[0], y[0]) == (0.0, 0.0)  # inside the junction trim: on the straight edge
+    p = ca.alignment.pose(ca.edge_station(1, 150.0))
+    assert (x[1], y[1]) == (pytest.approx(p.x), pytest.approx(p.y))
+    line = na.edge_line(g, 1)
+    assert tuple(line[0]) == (0.0, 0.0)  # extended to the junction node
+    assert tuple(line[-1]) == pytest.approx((ca.alignment.pose(ca.node_station(2)).x,
+                                             ca.alignment.pose(ca.node_station(2)).y))
+    tail = na.edge_line(g, 2)
+    assert tuple(tail[0]) == pytest.approx(tuple(line[-1]))

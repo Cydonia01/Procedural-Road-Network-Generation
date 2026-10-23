@@ -23,6 +23,7 @@ from roadgen.generators.base import (
     presets_of,
 )
 from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS
+from roadgen.geometry import GEOMETRY_VERSION
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
@@ -193,9 +194,21 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
     log.info("generated %d nodes, %d edges", len(graph.nodes), len(graph.edges))
     if (chosen or files) and not maps:
         layers = input_maps(args, GridSpec.around(graph, margin, cell), chosen, files)
+    if layers:
+        graph = align_graph(graph, layers, args.cfg)
     if "elevation" in layers and not args.flat:
         graph = drape_graph(graph, layers, args.cfg)
     return graph, layers
+
+
+def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
+    """Radius caps for bends whose fitted curve would leave legal ground."""
+    from roadgen.maps.align import AlignParams, align
+
+    with timed("align"):
+        return align(graph, layers.get("terrain"), layers.get("elevation"),
+                     AlignParams(**section(cfg, "align")), DesignParams(**section(cfg, "design")),
+                     cfg["opendrive"]["junction_margin"])
 
 
 def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
@@ -204,7 +217,8 @@ def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> Roa
 
     with timed("drape"):
         return drape(graph, layers["elevation"], layers.get("terrain"),
-                     DrapeParams(**section(cfg, "drape")))
+                     DrapeParams(**section(cfg, "drape")), DesignParams(**section(cfg, "design")),
+                     cfg["opendrive"]["junction_margin"])
 
 
 def map_requests(args: argparse.Namespace) -> tuple[dict[str, str], dict[str, str]]:
@@ -331,7 +345,7 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
     elevation, terrain = layers["elevation"], layers.get("terrain")
     with timed("scene"):
         meshes = [ground_mesh(elevation, terrain, graph, GroundParams(**section(cfg, "ground")),
-                              junction_margin)]
+                              junction_margin, DesignParams(**section(cfg, "design")))]
         n = 0
         if buildings:
             params = BuildingParams(seed=seed, **section(cfg, "buildings"))
@@ -355,6 +369,17 @@ def load_layers(items: Optional[list[str]], flag: str = "--map-file") -> dict[st
         if layers[kind].kind != kind:
             raise SystemExit(f"error: {flag} {kind}: {path} holds a {layers[kind].kind} map")
     return layers
+
+
+def cmd_align(args: argparse.Namespace) -> int:
+    layers = load_layers(args.map_file)
+    if not {"terrain", "elevation"} & set(layers):
+        raise SystemExit("error: align needs --map-file terrain=FILE.npz and/or elevation=FILE.npz")
+    graph = align_graph(load_json(args.input), layers, args.cfg)
+    output = Path(args.output) if args.output else Path(args.input).with_suffix(".aligned.json")
+    save_json(graph, output)
+    log.info("wrote %s", output)
+    return 0
 
 
 def cmd_drape(args: argparse.Namespace) -> int:
@@ -734,6 +759,14 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                        help="[s] (default %(default)s)")
         g.set_defaults(func=cmd_pipeline)
 
+    p = sub.add_parser("align", help="cap bend radii where a fitted curve would leave legal "
+                                     "ground (water, steep grades)")
+    p.add_argument("input", help="RoadGraph JSON file")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
+                   help="terrain and/or elevation map, repeatable")
+    p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.aligned.json)")
+    p.set_defaults(func=cmd_align)
+
     p = sub.add_parser("drape", help="give a RoadGraph heights from an elevation map")
     p.add_argument("input", help="RoadGraph JSON file")
     p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
@@ -980,6 +1013,9 @@ def cmd_replay(args: argparse.Namespace) -> int:
             print(f"(config file {run.config_file} at the time; its content is in the history)")
         return 0
     log.info("replaying %s: %s", run.hash, run.command_line())
+    if run.geometry_version != GEOMETRY_VERSION:
+        log.warning("run %s was recorded with road geometry version %d, this code builds version %d: "
+                    "its road network will differ", run.hash, run.geometry_version, GEOMETRY_VERSION)
     # Exactly the recorded configuration; keys added to defaults.yaml since then come from it.
     return main(run.argv, merge(load_config(), run.config), expected_hash=run.hash)
 
@@ -1006,7 +1042,8 @@ def _record(args: argparse.Namespace, argv: list[str], config_file: Optional[str
     strip.add_argument("--no-history", action="store_true")
     _, argv = strip.parse_known_args(argv)
     try:
-        h, new = history.record(argv, run_params(vars(args)), args.cfg, config_file, args.note)
+        h, new = history.record(argv, run_params(vars(args)), args.cfg, config_file, args.note,
+                                GEOMETRY_VERSION)
     except (OSError, ValueError) as e:
         log.warning("run history: %s", e)
         return

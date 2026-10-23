@@ -10,13 +10,16 @@ The history is one JSON file (default ``runs/history.json``)::
 
     {"schema_version": 1,
      "runs":    {"<hash>": {"argv": [...], "config": "<config hash>",
-                            "config_file": "...", "note": "...", "recorded": "..."}},
+                            "config_file": "...", "note": "...", "recorded": "...",
+                            "geometry_version": 2}},
      "configs": {"<config hash>": {...effective configuration...}}}
 
 Configurations are stored once each and shared by the runs that used them,
 so replaying a hash (``python -m cli <hash>``) uses exactly the recorded
 inputs, even after defaults.yaml or the --config file changed. The code
-itself is not recorded: results can still change with it.
+itself is not recorded: results can still change with it. Each run records
+the road geometry version it was made with (roadgen.geometry.GEOMETRY_VERSION;
+runs without one are version 1), so a replay can tell when it changed.
 """
 
 from __future__ import annotations
@@ -78,6 +81,7 @@ class Run:
     config_file: Optional[str]
     note: str
     recorded: str
+    geometry_version: int = 1
 
     def command_line(self) -> str:
         """The command as typed (without --config, whose content is in config)."""
@@ -124,7 +128,8 @@ class History:
             raise
 
     def record(self, argv: list[str], params: dict[str, Any], config: dict[str, Any],
-               config_file: Optional[str] = None, note: Optional[str] = None) -> tuple[str, bool]:
+               config_file: Optional[str] = None, note: Optional[str] = None,
+               geometry_version: Optional[int] = None) -> tuple[str, bool]:
         """(hash, whether it is new). An existing run keeps its argv; a note replaces its note."""
         data = self._load()
         snapshot = config_snapshot(config)
@@ -147,6 +152,8 @@ class History:
             "note": note or "",
             "recorded": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         }
+        if geometry_version is not None:
+            data["runs"][h]["geometry_version"] = geometry_version
         self._save(data)
         return h, True
 
@@ -172,4 +179,4 @@ class History:
     def _run(data: dict[str, Any], h: str) -> Run:
         r = data["runs"][h]
         return Run(h, r["argv"], data["configs"][r["config"]], r.get("config_file"),
-                   r.get("note", ""), r.get("recorded", ""))
+                   r.get("note", ""), r.get("recorded", ""), r.get("geometry_version", 1))

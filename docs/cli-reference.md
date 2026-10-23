@@ -47,6 +47,7 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 | [`maps`](#maps) | List map generators, presets and parameters |
 | [`map`](#map) | Generate one input map (`.npz` + `.png`) |
 | [`plot-map`](#plot-map) | Map `.npz` → image |
+| [`align`](#align) | Cap bend radii where a fitted curve would leave legal ground |
 | [`drape`](#drape) | Heights from an elevation map into a RoadGraph |
 | [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps, levelled under a network |
 | [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate (→ buildings → drive-check → simulate) |
@@ -157,6 +158,17 @@ Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
 | `--cell-size M` | Cell size [m] (default `maps.grid.cell_size`) |
 | `--graph FILE.json` | Draw this RoadGraph on the preview |
 | `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population), e.g. `map elevation fbm --on terrain=out/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
+
+## align
+
+```bash
+python -m cli align NET.json --map-file terrain=T.npz [--map-file elevation=E.npz] [-o OUT.json]
+```
+
+Caps the radius of bends whose fitted curve would cross new water or climb
+steeper than `align.max_grade` (sets `Node.radius_cap`; see
+[maps](maps.md#heights-from-the-maps-to-esmini)). Default output:
+`NET.aligned.json`. `pipeline` runs it automatically when it has maps.
 
 ## drape
 

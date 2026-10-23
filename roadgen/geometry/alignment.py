@@ -116,6 +116,17 @@ class Corner:
     max_speed: float  # fastest comfortable speed on the built corner [m/s]
     advisory_speed: Optional[float]  # set when max_speed < design_speed [m/s]
     scale: float  # 1 = design shape, < 1 shrunk to fit
+    shape: CornerShape  # the design shape (scale 1)
+    vertex: tuple[float, float]  # the node's position [m]
+    heading_in: float  # heading of the straight road into the corner [rad]
+
+    def pieces(self, scale: Optional[float] = None) -> list[Piece]:
+        """The corner's pieces at a scale (default: as built), from its first tangent point."""
+        lam = self.scale if scale is None else scale
+        t = lam * self.shape.tangent
+        start = Pose(self.vertex[0] - t * math.cos(self.heading_in),
+                     self.vertex[1] - t * math.sin(self.heading_in), self.heading_in)
+        return self.shape.pieces(start, lam)
 
 
 @dataclass(frozen=True)
@@ -167,6 +178,42 @@ class NetworkAlignment:
     def of_edge(self, edge_id: int) -> ChainAlignment:
         return self.chains[self.edge_chain[edge_id]]
 
+    def edge_points(self, graph: RoadGraph, edge_id: int, d) -> tuple[np.ndarray, np.ndarray]:
+        """Positions on the fitted road of the points d [m] from the edge's from_node
+        along the straight edge; inside a junction trim (off the road), on the edge."""
+        ca = self.of_edge(edge_id)
+        k = ca.edge_index(edge_id)
+        d = np.asarray(d, dtype=float)
+        length = ca.node_poly[k + 1] - ca.node_poly[k]
+        along = d if ca.chain.edges[k].forward else length - d
+        s = np.interp(ca.node_poly[k] + along, ca.poly_breaks, ca.station_breaks)
+        e = graph.edges[edge_id]
+        a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
+        t = d / graph.edge_length(edge_id)
+        x, y = a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)
+        on = (s >= 0.0) & (s <= ca.length)
+        if on.any():
+            px, py, _ = ca.alignment.points(s[on])
+            x, y = np.where(on, 0.0, x), np.where(on, 0.0, y)
+            x[on], y[on] = px, py
+        return x, y
+
+    def edge_line(self, graph: RoadGraph, edge_id: int, step: float = 2.0) -> np.ndarray:
+        """The edge's stretch of the fitted road as an (n, 2) polyline along its chain,
+        extended straight to the junction node where the chain ends at one."""
+        ca = self.of_edge(edge_id)
+        k = ca.edge_index(edge_id)
+        s0, s1 = ca.edge_range(edge_id)
+        ss = np.linspace(s0, s1, max(2, math.ceil((s1 - s0) / step) + 1))
+        x, y, _ = ca.alignment.points(ss)
+        pts = np.column_stack([x, y])
+        nodes = ca.chain.nodes
+        if k == 0 and ca.trim_start > 0:
+            pts = np.vstack([[graph.nodes[nodes[0]].x, graph.nodes[nodes[0]].y], pts])
+        if k == len(ca.chain.edges) - 1 and ca.trim_end > 0:
+            pts = np.vstack([pts, [graph.nodes[nodes[-1]].x, graph.nodes[nodes[-1]].y]])
+        return pts
+
 
 def half_width(edge: Edge) -> float:
     """Widest side of the road from its reference line [m]."""
@@ -189,16 +236,15 @@ def network_alignment(graph: RoadGraph, params: DesignParams = DesignParams(),
     """Chains, junction trims and fitted reference lines of the whole network.
 
     radius_caps: node id -> largest allowed corner radius [m], on top of
-    Node.radius_cap (when the model has it).
+    Node.radius_cap.
     """
     chains = find_chains(graph, params.max_merge_deflection_deg)
     junctions = junction_nodes(graph, chains)
     trims = {n: node_trims(graph, n, junction_margin) for n in junctions}
     caps = dict(radius_caps or {})
     for n in graph.nodes.values():
-        cap = getattr(n, "radius_cap", None)
-        if cap is not None:
-            caps[n.id] = min(cap, caps.get(n.id, math.inf))
+        if n.radius_cap is not None:
+            caps[n.id] = min(n.radius_cap, caps.get(n.id, math.inf))
     check = _clearance_check(graph, trims, params.road_clearance)
     fitted = tuple(align_chain(graph, c, trims, params, caps, check) for c in chains)
     edge_chain = {ce.edge_id: k for k, c in enumerate(chains) for ce in c.edges}
@@ -363,7 +409,8 @@ def align_chain(graph: RoadGraph, c: Chain, trims: Mapping[int, Mapping[int, flo
             spiral_length=shape.spiral * lam, s_start=s, s_end=s + total, design_speed=v,
             max_speed=vmax,
             advisory_speed=design.advisory_speed(lane_radius, e, params) if vmax < v - 1e-9 else None,
-            scale=lam))
+            scale=lam, shape=shape, vertex=(float(pts[i][0]), float(pts[i][1])),
+            heading_in=float(headings[i - 1])))
         pieces += cps
         pose, s = cps[-1].end, s + total
     poly_breaks += [node_poly[-1] - trim_end, node_poly[-1]]
