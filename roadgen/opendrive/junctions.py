@@ -23,6 +23,7 @@ from roadgen.geometry import design as design_lib
 from roadgen.geometry.clothoid import g2_hermite
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.planar import (
+    Poly3Curve,
     Pose,
     hermite_poly3,
     offset_point,
@@ -30,6 +31,7 @@ from roadgen.geometry.planar import (
     wrap_angle,
 )
 from roadgen.geometry.primitives import Piece
+from roadgen.geometry.vertical import JunctionPlane, path_profiles
 
 Contact = Literal["start", "end"]
 MovementKind = Literal["straight", "left", "right"]
@@ -232,9 +234,10 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int) ->
 
 
 def build_junction(
-    junction_id: int, ends: list[RoadEnd], first_road_id: int, z: Optional[float] = None
+    junction_id: int, ends: list[RoadEnd], first_road_id: int, plane: Optional[JunctionPlane] = None
 ) -> tuple[xodr.Junction, list[xodr.Road], list[Movement]]:
-    """Junction, connecting roads and movements; with z, connecting roads lie flat at z [m]."""
+    """Junction, connecting roads and movements; with plane, connecting roads lie on it
+    (height, grade and superelevation)."""
     by_edge = {e.edge_id: e for e in ends}
     junction = xodr.Junction(f"junction_{junction_id}", junction_id)
     roads: list[xodr.Road] = []
@@ -242,7 +245,7 @@ def build_junction(
     built = []
     for m in movements:
         a, b = by_edge[m.from_edge], by_edge[m.to_edge]
-        road, kind = _connecting_road(m, a, b, z)
+        road, kind = _connecting_road(m, a, b, plane)
         roads.append(road)
         m = replace(m, path=kind)
         built.append(m)
@@ -253,7 +256,7 @@ def build_junction(
 
 
 def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd,
-                     z: Optional[float] = None) -> tuple[xodr.Road, PathKind]:
+                     plane: Optional[JunctionPlane] = None) -> tuple[xodr.Road, PathKind]:
     path = turn_path(a.lane_pose(m.from_lane, incoming=True), b.lane_pose(m.to_lane, incoming=False))
     planview = xodr.PlanView()
     for geometry, pose in path.geometries:
@@ -282,8 +285,12 @@ def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd,
     road.add_predecessor(xodr.ElementType.road, m.from_road, _CONTACT[a.contact])
     road.add_successor(xodr.ElementType.road, m.to_road, _CONTACT[b.contact])
     road.add_type(ROAD_TYPE, speed=turn_speed(path, min(a.speed_limit, b.speed_limit)), speed_unit="m/s")
-    if z is not None:
-        road.add_elevation(0.0, z, 0.0, 0.0, 0.0)
+    if plane is not None:
+        elevation, superelevation = path_profiles(path.point, path.length, path.breaks, plane)
+        for rec in elevation:
+            road.add_elevation(*rec)
+        for rec in superelevation:
+            road.add_superelevation(*rec)
     return road, path.kind
 
 
@@ -298,6 +305,35 @@ class TurnPath:
     length: float
     max_curvature: float  # [1/m]
     kind: PathKind
+    pieces: Optional[list[Piece]] = None  # line / clothoid paths
+    poly: Optional[Poly3Curve] = None  # the paramPoly3 fallback, from geometries[0]'s pose
+
+    @property
+    def breaks(self) -> list[float]:
+        """Station where each geometry starts."""
+        if self.pieces is None:
+            return [0.0]
+        return list(np.cumsum([0.0] + [p.length for p in self.pieces[:-1]]))
+
+    def point(self, s: float) -> tuple[float, float, float, float]:
+        """(x, y, heading, curvature) at station s."""
+        if self.pieces is not None:
+            for piece in self.pieces:
+                if s <= piece.length + 1e-9 or piece is self.pieces[-1]:
+                    ds = min(max(s, 0.0), piece.length)
+                    x, y = piece.xy(ds)
+                    return float(x), float(y), float(piece.heading(ds)), float(piece.curvature(ds))
+                s -= piece.length
+        start = self.geometries[0][1]
+        u, v = self.poly.u, self.poly.v
+        p = min(max(s / self.length, 0.0), 1.0)
+        pu, pv = (sum(c * p ** k for k, c in enumerate(w)) for w in (u, v))
+        du, dv = (sum(k * c * p ** (k - 1) for k, c in enumerate(w) if k) for w in (u, v))
+        ddu, ddv = 2 * u[2] + 6 * u[3] * p, 2 * v[2] + 6 * v[3] * p
+        cos, sin = math.cos(start.hdg), math.sin(start.hdg)
+        kappa = (du * ddv - dv * ddu) / math.hypot(du, dv) ** 3
+        return (start.x + pu * cos - pv * sin, start.y + pu * sin + pv * cos,
+                start.hdg + math.atan2(dv, du), kappa)
 
 
 def piece_geometry(piece: Piece) -> xodr.geometry._BaseGeometry:
@@ -323,14 +359,14 @@ def turn_path(start: Pose, end: Pose) -> TurnPath:
         abs(wrap_angle(end.hdg - start.hdg)) < 1e-9
         and abs(wrap_angle(pose.hdg - start.hdg)) < 1e-9
     ):
-        return TurnPath([(xodr.Line(length), start)], length, 0.0, "line")
+        return TurnPath([(xodr.Line(length), start)], length, 0.0, "line", [Piece(start, length)])
     pieces = g2_hermite(start, 0.0, end, 0.0)
     if pieces is not None:
         return TurnPath([(piece_geometry(p), p.start) for p in pieces], sum(p.length for p in pieces),
-                        max(max(abs(p.k0), abs(p.k1)) for p in pieces), "clothoid")
+                        max(max(abs(p.k0), abs(p.k1)) for p in pieces), "clothoid", pieces)
     curve = hermite_poly3(start, end)
     geometry = xodr.ParamPoly3(*curve.u, *curve.v, prange="normalized", length=curve.length)
-    return TurnPath([(geometry, start)], curve.length, _poly3_max_curvature(curve), "poly3")
+    return TurnPath([(geometry, start)], curve.length, _poly3_max_curvature(curve), "poly3", poly=curve)
 
 
 def _poly3_max_curvature(curve) -> float:

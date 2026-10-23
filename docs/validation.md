@@ -66,7 +66,9 @@ For every lane with a predecessor or successor link to another road, the lane
 center must match at the contact point within **1 cm in position** and
 **0.01 rad in travel heading**. Its **height** (from `<elevationProfile>`;
 0 without one) must match within 1 cm, and its **grade** in the travel
-direction within 0.01 (lane heights include the superelevation, `t·tan(roll)`).
+direction within 0.01 (a lane centre lies `t` across the road surface, which is
+pitched by the grade and rolled by the superelevation about its pitched
+tangent, as esmini evaluates it).
 A connecting-road lane without a lane link is also an error.
 
 Inside a road, across every **lane-section boundary**: a lane linked to the

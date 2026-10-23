@@ -34,6 +34,12 @@ def l_shape() -> RoadGraph:
     return g
 
 
+def corner_mid(g: RoadGraph) -> tuple[float, float]:
+    (ca,) = network_alignment(g).chains
+    p = ca.alignment.pose(ca.node_station(2))
+    return p.x, p.y
+
+
 def curve_points(g: RoadGraph) -> np.ndarray:
     (ca,) = network_alignment(g).chains
     return ca.alignment.sample(1.0).xy()
@@ -41,7 +47,8 @@ def curve_points(g: RoadGraph) -> np.ndarray:
 
 def test_lake_inside_a_corner_caps_its_radius():
     g = l_shape()
-    lake = np.hypot(X - 362.0, Y - 38.0) < 12.0  # on the design curve, clear of both legs
+    mx, my = corner_mid(g)
+    lake = np.hypot(X - mx, Y - my) < 8.0  # on the design curve, clear of both legs
     terrain = MapLayer("terrain", GRID, np.where(lake, WATER, LAND).astype(np.uint8))
     assert np.any(terrain.sample(*curve_points(g).T) == WATER)
     out = align(g, terrain=terrain)
@@ -56,7 +63,8 @@ def test_lake_inside_a_corner_caps_its_radius():
 
 def test_steep_bump_inside_a_corner_caps_its_radius():
     g = l_shape()
-    bump = np.clip(30.0 - np.hypot(X - 360.0, Y - 40.0), 0.0, None)  # 1:1 cone, flat elsewhere
+    mx, my = corner_mid(g)
+    bump = np.clip(15.0 - np.hypot(X - mx, Y - my), 0.0, None)  # 1:1 cone, flat elsewhere
     elevation = MapLayer("elevation", GRID, bump.astype(np.float32))
     out = align(g, elevation=elevation)
     assert out.nodes[2].radius_cap is not None
@@ -75,7 +83,8 @@ def test_no_maps_no_caps_and_json_unchanged():
 def test_align_cli(tmp_path):
     g = l_shape()
     save_json(g, tmp_path / "g.json")
-    lake = np.hypot(X - 362.0, Y - 38.0) < 12.0
+    mx, my = corner_mid(g)
+    lake = np.hypot(X - mx, Y - my) < 8.0
     save_npz(MapLayer("terrain", GRID, np.where(lake, WATER, LAND).astype(np.uint8)), tmp_path / "t.npz")
     assert main(["align", str(tmp_path / "g.json"), "--map-file", f"terrain={tmp_path / 't.npz'}"]) == 0
     assert load_json(tmp_path / "g.aligned.json").nodes[2].radius_cap is not None

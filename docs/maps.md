@@ -293,10 +293,13 @@ flowchart LR
 3. **Profiles** (`roadgen/geometry/vertical.py`). The builder fits each
    chain road's heights with a monotone cubic Hermite spline (PCHIP): height
    and slope are continuous, and it never overshoots the samples. Bend nodes
-   are ordinary knots. A road ends on its junction's plane (flat at the
-   node's height unless sloped junctions are on), and connecting roads lie on
-   the same plane, so every road of a junction meets at the same height and
-   grade.
+   are ordinary knots. Every junction area is a **plane** through its node's
+   height, fitted to the approach roads' heights 10 m in and capped at
+   `design.junction_max_grade` (4 %, flat with 0). A road ends on its
+   junction's plane with the plane's grade along it and its cross slope as
+   superelevation; connecting roads lie on the plane (height, grade and roll
+   matched exactly at both ends), so every road of a junction meets at the
+   same height, grade and roll.
    Bridges become `<objects><bridge type="concrete">` records.
 4. **Validation.** The continuity check also compares height (1 cm) and
    grade (0.01) at every contact point. esmini's RoadManager reads the same
@@ -326,11 +329,6 @@ same `.xodr` and `.json` as before.
 
 ## Next steps
 
-- **Banking and sloped junctions.** Roads have no superelevation
-  (`<lateralProfile>`; scenariogeneration offers
-  `Road.add_superelevation`), and every junction area is flat. On steep
-  ground a junction on a sloped plane would need fewer height changes on
-  its approaches.
 - **Grade limits after draping.** lsystem keeps grades under `max_grade`
   while growing, but drape does not enforce one (it logs the steepest
   grade). manhattan networks on hilly maps can therefore get steep roads.

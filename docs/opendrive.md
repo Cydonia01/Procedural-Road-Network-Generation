@@ -49,10 +49,19 @@ builder only turns it into XML.
   set by [drape](maps.md#heights-from-the-maps-to-esmini)). Each road's
   `<elevationProfile>` is a monotone cubic Hermite fit (PCHIP) through all
   height samples of its chain, placed by station; bend nodes are ordinary
-  knots, and the road is flat at both ends at its end nodes' heights
-  (`opendrive/elevation.py`). Connecting roads lie flat at their junction
-  node's height, so all roads of a junction meet at the same height and
-  grade. `Edge.bridges` become `<objects><bridge type="concrete">` records;
+  knots, and the road ends on its junction's sloped **junction plane**
+  (`geometry/vertical.py`, see [maps](maps.md#heights-from-the-maps-to-esmini)).
+  Connecting roads lie on the plane, so all roads of a junction meet at the
+  same height, grade and roll.
+- **Banking** (`<lateralProfile><superelevation>`, `design.banking`, on by
+  default): every corner rolls towards its centre, from 0 at its tangent
+  points to `atan(e)` on its arc (AASHTO method 5, `e_max` 0.04 for streets
+  and avenues, 0.06 for highways), with a smoothstep runoff along its
+  spirals so the roll rate is 0 where curves start and end. Within 30 m of a
+  sloped junction the road rolls to the plane's cross slope. Design radii
+  count on this banking. esmini evaluates it as roadgen does: a lane centre
+  `t` across the road surface, which is pitched by the grade and rolled
+  about its pitched tangent. `Edge.bridges` become `<objects><bridge type="concrete">` records;
   spans that touch across a bend node are merged.
 
 ### Id scheme

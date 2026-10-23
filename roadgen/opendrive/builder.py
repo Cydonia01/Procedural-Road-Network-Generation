@@ -39,7 +39,12 @@ from roadgen.geometry.alignment import (
 )
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.profiles import bridge_spans, lane_layout, speed_profile
-from roadgen.geometry.vertical import JunctionPlane, chain_elevation, flat_planes
+from roadgen.geometry.vertical import (
+    JunctionPlane,
+    chain_elevation,
+    chain_superelevation,
+    junction_planes,
+)
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.junctions import (
     Movement,
@@ -97,9 +102,9 @@ class OpenDriveBuilder:
         bridges: dict[int, list[tuple[float, float]]] = {}
         ends: dict[int, list[RoadEnd]] = {n: [] for n in na.junctions}
         junctions = set(na.junctions)
-        planes = flat_planes(graph, na.junctions) if heights else None
+        planes = junction_planes(graph, na, self.design) if heights else None
         for road_id, ca in enumerate(na.chains, 1):
-            road, road_ends, spans = self._make_road(graph, ca, road_id, junctions, planes)
+            road, road_ends, spans = self._make_road(graph, ca, road_id, junctions, planes, self.design)
             if spans:
                 bridges[road_id] = spans
             for node_id, end in road_ends:
@@ -115,8 +120,8 @@ class OpenDriveBuilder:
         movements: list[Movement] = []
         for node_id in na.junctions:
             junction_id = next_id
-            z = graph.nodes[node_id].z if heights else None
-            junction, roads, moves = build_junction(junction_id, ends[node_id], junction_id + 1, z)
+            plane = planes[node_id] if planes is not None else None
+            junction, roads, moves = build_junction(junction_id, ends[node_id], junction_id + 1, plane)
             for end in ends[node_id]:
                 road = odr.roads[str(end.road_id)]
                 link = road.add_successor if end.contact == "end" else road.add_predecessor
@@ -214,7 +219,7 @@ class OpenDriveBuilder:
     @staticmethod
     def _make_road(
         graph: RoadGraph, ca: ChainAlignment, road_id: int, junctions: set[int],
-        planes: Optional[dict[int, JunctionPlane]] = None,
+        planes: Optional[dict[int, JunctionPlane]] = None, design: DesignParams = DesignParams(),
     ) -> tuple[xodr.Road, list[tuple[int, RoadEnd]], list[tuple[float, float]]]:
         """The chain's road, its ends at junctions, and its bridges as (s, length)."""
         planview = xodr.PlanView()
@@ -229,6 +234,9 @@ class OpenDriveBuilder:
         if planes is not None:
             for rec in chain_elevation(graph, ca, planes):
                 road.add_elevation(*rec)
+        flat = {n: JunctionPlane(graph.nodes[n].x, graph.nodes[n].y, 0.0) for n in junctions}
+        for rec in chain_superelevation(graph, ca, planes if planes is not None else flat, design):
+            road.add_superelevation(*rec)
 
         ends = []
         for node_id, contact, pose, k in (

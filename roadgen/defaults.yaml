@@ -162,7 +162,9 @@ design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AAS
   jerk_rate: 1.2            # rate of change of lateral acceleration along spirals (AASHTO) [m/s^3]
   spiral_min_shift: 0.2     # spirals shift the curve inward by at least this (AASHTO) [m]
   spiral_max_shift: 1.0     # ... and at most this [m]
-  banking: false            # bank curves with superelevation (stage A8)
+  banking: true             # bank curves with superelevation (AASHTO method 5)
+  bank_ramp_length: 30.0    # a road end reaches its junction plane's cross slope over this [m]
+  junction_max_grade: 0.04  # steepest sloped junction plane; 0 = flat junctions
   max_merge_deflection_deg: 135.0  # a two-road node turning more than this stays a junction [deg]
   road_clearance: 1.0       # min gap between a fitted curve and any other road [m]
   max_corner_offset: 0.0    # max distance a curve may cut inside its corner [m]; 0 = no limit

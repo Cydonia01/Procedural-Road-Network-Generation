@@ -401,14 +401,14 @@ def align_chain(graph: RoadGraph, c: Chain, trims: Mapping[int, Mapping[int, flo
         station_breaks += [s, s + total / 2, s + total]
         v, cls, inner = speeds[i]
         radius = lam / shape.kappa
-        e = design.superelevation(radius, v, cls, params)
         lane_radius = max(radius - inner, 1e-3)
+        e = design.superelevation(lane_radius, v, cls, params)
         vmax = design.max_speed(lane_radius, e, params)
         corners.append(Corner(
             node=c.nodes[i], deflection=shape.deflection, radius=radius, lane_radius=lane_radius,
             spiral_length=shape.spiral * lam, s_start=s, s_end=s + total, design_speed=v,
             max_speed=vmax,
-            advisory_speed=design.advisory_speed(lane_radius, e, params) if vmax < v - 1e-9 else None,
+            advisory_speed=design.advisory_speed(lane_radius, e, params) if vmax < v - 1e-6 else None,
             scale=lam, shape=shape, vertex=(float(pts[i][0]), float(pts[i][1])),
             heading_in=float(headings[i - 1])))
         pieces += cps

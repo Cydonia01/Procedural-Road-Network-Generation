@@ -16,6 +16,7 @@ from roadgen.geometry.planar import Pose
 from roadgen.graph.model import Edge, Node, RoadGraph
 
 V = 13.9  # [m/s]
+E = DesignParams().e_max_street if DesignParams().banking else 0.0  # design superelevation of streets
 
 
 def graph_of(points: dict[int, tuple[float, float]], edges: list[tuple],
@@ -113,7 +114,7 @@ def test_long_l_corner_gets_the_design_radius():
     (ca,) = network_alignment(g).chains
     _check_fit(g, ca)
     (corner,) = ca.corners
-    r = design.min_radius(V, 0.0) + 1.75  # the inner lane centre is 1.75 m inside
+    r = design.min_radius(V, E) + 1.75  # the inner lane centre is 1.75 m inside
     assert corner.scale == 1.0 and corner.radius == pytest.approx(r)
     assert corner.lane_radius == pytest.approx(r - 1.75)
     assert corner.advisory_speed is None
@@ -130,8 +131,8 @@ def test_short_legs_shrink_the_corner_and_set_an_advisory():
     (corner,) = ca.corners
     assert corner.scale < 1.0
     assert corner.advisory_speed is not None and corner.advisory_speed < V
-    assert corner.radius == pytest.approx((design.min_radius(V, 0.0) + 1.75) * corner.scale)
-    assert design.max_speed(corner.lane_radius, 0.0) < V
+    assert corner.radius == pytest.approx((design.min_radius(V, E) + 1.75) * corner.scale)
+    assert design.max_speed(corner.lane_radius, design.superelevation(corner.lane_radius, V, "street")) < V
     # The corner uses the whole room on one leg: no straight piece is left there.
     assert ca.alignment.length < 120.0
 
@@ -165,9 +166,12 @@ def test_edge_station_for_a_reversed_edge():
 
 
 def test_curve_keeps_clear_of_a_road_inside_the_corner():
-    pts = {1: (0, 0), 2: (400, 0), 3: (400, 400), 4: (355, 25), 5: (375, 45)}
+    pts = {1: (0, 0), 2: (400, 0), 3: (400, 400)}
+    free = network_alignment(graph_of(pts, [(1, 1, 2), (2, 2, 3)]))
+    # A short road across the design curve's midpoint, along the corner's bisector.
+    mid = free.chains[0].alignment.pose(free.chains[0].node_station(2))
+    pts.update({4: (mid.x - 1.5, mid.y + 1.5), 5: (mid.x + 1.5, mid.y - 1.5)})
     g = graph_of(pts, [(1, 1, 2), (2, 2, 3), (3, 4, 5)])
-    free = network_alignment(graph_of({k: pts[k] for k in (1, 2, 3)}, [(1, 1, 2), (2, 2, 3)]))
     na = network_alignment(g)
     ca = na.of_edge(1)
     assert ca.corners[0].scale < free.chains[0].corners[0].scale
@@ -181,7 +185,7 @@ def test_radius_cap_and_max_offset():
     (ca,) = network_alignment(g, radius_caps={2: 40.0}).chains
     assert ca.corners[0].radius == pytest.approx(40.0)
     (cb,) = network_alignment(g, DesignParams(max_corner_offset=10.0)).chains
-    shape = corner_shape(math.pi / 2, design.min_radius(V, 0.0) + 1.75,
+    shape = corner_shape(math.pi / 2, design.min_radius(V, E) + 1.75,
                          cb.corners[0].spiral_length / cb.corners[0].scale)
     assert shape.offset * cb.corners[0].scale == pytest.approx(10.0)
 
@@ -224,7 +228,7 @@ def test_points_match_poses():
     g = graph_of({1: (0, 0), 2: (300, 0), 3: (300, 300)}, [(1, 1, 2), (2, 2, 3)])
     (ca,) = network_alignment(g).chains
     s = np.linspace(0, ca.length, 37)
-    x, y, h = ca.alignment.points(s)
+    x, y, _ = ca.alignment.points(s)
     for k in range(len(s)):
         p = ca.alignment.pose(float(s[k]))
         assert (x[k], y[k]) == (pytest.approx(p.x), pytest.approx(p.y))

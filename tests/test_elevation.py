@@ -13,7 +13,7 @@ from lxml import etree
 
 from cli import main
 from roadgen.geometry.alignment import network_alignment
-from roadgen.geometry.vertical import evaluate, road_elevation
+from roadgen.geometry.vertical import evaluate, junction_planes, road_elevation
 from roadgen.graph.io import graph_from_dict, graph_to_dict, load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.drape import DrapeParams, drape
@@ -111,7 +111,7 @@ def test_drape_follows_a_ramp_and_leaves_the_input_alone():
     # Sampled under the fitted road: node 1 is a bend, so edge 1 starts on a curve.
     x, y = network_alignment(g).edge_points(g, 1, d)
     assert y[1] > 100.0 + 1.0  # the curve cuts inside the corner (towards node 4)
-    assert np.allclose(z[1:-1], 0.05 * x[1:-1], atol=0.05)
+    assert np.allclose(z[1:-1], 0.05 * x[1:-1], atol=0.1)  # smoothing along a curve
     assert len(d) - 1 == 20  # 400 m at <= 20 m spacing
     assert drape(g, SLOPE) == out  # deterministic
 
@@ -152,17 +152,22 @@ def test_road_elevation_is_smooth_flat_ended_and_monotone():
 # --- OpenDRIVE ---------------------------------------------------------------------------------------
 
 
-def test_xodr_has_profiles_flat_junctions_and_bridges(tmp_path):
+def test_xodr_has_profiles_junction_planes_and_bridges(tmp_path):
     g = drape(network(), VALLEY, terrain(RIVER))
     b, tree = build(g, tmp_path)
+    planes = junction_planes(g, b.alignment, b.design)
     roads = tree.getroot().findall("road")
     assert all(r.find("elevationProfile/elevation") is not None for r in roads)
     for r in roads:
         if r.get("junction") != "-1":
-            (rec,) = r.findall("elevationProfile/elevation")
+            # Connecting roads lie on their junction's plane, through the node's height.
             node = next(n for n, j in b.node_to_junction.items() if j == int(r.get("junction")))
-            assert float(rec.get("a")) == pytest.approx(g.nodes[node].z)
-            assert float(rec.get("b")) == float(rec.get("c")) == float(rec.get("d")) == 0.0
+            plane = planes[node]
+            assert plane.z0 == pytest.approx(g.nodes[node].z) and plane.grade <= 0.04 + 1e-9
+            ev = RoadEval(r)
+            for s in np.linspace(0.0, ev.length, 5):
+                x, y, _ = ev.reference(float(s))
+                assert ev.elevation(float(s))[0] == pytest.approx(float(plane.height(x, y)), abs=1e-3)
     bridges = tree.getroot().findall("road/objects/bridge")
     assert bridges and {br.get("type") for br in bridges} == {"concrete"}
     for br in bridges:
@@ -220,7 +225,7 @@ def test_esmini_reads_the_heights(tmp_path):
                 lib.RM_SetLanePosition(h, int(r.id), -1, 0.0, float(s), True)
                 data = _PositionData()
                 lib.RM_GetPositionData(h, ctypes.byref(data))
-                assert data.z == pytest.approx(r.elevation(float(s))[0], abs=1e-6)
+                assert data.z == pytest.approx(r.lane_height(-1, float(s)), abs=1e-3)
     finally:
         lib.RM_Close()
 

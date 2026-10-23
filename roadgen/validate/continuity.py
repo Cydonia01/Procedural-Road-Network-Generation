@@ -1,8 +1,11 @@
 """Lane-level geometric continuity across road links.
 
 For every lane with a predecessor/successor lane link to another road, the
-lane-center position, travel heading, height and grade (from
-<elevationProfile>; 0 without one) must agree at the contact point.
+lane-center position, travel heading, height and grade must agree at the
+contact point. Heights come from <elevationProfile> (0 without one) and
+<lateralProfile><superelevation>: a lane centre lies t across the road
+surface, which is pitched by the grade and rolled by the superelevation
+about its pitched tangent (as esmini evaluates it).
 The .xodr is evaluated independently of the builder (line, arc, spiral and
 paramPoly3 geometries, laneOffset and polynomial lane widths); spirals use
 the shared clothoid maths of roadgen.geometry.primitives.
@@ -152,17 +155,37 @@ class RoadEval:
         return 0.0 if rec is None else _poly(rec, s - float(rec.get("s")))
 
     def lane_height(self, lane_id: int, s: float) -> float:
-        """Height [m] of the lane centre: the reference height plus t tan(superelevation)."""
-        return self.elevation(s)[0] + self._lane_t(lane_id, s) * math.tan(self.superelevation(s))
+        """Height [m] of the lane centre: the reference height plus t sin(roll) cos(pitch)."""
+        return self.elevation(s)[0] + self._lane_t(lane_id, s) * self._lateral(s)[2]
 
     def lane_ids(self, s: float) -> set[int]:
         section = self._section(s)
         return {int(l.get("id")) for l in section.iter("lane") if l.get("id") != "0"}
 
+    def _lateral(self, s: float) -> tuple[float, float, float]:
+        """Unit vector across the road surface (heading, left, up components).
+
+        The road surface at s is pitched by the grade and rolled by the
+        superelevation about its pitched tangent (cos p, 0, sin p); the lateral
+        axis (0, 1, 0) rolled about it is (-sin r sin p, cos r, sin r cos p).
+        """
+        r = self.superelevation(s)
+        p = math.atan(self.elevation(s)[1])
+        return -math.sin(r) * math.sin(p), math.cos(r), math.sin(r) * math.cos(p)
+
     def lane_center(self, lane_id: int, s: float) -> tuple[float, float]:
+        """(x, y) of the lane centre: t measured across the pitched and rolled road surface."""
         x, y, h = self.reference(s)
         t = self._lane_t(lane_id, s)
-        return x - t * math.sin(h), y + t * math.cos(h)
+        along, left, _ = self._lateral(s)
+        return (x + t * (along * math.cos(h) - left * math.sin(h)),
+                y + t * (along * math.sin(h) + left * math.cos(h)))
+
+    def lane_grade(self, lane_id: int, s: float) -> float:
+        """d(lane height)/ds in the lane's RHT travel direction."""
+        lo, hi = max(0.0, s - _FD_STEP), min(self.length, s + _FD_STEP)
+        g = (self.lane_height(lane_id, hi) - self.lane_height(lane_id, lo)) / (hi - lo)
+        return g if lane_id < 0 else -g
 
     def lane_travel_heading(self, lane_id: int, s: float) -> float:
         """Heading of the lane-center curve in the RHT travel direction."""
@@ -341,11 +364,10 @@ def _compare(
     dh = _angle_diff(a.lane_travel_heading(lane_a, s_a), b.lane_travel_heading(lane_b, s_b))
     if dh > HDG_TOL:
         errors.append(f"{where}: heading mismatch {dh:.4f} rad")
-    (za, ga), (zb, gb) = a.elevation(s_a), b.elevation(s_b)
+    za, zb = a.lane_height(lane_a, s_a), b.lane_height(lane_b, s_b)
     if abs(za - zb) > Z_TOL:
         errors.append(f"{where}: height mismatch {abs(za - zb):.4f} m")
-    # Grade in the travel direction: right lanes (< 0) drive along +s.
-    ga, gb = (ga if lane_a < 0 else -ga), (gb if lane_b < 0 else -gb)
+    ga, gb = a.lane_grade(lane_a, s_a), b.lane_grade(lane_b, s_b)
     if abs(ga - gb) > GRADE_TOL:
         errors.append(f"{where}: grade mismatch {abs(ga - gb):.4f}")
     return errors

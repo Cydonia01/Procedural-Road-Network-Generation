@@ -120,7 +120,7 @@ def _level_chain(graph: RoadGraph, ca: ChainAlignment, planes, design: DesignPar
     road_z = evaluate_many(chain_elevation(graph, ca, planes), s)
     sup = chain_superelevation(graph, ca, planes, design)
     if sup:
-        road_z = road_z + t * np.tan(evaluate_many(sup, s))
+        road_z = road_z + t * np.sin(evaluate_many(sup, s))
     sub = target[idx].ravel()
     sub[k] = np.minimum(sub[k], road_z - params.below_road)
     target[idx] = sub.reshape(target[idx].shape)

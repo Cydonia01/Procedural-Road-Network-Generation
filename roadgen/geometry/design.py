@@ -56,6 +56,8 @@ class DesignParams:
     spiral_min_shift: float = _D["spiral_min_shift"]  # lateral shift of the curve by its spirals [m]
     spiral_max_shift: float = _D["spiral_max_shift"]
     banking: bool = _D["banking"]  # bank curves (superelevation); off = flat roads
+    bank_ramp_length: float = _D["bank_ramp_length"]  # road end to junction cross slope [m]
+    junction_max_grade: float = _D["junction_max_grade"]  # steepest junction plane; 0 = flat
     max_merge_deflection_deg: float = _D["max_merge_deflection_deg"]  # sharper bends stay junctions [deg]
     road_clearance: float = _D["road_clearance"]  # min gap between a curve and other roads [m]
     max_corner_offset: float = _D["max_corner_offset"]  # max corner cut-in [m]; 0 = no limit
@@ -69,6 +71,8 @@ class DesignParams:
             raise ValueError("need 0 < spiral_min_shift <= spiral_max_shift")
         if not 0 < self.max_merge_deflection_deg < 180:
             raise ValueError("max_merge_deflection_deg must be in (0, 180)")
+        if self.bank_ramp_length <= 0 or self.junction_max_grade < 0:
+            raise ValueError("need bank_ramp_length > 0 and junction_max_grade >= 0")
         if self.road_clearance < 0 or self.max_corner_offset < 0:
             raise ValueError("road_clearance and max_corner_offset must be non-negative")
         if max(self.e_max_street, self.e_max_avenue, self.e_max_highway) * G >= self.a_lat_max:

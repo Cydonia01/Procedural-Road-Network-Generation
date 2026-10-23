@@ -19,6 +19,7 @@ from typing import Mapping, NamedTuple
 
 import numpy as np
 
+from roadgen.geometry import design as design_lib
 from roadgen.geometry.alignment import ChainAlignment, NetworkAlignment
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.profiles import height_samples
@@ -147,13 +148,157 @@ def chain_elevation(graph: RoadGraph, ca: ChainAlignment,
     return road_elevation(d + ca.trim_start, z, ca.trim_start, ca.trim_start + ca.length, z0, z1, m0, m1)
 
 
+ARM_SAMPLE = 10.0  # [m] approach heights for a junction plane are taken this far into each road
+HERMITE_SPLIT = 4  # cubic Hermite pieces per connecting-road geometry
+
+
 def junction_planes(graph: RoadGraph, na: NetworkAlignment,
                     design: DesignParams = DesignParams()) -> dict[int, JunctionPlane]:
-    """The plane of every junction area (flat at the node's height for now)."""
-    return flat_planes(graph, na.junctions)
+    """The plane of every junction area.
+
+    Through the node's height, with the gradient that best fits (least
+    squares) the heights of the roads ARM_SAMPLE into each approach, capped at
+    design.junction_max_grade. Flat (gradient 0) without heights or with a
+    zero cap: then every road meets the junction level, as before.
+    """
+    planes = flat_planes(graph, na.junctions)
+    if design.junction_max_grade <= 0 or not graph.has_elevation:
+        return planes
+    arms: dict[int, list[tuple[float, float, float]]] = {n: [] for n in na.junctions}
+    for ca in na.chains:
+        d, z = height_samples(graph, ca)
+        for node_id, s in ((ca.chain.start, min(ARM_SAMPLE, ca.length / 2)),
+                           (ca.chain.end, max(ca.length - ARM_SAMPLE, ca.length / 2))):
+            if node_id in arms:
+                p = ca.alignment.pose(s)
+                arms[node_id].append((p.x, p.y, float(np.interp(s, d, z))))
+    for n, pts in arms.items():
+        plane = planes[n]
+        if not pts:
+            continue
+        a = np.array([(x - plane.x0, y - plane.y0) for x, y, _ in pts])
+        b = np.array([h - plane.z0 for _, _, h in pts])
+        (gx, gy), *_ = np.linalg.lstsq(a, b, rcond=None)
+        grade = math.hypot(gx, gy)
+        if grade > design.junction_max_grade:
+            gx, gy = gx * design.junction_max_grade / grade, gy * design.junction_max_grade / grade
+        planes[n] = JunctionPlane(plane.x0, plane.y0, plane.z0, float(gx), float(gy))
+    return planes
+
+
+# --- piecewise cubics ----------------------------------------------------------------------
+
+Cubic = tuple[float, float, float, float, float]  # (s, a, b, c, d): a + b ds + c ds^2 + d ds^3 from s
+
+
+def _shift(rec: Cubic, s: float) -> Cubic:
+    """The same cubic, expanded about s instead of rec[0]."""
+    s0, a, b, c, d = rec
+    h = s - s0
+    return (s, a + b * h + c * h * h + d * h ** 3, b + 2 * c * h + 3 * d * h * h, c + 3 * d * h, d)
+
+
+def _value(records: list[Cubic], s: float) -> float:
+    return float(evaluate_many(records, np.array([s]))[0]) if records else 0.0
+
+
+def _sum(parts: list[list[Cubic]], length: float) -> list[Cubic]:
+    """Sum of piecewise cubics (each zero before its first record), merged."""
+    starts = sorted({0.0, *(r[0] for part in parts for r in part)})
+    starts = [s for s in starts if s < length - 1e-9]
+    out: list[Cubic] = []
+    for s in starts:
+        coef = np.zeros(4)
+        for part in parts:
+            active = [r for r in part if r[0] <= s + 1e-9]
+            if active:
+                coef += np.array(_shift(active[-1], s)[1:])
+        rec = (s, *map(float, coef))
+        if out and np.allclose(_shift(out[-1], s)[1:], rec[1:], atol=1e-12):
+            continue
+        out.append(rec)
+    return out
+
+
+def hermite(s0: float, s1: float, v0: float, v1: float, m0: float, m1: float) -> Cubic:
+    """The cubic from s0 to s1 with values v0, v1 and slopes m0, m1."""
+    w = s1 - s0
+    delta = (v1 - v0) / w
+    return (s0, v0, m0, (3 * delta - 2 * m0 - m1) / w, (m0 + m1 - 2 * delta) / (w * w))
 
 
 def chain_superelevation(graph: RoadGraph, ca: ChainAlignment, planes: Mapping[int, JunctionPlane],
-                         design: DesignParams = DesignParams()) -> list:
-    """Superelevation records (s, a, b, c, d) [rad] of a chain road; [] when it is not banked."""
-    return []
+                         design: DesignParams = DesignParams()) -> list[Cubic]:
+    """Superelevation records (s, a, b, c, d) [rad] of a chain road; [] when it is not banked.
+
+    Positive superelevation falls to the right (OpenDRIVE). On each corner
+    (with design.banking) the road rolls towards the curve centre: along the
+    entry spiral to atan(e) on the arc and back to 0 along the exit spiral, e
+    from design.superelevation. The runoff is a smoothstep rather than
+    AASHTO's linear one, so the roll rate is 0 at the tangent points and lane
+    grades stay continuous where a curve ends at a junction. At a junction end the road meets
+    the junction plane's cross slope, reached over bank_ramp_length (at most
+    half the road) with a smoothstep, so the roll rate is 0 at both ends of
+    the ramp. Ramps and corner banking add up where they overlap.
+    """
+    parts: list[list[Cubic]] = []
+    if design.banking:
+        for c in ca.corners:
+            e = design_lib.superelevation(c.lane_radius, c.design_speed, _class(graph, ca, c.node), design)
+            if e <= 0:
+                continue
+            phi = -math.copysign(math.atan(e), c.deflection)
+            up = min(c.spiral_length, 0.5 * (c.s_end - c.s_start))  # spiral-spiral: up to the middle
+            parts.append([hermite(c.s_start, c.s_start + up, 0.0, phi, 0.0, 0.0),
+                          (c.s_start + up, phi, 0.0, 0.0, 0.0),
+                          hermite(c.s_end - up, c.s_end, phi, 0.0, 0.0, 0.0),
+                          (c.s_end, 0.0, 0.0, 0.0, 0.0)])
+    ramp = min(design.bank_ramp_length, ca.length / 2)
+    for node_id, pose, at_start in ((ca.chain.start, ca.alignment.start, True),
+                                    (ca.chain.end, ca.alignment.end, False)):
+        plane = planes.get(node_id)
+        if plane is None or plane.grade == 0.0:
+            continue
+        phi = math.atan(plane.cross_slope(pose.hdg))
+        if at_start:
+            parts.append([hermite(0.0, ramp, phi, 0.0, 0.0, 0.0), (ramp, 0.0, 0.0, 0.0, 0.0)])
+        else:
+            parts.append([hermite(ca.length - ramp, ca.length, 0.0, phi, 0.0, 0.0)])
+    if not parts:
+        return []
+    out = _sum(parts, ca.length)
+    return [] if all(max(abs(v) for v in r[1:]) < 1e-12 for r in out) else out
+
+
+def _class(graph: RoadGraph, ca: ChainAlignment, node_id: int) -> str:
+    k = ca.chain.nodes.index(node_id)
+    a, b = graph.edges[ca.chain.edge_ids[k - 1]], graph.edges[ca.chain.edge_ids[k]]
+    return (a if a.speed_limit >= b.speed_limit else b).road_class
+
+
+def path_profiles(points, length: float, breaks: list[float],
+                  plane: JunctionPlane) -> tuple[list[Cubic], list[Cubic]]:
+    """(elevation, superelevation) records of a connecting road lying on a plane.
+
+    points(s) -> (x, y, hdg, curvature) along the road. Each stretch between
+    breaks is split in HERMITE_SPLIT cubic Hermite pieces matching the plane's
+    height and the road's grade (and the plane's roll and its rate) exactly at
+    their ends, so the road meets the roads it joins with matching height,
+    grade and roll; inside, the error is far below a millimetre.
+    """
+    if plane.grade == 0.0:
+        return [(0.0, plane.z0, 0.0, 0.0, 0.0)], []
+    knots = sorted({0.0, length, *(
+        b0 + (b1 - b0) * k / HERMITE_SPLIT
+        for b0, b1 in zip(breaks, [*breaks[1:], length]) for k in range(1, HERMITE_SPLIT))})
+    vals = []
+    for s in knots:
+        x, y, h, kappa = points(s)
+        c = plane.cross_slope(h)
+        vals.append((float(plane.height(x, y)), plane.slope(h),
+                     math.atan(c), -kappa * plane.slope(h) / (1 + c * c)))
+    elev, sup = [], []
+    for (s0, v0), (s1, v1) in zip(zip(knots, vals), zip(knots[1:], vals[1:])):
+        elev.append(hermite(s0, s1, v0[0], v1[0], v0[1], v1[1]))
+        sup.append(hermite(s0, s1, v0[2], v1[2], v0[3], v1[3]))
+    return elev, sup

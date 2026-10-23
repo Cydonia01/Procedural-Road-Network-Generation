@@ -16,7 +16,7 @@ generators never touch OpenDRIVE. Plan and reasoning:
 | `chains.py` | Chains: runs of edges through two-road nodes that become one road |
 | `alignment.py` | Fitted reference lines of the chains: corners, room, clearance, stations |
 | `profiles.py` | Along-road profiles of a chain road: lane widths and tapers, speeds, heights, bridges |
-| `vertical.py` | Elevation fits (PCHIP), junction planes, chain elevation and banking |
+| `vertical.py` | Elevation fits (PCHIP), junction planes, chain elevation, banking, connecting roads on planes |
 
 ## Design-speed rules (`design.py`)
 
@@ -127,6 +127,21 @@ like curve-warning signs at real 90° bends.
   a deceleration lead (1.5 m/s²) before the corner to its end.
 - `height_samples`, `bridge_spans`: the edges' heights and bridges placed by
   station.
+
+## Heights and banking (`vertical.py`)
+
+- `junction_planes`: per junction, `z = z0 + gx·(x − x0) + gy·(y − y0)`
+  through the node's height, least-squares fitted to the approach roads'
+  heights 10 m in, gradient capped at `junction_max_grade`.
+- `chain_elevation`: PCHIP through a chain's height samples, ending on the
+  junction planes with the plane's grade along the road (flat at dead ends).
+- `chain_superelevation`: corner banking `atan(e)` with smoothstep runoff
+  along the spirals (`e` from the innermost lane radius, so the design
+  radius gets exactly `e_max`), plus a smoothstep ramp to each junction
+  plane's cross slope over `bank_ramp_length`; overlapping parts add up.
+- `path_profiles`: a connecting road's elevation and superelevation on its
+  junction plane, as cubic Hermite pieces matching the plane's height,
+  grade, roll and roll rate exactly at their ends.
 
 ## Junction space (`junction_space.py`)
 

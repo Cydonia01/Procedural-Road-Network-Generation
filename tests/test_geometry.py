@@ -45,7 +45,7 @@ def test_advisory_speed_rounds_down_to_5_kmh():
 
 
 def test_superelevation_off_without_banking_and_method_5_with_it():
-    assert design.superelevation(100.0, 50 * KMH, "street") == 0.0
+    assert design.superelevation(100.0, 50 * KMH, "street", DesignParams(banking=False)) == 0.0
     p = DesignParams(banking=True)
     r_min = design.min_radius(50 * KMH, 0.04, p)
     assert design.superelevation(r_min, 50 * KMH, "street", p) == pytest.approx(0.04)
