@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Iterable
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.planar import wrap_angle
@@ -132,10 +133,14 @@ def _orient(nodes: list[int], edges: list[Edge]) -> Chain:
     return Chain(tuple(nodes), chain_edges)
 
 
-def find_chains(graph: RoadGraph,
-                max_deflection_deg: float = _D["max_merge_deflection_deg"]) -> list[Chain]:
-    """All chains of the graph, ordered by their smallest edge id; every edge is in one."""
-    mergeable = {n for n in graph.nodes if is_mergeable(graph, n, max_deflection_deg)}
+def find_chains(graph: RoadGraph, max_deflection_deg: float = _D["max_merge_deflection_deg"],
+                junctions: Iterable[int] = ()) -> list[Chain]:
+    """All chains of the graph, ordered by their smallest edge id; every edge is in one.
+
+    junctions: nodes to keep as junctions even if they could be merged.
+    """
+    forced = set(junctions)
+    mergeable = {n for n in graph.nodes if n not in forced and is_mergeable(graph, n, max_deflection_deg)}
     while True:
         chains = _chains(graph, mergeable)
         loops = [c for c in chains if c.start == c.end]

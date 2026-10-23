@@ -1,7 +1,8 @@
 """Drive every junction movement with esmini's RoadManager library.
 
 For each movement in the builder's sidecar, a position is placed in the
-incoming lane 20 m (at most half the road) before the junction and moved
+incoming lane 20 m (at most half the road, and never before the lane runs at
+full width) before the junction and moved
 forward in small steps with esmini's junction selector aimed at the movement,
 through the connecting road and 20 m beyond.
 A movement passes when esmini routes it over the expected connecting road
@@ -92,21 +93,45 @@ class DriveResult:
 def drive_movements(xodr_path: PathLike, lib_path: Optional[PathLike] = None) -> list[DriveResult]:
     xodr_path = Path(xodr_path)
     movements = json.loads(sidecar_path(xodr_path).read_text())["movements"]
-    lengths = {
-        int(r.get("id")): float(r.get("length"))
-        for r in etree.parse(str(xodr_path)).getroot().findall("road")
-    }
+    roads = {int(r.get("id")): r for r in etree.parse(str(xodr_path)).getroot().findall("road")}
+    lengths = {rid: float(r.get("length")) for rid, r in roads.items()}
     lib = _load_rm(lib_path)
     if lib.RM_Init(str(xodr_path).encode()) != 0:
         raise RuntimeError(f"esmini RoadManager failed to load {xodr_path}")
     try:
-        return [_drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]])
+        return [_drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]],
+                       _full_width_run(roads[m["from_road"]], m["from_lane"]),
+                       _full_width_run(roads[m["to_road"]], m["to_lane"], at_exit=False))
                 for m in movements]
     finally:
         lib.RM_Close()
 
 
-def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: float) -> DriveResult:
+def _full_width_run(road: etree._Element, lane: int, at_exit: bool = True) -> float:
+    """How far the lane runs at constant width from the road end where its traffic
+    leaves (at_exit; s = length for right lanes, 0 for left lanes) or enters:
+    an approach must start, and a drive on must end, within that stretch,
+    not in a taper or where the lane does not exist."""
+    length = float(road.get("length"))
+    sections = road.findall("lanes/laneSection")
+    bounds = [float(sec.get("s")) for sec in sections] + [length]
+    full = []
+    for k, sec in enumerate(sections):
+        el = sec.find(f"*/lane[@id='{lane}']")
+        widths = el.findall("width") if el is not None else []
+        full.append(bool(widths) and all(abs(float(w.get(c, 0))) < 1e-12 for w in widths for c in "bcd"))
+    from_end = (lane < 0) == at_exit
+    order = range(len(sections) - 1, -1, -1) if from_end else range(len(sections))
+    run = 0.0
+    for k in order:
+        if not full[k]:
+            break
+        run += bounds[k + 1] - bounds[k]
+    return run
+
+
+def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: float,
+           lane_run: Optional[float] = None, target_run: Optional[float] = None) -> DriveResult:
     # Aim the junction selector at the movement's actual heading change when
     # known (several exits can share a kind at 5-way junctions).
     if "turn_angle" in m:
@@ -116,7 +141,7 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: flo
     handle = lib.RM_CreatePosition()
     # Right lanes travel along +s towards the end, left lanes towards s = 0.
     # Start on the road itself, also when it is shorter than APPROACH.
-    approach = min(APPROACH, road_length / 2)
+    approach = min(APPROACH, road_length / 2, (lane_run if lane_run is not None else road_length) - STEP)
     s0 = road_length - approach if m["from_lane"] < 0 else approach
     lib.RM_SetLanePosition(handle, m["from_road"], m["from_lane"], 0.0, s0, True)
     data = _PositionData()
@@ -125,7 +150,8 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: flo
     max_jump, min_rc = 0.0, 0
     entry_lane = None
     # Through the junction however long its connecting road is, then a bit further.
-    distance = approach + connecting_length + DRIVE_ON
+    drive_on = DRIVE_ON if target_run is None else max(STEP, min(DRIVE_ON, target_run - STEP))
+    distance = approach + connecting_length + drive_on
     for _ in range(math.ceil(distance / STEP)):
         rc = lib.RM_PositionMoveForward(handle, STEP, selector)
         if rc == END_OF_ROAD and len(route) >= 3:

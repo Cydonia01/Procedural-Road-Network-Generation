@@ -61,6 +61,7 @@ class DesignParams:
     max_merge_deflection_deg: float = _D["max_merge_deflection_deg"]  # sharper bends stay junctions [deg]
     road_clearance: float = _D["road_clearance"]  # min gap between a curve and other roads [m]
     max_corner_offset: float = _D["max_corner_offset"]  # max corner cut-in [m]; 0 = no limit
+    min_lane_radius: float = _D["min_lane_radius"]  # tighter bends stay junctions [m]
 
     def __post_init__(self) -> None:
         if min(self.e_max_street, self.e_max_avenue, self.e_max_highway) < 0:
@@ -73,7 +74,7 @@ class DesignParams:
             raise ValueError("max_merge_deflection_deg must be in (0, 180)")
         if self.bank_ramp_length <= 0 or self.junction_max_grade < 0:
             raise ValueError("need bank_ramp_length > 0 and junction_max_grade >= 0")
-        if self.road_clearance < 0 or self.max_corner_offset < 0:
+        if self.road_clearance < 0 or self.max_corner_offset < 0 or self.min_lane_radius < 0:
             raise ValueError("road_clearance and max_corner_offset must be non-negative")
         if max(self.e_max_street, self.e_max_avenue, self.e_max_highway) * G >= self.a_lat_max:
             raise ValueError("e_max must leave room for side friction under a_lat_max")

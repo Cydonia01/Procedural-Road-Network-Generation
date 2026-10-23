@@ -24,7 +24,8 @@ Per chain (see chains.py):
 4. Speeds are set by the innermost lane centre (the reference radius minus
    the offset to the farthest lane centre): the design radius includes that
    offset, and a corner that can't have it gets the advisory speed of the
-   lane radius it has.
+   lane radius it has. A corner whose lane radius would be below
+   min_lane_radius is not fitted at all: its node stays a junction.
 
 Stations: each graph node maps to a station on its chain road (an inner node to
 its corner's midpoint, a chain end to minus its trim / length plus its trim),
@@ -238,15 +239,24 @@ def network_alignment(graph: RoadGraph, params: DesignParams = DesignParams(),
     radius_caps: node id -> largest allowed corner radius [m], on top of
     Node.radius_cap.
     """
-    chains = find_chains(graph, params.max_merge_deflection_deg)
-    junctions = junction_nodes(graph, chains)
-    trims = {n: node_trims(graph, n, junction_margin) for n in junctions}
     caps = dict(radius_caps or {})
     for n in graph.nodes.values():
         if n.radius_cap is not None:
             caps[n.id] = min(n.radius_cap, caps.get(n.id, math.inf))
-    check = _clearance_check(graph, trims, params.road_clearance)
-    fitted = tuple(align_chain(graph, c, trims, params, caps, check) for c in chains)
+    forced: set[int] = set()
+    while True:
+        chains = find_chains(graph, params.max_merge_deflection_deg, forced)
+        junctions = junction_nodes(graph, chains)
+        trims = {n: node_trims(graph, n, junction_margin) for n in junctions}
+        check = _clearance_check(graph, trims, params.road_clearance)
+        fitted = tuple(align_chain(graph, c, trims, params, caps, check) for c in chains)
+        # A bend too tight for its innermost lane stays a junction (one lane-centre
+        # turn per lane), which may change the room of its neighbours: refit.
+        tight = {c.node for ca in fitted for c in ca.corners if c.lane_radius < params.min_lane_radius}
+        if not tight:
+            break
+        log.debug("bends too tight for their inner lanes stay junctions: %s", sorted(tight))
+        forced |= tight
     edge_chain = {ce.edge_id: k for k, c in enumerate(chains) for ce in c.edges}
     return NetworkAlignment(fitted, tuple(junctions), trims, edge_chain)
 

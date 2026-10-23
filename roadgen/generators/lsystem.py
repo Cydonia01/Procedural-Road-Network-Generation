@@ -36,6 +36,18 @@ it), growth follows the paper more closely:
 
 Without maps the result is exactly the plain grid growth.
 
+Curved streets (curve_mode, stage A9; "none" keeps the straight grid
+exactly): with "drift" a street's heading follows a mean-reverting random
+walk around its grid axis (curve_drift_deg per segment, curve_reversion back
+towards the axis), each change limited so that the bend between two blocks
+can still get its design radius; branches leave perpendicular to the
+street. "contour" also pulls the heading towards the terrain's contour
+direction, weighted by the slope (Parish & Mueller's San Francisco rule).
+Afterwards every street between two nodes gets a bow node so that its
+length / chord reaches curve_tortuosity (Aliaga et al.), where the bow
+stays legal. The OpenDRIVE builder turns the resulting bend nodes into
+smooth curves.
+
 Everything is computed in the area's local frame (lower-left corner at 0,
 x along the grid's first axis) and rotated/translated to world coordinates
 at the end. Output is deterministic for a seed.
@@ -55,6 +67,8 @@ import numpy as np
 from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
 from roadgen.generators.repair import repair_short_edges
+from roadgen.geometry import design
+from roadgen.geometry.design import DesignParams
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.model import VEGETATION, WATER, Bounds, MapLayer, MapSet
 
@@ -62,6 +76,11 @@ log = logging.getLogger(__name__)
 
 GlobalGoal = Literal["grid"]
 GLOBAL_GOALS = ("grid",)
+CurveMode = Literal["none", "drift", "contour"]
+CURVE_MODES = ("none", "drift", "contour")
+CONTOUR_SLOPE = 0.08  # terrain grade at which contour streets follow the contour fully
+CONTOUR_MAX_DEG = 60.0  # contour streets turn at most this far from their grid axis
+GRADIENT_STEP = 10.0  # [m] finite-difference step for the terrain gradient
 Point = tuple[float, float]
 EPS = 1e-9
 # Road type per edge / proposal ("axis" for grid roads).
@@ -112,6 +131,11 @@ class LSystemParams:
     avoid_vegetation: bool = _D["avoid_vegetation"]  # streets stay out of parks / forest
     prune_factor: float = _D["prune_factor"]  # min share of a street left after pruning
     max_grade: float = _D["max_grade"]  # max rise / run along a road; 0 = no limit
+    # --- curved streets (stage A9); "none" keeps the straight grid exactly -------------
+    curve_mode: CurveMode = _D["curve_mode"]  # none | drift | contour
+    curve_drift_deg: float = _D["curve_drift_deg"]  # std dev of a street's heading change per segment
+    curve_reversion: float = _D["curve_reversion"]  # pull back towards the grid axis per segment, 0-1
+    curve_tortuosity: float = _D["curve_tortuosity"]  # target length / chord of a street; 1 = straight
 
     def __post_init__(self) -> None:
         if self.global_goal not in GLOBAL_GOALS:
@@ -142,6 +166,10 @@ class LSystemParams:
         if min(self.max_bridge_length, self.highway_min_density, self.street_min_density,
                self.max_grade) < 0:
             raise ValueError("max_bridge_length, densities and max_grade must be >= 0")
+        if self.curve_mode not in CURVE_MODES:
+            raise ValueError(f"unknown curve_mode {self.curve_mode!r}; available: {CURVE_MODES}")
+        if self.curve_drift_deg < 0 or not 0.0 <= self.curve_reversion <= 1.0 or self.curve_tortuosity < 1.0:
+            raise ValueError("need curve_drift_deg >= 0, curve_reversion in [0, 1], curve_tortuosity >= 1")
 
     @classmethod
     def preset(cls, name: str, **overrides: Any) -> "LSystemParams":
@@ -157,6 +185,36 @@ PRESETS: dict[str, dict[str, Any]] = {
         "start": (0.0, 0.0),
         "block_size": (250.0, 80.0),
         "branch_prob": 1.0,
+    },
+    # Organic town: streets drift smoothly away from the grid and bow between junctions.
+    "organic_curved": {
+        "extent": (1500.0, 900.0),
+        "start": (0.5, 0.5),
+        "block_size": (200.0, 120.0),
+        "branch_prob": 0.75,
+        "length_jitter": 0.12,
+        "snap_radius": 20.0,
+        "min_segment_length": 50.0,
+        "min_angle_deg": 50.0,
+        "curve_mode": "drift",
+        "curve_drift_deg": 8.0,
+        "curve_reversion": 0.25,
+        "curve_tortuosity": 1.03,
+    },
+    # Hill town for input maps: streets follow the terrain's contours (San Francisco rule).
+    "hill_town": {
+        "extent": (3000.0, 2400.0),
+        "start": (0.5, 0.5),
+        "block_size": (180.0, 100.0),
+        "branch_prob": 0.85,
+        "length_jitter": 0.1,
+        "snap_radius": 20.0,
+        "min_segment_length": 40.0,
+        "min_angle_deg": 40.0,
+        "curve_mode": "contour",
+        "curve_drift_deg": 4.0,
+        "curve_reversion": 0.5,
+        "curve_tortuosity": 1.02,
     },
     # Same goal with noise: wobbly headings and lengths, some missing branches.
     "grid_organic": {
@@ -258,6 +316,18 @@ def _angle_between(u: Point, v: Point) -> float:
                                                     (math.hypot(*u) * math.hypot(*v))))))
 
 
+def _max_turn(p: LSystemParams, axis: int) -> float:
+    """Largest heading change [rad] at a node of a curved street, so that a bend
+    between two segments of the block length can still get its design radius."""
+    v = p.minor_speed if axis == STREET_X else p.major_speed
+    params = DesignParams()
+    e = params.e_max_street if params.banking else 0.0
+    radius = design.min_radius(v, e, params)
+    spiral = design.spiral_length(v, radius, e, max(p.minor_lanes) * p.lane_width, params)
+    room = max(p.block_size[axis] / 2 - spiral / 2, 1.0)
+    return 2 * math.atan(room / radius)
+
+
 class _Growth:
     """Mutable network state while growing (local frame)."""
 
@@ -276,6 +346,7 @@ class _Growth:
         self.bridges: set[int] = set()
         self.highway_phase = False
         self.deferred: list[tuple[int, int, int, int]] = []  # streets spawned by highways
+        self.max_turn = {axis: _max_turn(p, axis) for axis in (STREET_X, AVENUE_Y)}
 
     # --- mutation -----------------------------------------------------------------------
 
@@ -323,6 +394,9 @@ class _Growth:
         a = self.pos[prop.node]
         base = 0.0 if prop.axis == STREET_X else math.pi / 2
         heading = base + (0.0 if prop.sign > 0 else math.pi)
+        if p.curve_mode != "none":
+            prop.heading = self.curve_deviation(prop, a, heading)
+            heading += prop.heading
         if p.angle_jitter_deg:
             heading += math.radians(rng.normal(0.0, p.angle_jitter_deg))
         length = p.block_size[prop.axis]
@@ -334,6 +408,67 @@ class _Growth:
         if not self.maps.active:
             return end, True
         return self.maps.legal_street(a, end)
+
+    def curve_deviation(self, prop: _Proposal, a: Point, axis_heading: float) -> float:
+        """Curved streets: the next segment's deviation [rad] from its grid axis.
+
+        An Ornstein-Uhlenbeck step on the deviation: pulled back by
+        curve_reversion towards a target (0, or for "contour" the terrain's
+        contour direction weighted by its slope), plus curve_drift_deg noise,
+        the change limited so that the bend can still get its design radius.
+        """
+        p = self.p
+        target = 0.0
+        if p.curve_mode == "contour":
+            target = self.maps.contour_deviation(a, axis_heading)
+        new = prop.heading + p.curve_reversion * (target - prop.heading)
+        new += math.radians(self.rng.normal(0.0, p.curve_drift_deg))
+        limit = self.max_turn[prop.axis]
+        return prop.heading + max(-limit, min(limit, new - prop.heading))
+
+    def bow_streets(self) -> None:
+        """Curved streets: give every street between two nodes a bow node, so that its
+        length / chord reaches curve_tortuosity, where the bow stays legal."""
+        p = self.p
+        rise = math.sqrt(p.curve_tortuosity ** 2 - 1.0)
+        for eid in sorted(self.edges):
+            a, b, axis = self.edges[eid]
+            if axis == HIGHWAY or eid in self.bridges:
+                continue
+            pa, pb = self.pos[a], self.pos[b]
+            length = math.dist(pa, pb)
+            if length < 2 * p.min_segment_length:
+                continue
+            side = 1.0 if self.rng.random() < 0.5 else -1.0
+            h = side * rise * length / 2
+            nx_, ny_ = -(pb[1] - pa[1]) / length, (pb[0] - pa[0]) / length
+            mid = ((pa[0] + pb[0]) / 2 + h * nx_, (pa[1] + pb[1]) / 2 + h * ny_)
+            if self.bow_ok(eid, pa, pb, mid):
+                self.split_edge(eid, mid)
+
+    def bow_ok(self, eid: int, pa: Point, pb: Point, mid: Point) -> bool:
+        p = self.p
+        if not self.inside(mid):
+            return False
+        for n in self.node_index.query(mid, mid, p.snap_radius):
+            if math.dist(self.pos[n], mid) < p.snap_radius:
+                return False
+        for q0, q1 in ((pa, mid), (mid, pb)):
+            for other in self.edge_index.query(q0, q1, p.snap_radius):
+                if other == eid:
+                    continue
+                oa, ob, _ = self.edges[other]
+                hit = _segment_hit(q0, q1, self.pos[oa], self.pos[ob])
+                if hit is not None and EPS < hit[0] < 1 - EPS:
+                    return False
+            if self.maps.active:
+                if self.maps.terrain is not None:
+                    x, y, _ = self.maps._line(q0, q1)
+                    if self.maps._illegal_for_streets(x, y)[1:-1].any():
+                        return False
+                if self.maps._too_steep(q0, q1):
+                    return False
+        return True
 
     def inside(self, pt: Point) -> bool:
         w, h = self.p.extent
@@ -451,6 +586,8 @@ class _Growth:
         for t, node, axis, sign in self.deferred:
             self.propose(t, node, axis, sign)
         self.loop()
+        if self.p.curve_mode != "none" and self.p.curve_tortuosity > 1.0:
+            self.bow_streets()
 
     def loop(self) -> None:
         while self.queue and len(self.edges) < self.p.max_segments:
@@ -511,12 +648,14 @@ class _Growth:
 
     def grow(self, prop: _Proposal, node: int, straight: bool = True) -> None:
         """Global goal "grid": continue straight, branch perpendicular."""
+        # Curved streets carry their deviation from the grid axis on: a straight
+        # continuation keeps it, and branches leave perpendicular to the street.
         if straight:
-            self.propose(prop.t + 1, node, prop.axis, prop.sign)
+            self.propose(prop.t + 1, node, prop.axis, prop.sign, prop.heading)
         other = 1 - prop.axis
         for sign in (1, -1):
             if self.rng.random() < self.p.branch_prob:
-                self.propose(prop.t + self.p.branch_delay, node, other, sign)
+                self.propose(prop.t + self.p.branch_delay, node, other, sign, prop.heading)
 
     def grow_highway(self, prop: _Proposal, node: int, heading: float) -> None:
         """Continue, maybe branch a new highway, and spawn grid streets on both sides."""
@@ -577,6 +716,23 @@ class _MapView:
             land = self.sample(self.terrain, x, y) != WATER
             grade = grade[land[1:] & land[:-1]]
         return bool(grade.size) and float(grade.max()) > self.p.max_grade
+
+    def contour_deviation(self, a: Point, axis_heading: float) -> float:
+        """Deviation [rad] from axis_heading towards the terrain contour at a, weighted
+        by the slope (0 on flat ground, the full contour from CONTOUR_SLOPE on)."""
+        if self.elevation is None:
+            return 0.0
+        h = GRADIENT_STEP
+        z = self.sample(self.elevation, np.array([a[0] + h, a[0] - h, a[0], a[0]]),
+                        np.array([a[1], a[1], a[1] + h, a[1] - h]))
+        gx, gy = (z[0] - z[1]) / (2 * h), (z[2] - z[3]) / (2 * h)
+        slope = math.hypot(gx, gy)
+        if slope < 1e-9:
+            return 0.0
+        contour = math.atan2(gx, -gy)  # perpendicular to the gradient
+        dev = (contour - axis_heading + math.pi / 2) % math.pi - math.pi / 2  # either way along it
+        dev = max(-math.radians(CONTOUR_MAX_DEG), min(math.radians(CONTOUR_MAX_DEG), dev))
+        return dev * min(1.0, slope / CONTOUR_SLOPE)
 
     def crosses_water(self, a: Point, b: Point, ends: bool = True) -> bool:
         """Whether a -> b touches water; ends=False ignores both end points

@@ -141,6 +141,9 @@ neighbour queries fast. Generation stops after `max_segments`.
 | `angle_jitter_deg`, `length_jitter` | 0, 0 | Heading noise (std, deg) and relative length noise |
 | `snap_radius`, `min_segment_length`, `min_angle_deg` | 15, 30, 30 | Local constraints |
 | `max_segments` | 20000 | Safety cap |
+| `curve_mode` | `none` | Curved streets: `none` (the straight grid, unchanged), `drift` or `contour` |
+| `curve_drift_deg`, `curve_reversion` | 6, 0.3 | Heading noise per segment (std, deg) and pull back towards the grid axis (0–1) |
+| `curve_tortuosity` | 1.0 | Target length / chord of a street, reached with a bow node; 1 = straight |
 | `major_lanes`, `minor_lanes`, `lane_width`, `major_speed`, `minor_speed` | (2,2), (1,1), 3.5, 13.9, 11.1 | Road properties |
 
 Presets:
@@ -152,11 +155,38 @@ Presets:
   (use `--allow-traps`).
 - `city`: a 3000 × 2400 m area with a noisy grid and a `min_angle_deg` (40)
   that lets streets branch off curved highways. Meant for `--maps`.
+- `organic_curved`: `drift` streets that wander smoothly away from the grid
+  and bow between junctions (tortuosity 1.03).
+- `hill_town`: `city` with `contour` streets that follow the terrain on
+  slopes. Meant for `--maps`.
+
+**Curved streets** (`curve_mode`, stage A9; `none` draws no extra random
+numbers, so existing networks are unchanged):
+
+- `drift`: a street's deviation from its grid axis follows a mean-reverting
+  random walk (Ornstein–Uhlenbeck): each segment adds `curve_drift_deg` of
+  noise and is pulled back by `curve_reversion`. The change per segment is
+  limited so that the bend between two blocks can still get its design
+  radius. A continuation keeps the deviation and branches leave
+  perpendicular to the street, so blocks stay roughly rectangular.
+- `contour`: the same, pulled towards the terrain's contour direction (from
+  the elevation map's gradient), weighted by the slope: fully from 8 %,
+  at most 60° off the axis (Parish & Müller's San Francisco rule, the height
+  field of Chen et al.).
+- With `curve_tortuosity` > 1, every street between two nodes then gets a
+  **bow node** placed sideways at its middle so that its length / chord
+  reaches the target (Aliaga et al.'s tortuosity), where the bow crosses no
+  road, keeps `snap_radius` from other nodes and stays on legal ground.
+- The OpenDRIVE builder turns the resulting bend nodes into smooth curves.
+  Full tensor-field street layouts (Chen et al.) are left for a later
+  style-mixing stage.
 
 ```bash
 python -m cli pipeline lsystem --preset grid
 python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
 python -m cli pipeline lsystem --preset city --seed 1 --allow-traps --maps
+python -m cli pipeline lsystem --preset organic_curved --allow-traps --drive-check
+python -m cli pipeline lsystem --preset hill_town --maps --allow-traps
 python -m cli pipeline lsystem --preset city --allow-traps --maps \
     --map-set terrain.coast_strength=0.8 --map-set terrain.water_fraction=0.3 \
     --map-set population.n_centers=4 --set max_grade=0.2

@@ -97,7 +97,11 @@ buildings and the graph plot. Per chain:
    - so that the curve keeps `road_clearance` (1 m) from every other road it
      didn't already touch as a straight polyline (bisection on λ).
 4. A corner below its design radius gets the **advisory speed** of its
-   innermost lane radius.
+   innermost lane radius. A corner whose innermost lane radius would be
+   below `min_lane_radius` (10 m) is not fitted: its node stays a two-road
+   junction, where every lane gets its own lane-centre turn (lane geometry
+   offset from a very tight reference line degenerates), and the network is
+   refitted.
 
 Stations: every graph node maps to a station on its chain road (an inner node
 to its corner's midpoint), and distances along the straight polyline map

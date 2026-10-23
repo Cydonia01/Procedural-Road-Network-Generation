@@ -66,6 +66,10 @@ generators:
     avoid_vegetation: true     # streets stay out of parks / forest
     prune_factor: 0.4          # a street hitting water / vegetation keeps >= this share
     max_grade: 0.15            # max rise / run along a road (over 25 m); 0 = no limit
+    curve_mode: none           # curved streets: none | drift | contour (needs elevation)
+    curve_drift_deg: 6.0       # std dev of a street's heading change per segment [deg]
+    curve_reversion: 0.3       # pull back towards the grid axis per segment, 0-1
+    curve_tortuosity: 1.0      # target length / chord of a street (bow node); 1 = straight
 
 maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and pipeline --maps
   grid:
@@ -168,6 +172,7 @@ design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AAS
   max_merge_deflection_deg: 135.0  # a two-road node turning more than this stays a junction [deg]
   road_clearance: 1.0       # min gap between a fitted curve and any other road [m]
   max_corner_offset: 0.0    # max distance a curve may cut inside its corner [m]; 0 = no limit
+  min_lane_radius: 10.0     # a bend whose innermost lane would turn tighter stays a junction [m]
 
 align:  # `align` step: radius caps for bends whose curve leaves legal ground (roadgen/maps/align.py)
   max_grade: 0.15           # max terrain rise / run along a curve; 0 = no limit
