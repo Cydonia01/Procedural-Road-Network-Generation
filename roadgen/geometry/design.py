@@ -9,8 +9,8 @@ superelevation runoff) and the MUTCD (lane-change tapers):
   rounded down to a multiple of 5 km/h like a curve-warning sign;
 - superelevation(R, v): AASHTO method 5 shape, e_max (2 R_min/R - (R_min/R)^2);
 - spiral_length(v, R, e, width): the longest of the lateral-jerk comfort
-  length v^3 / (C R) (Shortt), the superelevation runoff w e / delta(v) and a
-  minimum;
+  length v^3 / (C R) (Shortt), the superelevation runoff w e / delta(v) and
+  the minimum-shift length, capped at the maximum-shift length;
 - taper_length(v, w): MUTCD merging taper.
 
 Speeds are in m/s at the interface; the tables are indexed in km/h.
@@ -53,14 +53,24 @@ class DesignParams:
     e_max_highway: float = _D["e_max_highway"]
     a_lat_max: float = _D["a_lat_max"]  # comfort cap on g (e + f) [m/s^2]
     jerk_rate: float = _D["jerk_rate"]  # rate of change of lateral acceleration in spirals [m/s^3]
-    spiral_min_length: float = _D["spiral_min_length"]  # [m]
+    spiral_min_shift: float = _D["spiral_min_shift"]  # lateral shift of the curve by its spirals [m]
+    spiral_max_shift: float = _D["spiral_max_shift"]
     banking: bool = _D["banking"]  # bank curves (superelevation); off = flat roads
+    max_merge_deflection_deg: float = _D["max_merge_deflection_deg"]  # sharper bends stay junctions [deg]
+    road_clearance: float = _D["road_clearance"]  # min gap between a curve and other roads [m]
+    max_corner_offset: float = _D["max_corner_offset"]  # max corner cut-in [m]; 0 = no limit
 
     def __post_init__(self) -> None:
         if min(self.e_max_street, self.e_max_avenue, self.e_max_highway) < 0:
             raise ValueError("e_max values must be non-negative")
-        if self.a_lat_max <= 0 or self.jerk_rate <= 0 or self.spiral_min_length < 0:
-            raise ValueError("need a_lat_max > 0, jerk_rate > 0 and spiral_min_length >= 0")
+        if self.a_lat_max <= 0 or self.jerk_rate <= 0:
+            raise ValueError("need a_lat_max > 0 and jerk_rate > 0")
+        if not 0 < self.spiral_min_shift <= self.spiral_max_shift:
+            raise ValueError("need 0 < spiral_min_shift <= spiral_max_shift")
+        if not 0 < self.max_merge_deflection_deg < 180:
+            raise ValueError("max_merge_deflection_deg must be in (0, 180)")
+        if self.road_clearance < 0 or self.max_corner_offset < 0:
+            raise ValueError("road_clearance and max_corner_offset must be non-negative")
         if max(self.e_max_street, self.e_max_avenue, self.e_max_highway) * G >= self.a_lat_max:
             raise ValueError("e_max must leave room for side friction under a_lat_max")
 
@@ -132,14 +142,23 @@ def relative_gradient(v: float) -> float:
 
 def spiral_length(v: float, radius: float, e: float, width: float,
                   p: DesignParams = DesignParams()) -> float:
-    """Transition-spiral length [m] into a curve of the given radius.
+    """Transition-spiral length [m] into a curve of the given radius (AASHTO).
+
+    The longest of the lateral-jerk comfort length v^3 / (C R), the
+    superelevation runoff w e / delta(v) and the length giving the minimum
+    lateral shift, but at most the length giving the maximum shift
+    (L = sqrt(24 p R) for a shift p; longer spirals look out of place).
 
     width: distance from the rotation axis (reference line) to the farthest
     rotated edge [m]; e: the curve's superelevation.
     """
-    comfort = 0.0 if math.isinf(radius) else v ** 3 / (p.jerk_rate * radius)
+    if math.isinf(radius):
+        return 0.0
+    comfort = v ** 3 / (p.jerk_rate * radius)
     runoff = width * e / relative_gradient(v)
-    return max(comfort, runoff, p.spiral_min_length)
+    shortest = math.sqrt(24 * p.spiral_min_shift * radius)
+    longest = math.sqrt(24 * p.spiral_max_shift * radius)
+    return min(max(comfort, runoff, shortest), longest)
 
 
 def taper_length(v: float, width: float) -> float:

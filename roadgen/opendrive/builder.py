@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import xml.etree.ElementTree as ET
 from dataclasses import asdict
 from pathlib import Path
@@ -30,7 +29,7 @@ from typing import Optional, Union
 from scenariogeneration import xodr
 
 from roadgen.config import DEFAULTS
-from roadgen.geometry.junction_space import Arm, junction_trims
+from roadgen.geometry.junction_space import node_trims, oriented_lanes
 from roadgen.geometry.planar import segment_start, trim
 from roadgen.graph.model import Edge, RoadGraph
 from roadgen.opendrive.elevation import road_elevation
@@ -54,37 +53,6 @@ PathLike = Union[str, Path]
 def sidecar_path(xodr_path: PathLike) -> Path:
     """Path of the graph->OpenDRIVE id mapping written next to an .xodr file."""
     return Path(xodr_path).with_suffix(".roadmap.json")
-
-
-def oriented_lanes(edge: Edge) -> tuple[int, int, bool]:
-    """(right_lanes, left_lanes, reversed) for the road built from edge.
-
-    Backward-only one-way edges get a reversed reference line so that all
-    lanes sit on the right side.
-    """
-    if edge.lanes_forward == 0:
-        return edge.lanes_backward, 0, True
-    return edge.lanes_forward, edge.lanes_backward, False
-
-
-def node_trims(graph: RoadGraph, node_id: int, margin: float = DEFAULT_JUNCTION_MARGIN) -> dict[int, float]:
-    """Per incident edge: how far from the junction node its road stops [m]."""
-    node = graph.nodes[node_id]
-    arms = []
-    for e in graph.incident_edges(node_id):
-        right, left, reverse = oriented_lanes(e)
-        start_node = e.to_node if reverse else e.from_node
-        other = graph.nodes[e.to_node if e.from_node == node_id else e.from_node]
-        heading = math.atan2(other.y - node.y, other.x - node.x)
-        # Leaving the node along +s keeps the lane sides; along -s swaps them.
-        lw, rw = left * e.lane_width, right * e.lane_width
-        if node_id != start_node:
-            lw, rw = rw, lw
-        arms.append(Arm(e.id, heading, lw, rw))
-    try:
-        return junction_trims(arms, margin)
-    except ValueError as err:
-        raise ValueError(f"node {node_id}: {err}") from None
 
 
 class OpenDriveBuilder:

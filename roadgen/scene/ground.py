@@ -23,7 +23,8 @@ from roadgen.config import DEFAULTS, section
 from roadgen.graph.model import RoadGraph
 from roadgen.maps.model import LAND, WATER, MapLayer
 from roadgen.maps.terrain import TERRAIN_COLORS
-from roadgen.opendrive.builder import DEFAULT_JUNCTION_MARGIN, node_trims
+from roadgen.geometry.junction_space import node_trims
+from roadgen.opendrive.builder import DEFAULT_JUNCTION_MARGIN
 from roadgen.opendrive.elevation import evaluate, road_elevation
 from roadgen.scene.buildings import road_half_extent
 from roadgen.scene.osgt import IndexedMesh

@@ -159,9 +159,13 @@ design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AAS
   e_max_avenue: 0.04
   e_max_highway: 0.06
   a_lat_max: 3.0            # comfort cap on lateral acceleration g (e + f) [m/s^2]
-  jerk_rate: 0.6            # rate of change of lateral acceleration along spirals [m/s^3]
-  spiral_min_length: 10.0   # shortest transition spiral [m]
+  jerk_rate: 1.2            # rate of change of lateral acceleration along spirals (AASHTO) [m/s^3]
+  spiral_min_shift: 0.2     # spirals shift the curve inward by at least this (AASHTO) [m]
+  spiral_max_shift: 1.0     # ... and at most this [m]
   banking: false            # bank curves with superelevation (stage A8)
+  max_merge_deflection_deg: 135.0  # a two-road node turning more than this stays a junction [deg]
+  road_clearance: 1.0       # min gap between a fitted curve and any other road [m]
+  max_corner_offset: 0.0    # max distance a curve may cut inside its corner [m]; 0 = no limit
 
 metrics:  # `metrics` command: geometry quality of an .xodr (roadgen/metrics/geometry.py)
   sample_step: 0.5          # spacing of curvature samples along a road [m]

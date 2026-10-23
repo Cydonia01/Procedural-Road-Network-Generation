@@ -53,11 +53,17 @@ def test_superelevation_off_without_banking_and_method_5_with_it():
     assert design.superelevation(math.inf, 50 * KMH, "street", p) == 0.0
 
 
-def test_spiral_length_takes_the_longest_rule():
+def test_spiral_length_aashto_rules():
     v = 50 * KMH
-    assert design.spiral_length(v, 1000.0, 0.0, 3.5) == pytest.approx(10.0)  # minimum
-    assert design.spiral_length(v, 20.0, 0.0, 3.5) == pytest.approx(v ** 3 / (0.6 * 20.0))
-    assert design.spiral_length(v, 1000.0, 0.04, 7.0) == pytest.approx(7.0 * 0.04 / 0.0065)
+    # Comfort (C = 1.2 m/s^3) decides at the design radius: about 26.6 m.
+    assert design.spiral_length(v, 84.0, 0.0, 3.5) == pytest.approx(v ** 3 / (1.2 * 84.0))
+    # A gentle curve: the minimum shift of 0.2 m decides.
+    assert design.spiral_length(v, 1000.0, 0.0, 3.5) == pytest.approx(math.sqrt(24 * 0.2 * 1000.0))
+    # A tight curve: comfort would want more than the maximum shift of 1 m allows.
+    assert design.spiral_length(v, 20.0, 0.0, 3.5) == pytest.approx(math.sqrt(24 * 1.0 * 20.0))
+    # Banked: the superelevation runoff decides.
+    assert design.spiral_length(v, 200.0, 0.04, 7.0) == pytest.approx(7.0 * 0.04 / 0.0065)
+    assert design.spiral_length(v, math.inf, 0.0, 3.5) == 0.0
 
 
 def test_taper_length_mutcd():
@@ -70,6 +76,8 @@ def test_design_params_validation():
         DesignParams(e_max_highway=0.4)
     with pytest.raises(ValueError):
         DesignParams(jerk_rate=0.0)
+    with pytest.raises(ValueError):
+        DesignParams(spiral_min_shift=2.0, spiral_max_shift=1.0)
 
 
 # --- pieces --------------------------------------------------------------------------

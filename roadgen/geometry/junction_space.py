@@ -9,6 +9,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from roadgen.config import DEFAULTS
+from roadgen.graph.model import Edge, RoadGraph
+
+DEFAULT_MARGIN = DEFAULTS["opendrive"]["junction_margin"]  # [m]
 MIN_ARM_ANGLE_DEG = 10.0  # roads meeting at a sharper angle cannot be separated sensibly
 
 
@@ -62,3 +66,34 @@ def junction_trims(arms: list[Arm], margin: float) -> dict[int, float]:
             need[first.edge_id] = max(need[first.edge_id], d1)
             need[second.edge_id] = max(need[second.edge_id], d2)
     return {eid: d + margin for eid, d in need.items()}
+
+
+def oriented_lanes(edge: Edge) -> tuple[int, int, bool]:
+    """(right_lanes, left_lanes, reversed) for the road built from edge.
+
+    Backward-only one-way edges get a reversed reference line so that all
+    lanes sit on the right side.
+    """
+    if edge.lanes_forward == 0:
+        return edge.lanes_backward, 0, True
+    return edge.lanes_forward, edge.lanes_backward, False
+
+
+def node_trims(graph: RoadGraph, node_id: int, margin: float = DEFAULT_MARGIN) -> dict[int, float]:
+    """Per incident edge: how far from the junction node its road stops [m]."""
+    node = graph.nodes[node_id]
+    arms = []
+    for e in graph.incident_edges(node_id):
+        right, left, reverse = oriented_lanes(e)
+        start_node = e.to_node if reverse else e.from_node
+        other = graph.nodes[e.to_node if e.from_node == node_id else e.from_node]
+        heading = math.atan2(other.y - node.y, other.x - node.x)
+        # Leaving the node along +s keeps the lane sides; along -s swaps them.
+        lw, rw = left * e.lane_width, right * e.lane_width
+        if node_id != start_node:
+            lw, rw = rw, lw
+        arms.append(Arm(e.id, heading, lw, rw))
+    try:
+        return junction_trims(arms, margin)
+    except ValueError as err:
+        raise ValueError(f"node {node_id}: {err}") from None

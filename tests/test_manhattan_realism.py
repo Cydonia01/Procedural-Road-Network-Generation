@@ -9,7 +9,8 @@ import pytest
 from cli import main
 from roadgen.generators.manhattan import ManhattanGenerator, ManhattanParams, node_id
 from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder, oriented_lanes
+from roadgen.geometry.junction_space import oriented_lanes
+from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.validate.connectivity import check_traffic_connectivity
 
 

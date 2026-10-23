@@ -13,6 +13,8 @@ generators never touch OpenDRIVE. Plan and reasoning:
 | `design.py` | Design-speed rules: minimum radius, advisory speed, superelevation, spiral and taper lengths |
 | `primitives.py` | `Piece` (line / arc / spiral) and `Alignment` (a chain of pieces) |
 | `clothoid.py` | `g2_hermite`: curvature-continuous transitions with three clothoids |
+| `chains.py` | Chains: runs of edges through two-road nodes that become one road |
+| `alignment.py` | Fitted reference lines of the chains: corners, room, clearance, stations |
 
 ## Design-speed rules (`design.py`)
 
@@ -30,10 +32,13 @@ Parameters are in `defaults.yaml` under `design` (`DesignParams`).
   curve-warning sign, at least 5 km/h.
 - **Superelevation** of a curve (only with `banking: true`): AASHTO
   method 5, `e = e_max·(2q − q²)` with `q = R_min / R`.
-- **Spiral length**: the longest of the lateral-jerk comfort length
-  `v³ / (C·R)` (Shortt, `C = jerk_rate` = 0.6 m/s³), the superelevation
-  runoff `w·e / Δ(v)` (AASHTO maximum relative gradient Δ, 0.80 % at
-  20 km/h down to 0.35 % at 130 km/h) and `spiral_min_length`.
+- **Spiral length** (AASHTO): the longest of the lateral-jerk comfort length
+  `v³ / (C·R)` (`C = jerk_rate` = 1.2 m/s³), the superelevation runoff
+  `w·e / Δ(v)` (maximum relative gradient Δ, 0.80 % at 20 km/h down to
+  0.35 % at 130 km/h) and the length that shifts the curve inward by
+  `spiral_min_shift` (0.2 m), capped at the length for `spiral_max_shift`
+  (1.0 m), with `L = √(24·p·R)` for a shift `p`. About 27 m into an 84 m
+  curve at 50 km/h.
 - **Taper length** for a lane add or drop (MUTCD): `w·S² / 155` below
   70 km/h, `w·S / 1.6` above (S in km/h): 56 m for a 3.5 m lane at 50 km/h.
 
@@ -57,6 +62,51 @@ times the chord long, not cross themselves and stay under an optional
 curvature limit. Otherwise it returns `None` and the caller falls back to
 another curve.
 
+## Chains and fitted roads
+
+`chains.py`: a node with exactly two roads is **mergeable** when the road
+simply continues through it: `Node.kind` is not `"junction"`, the road turns
+by at most `max_merge_deflection_deg` (135°) there, and every travel
+direction on one side exists on the other (a one-way road meeting a two-way
+road stays a junction, so no lane starts or ends mid-road). A **chain** is a
+maximal path of edges through mergeable nodes. A one-way chain runs in its
+travel direction; a two-way chain along its lowest-id edge. Rings of
+mergeable nodes are cut at their lowest node, and a chain may not start and
+end at the same node (esmini confuses the two ends of such a road): its
+middle node then stays a junction, splitting it in two.
+
+`alignment.py`, `network_alignment(graph)`: the **single source of truth for
+road shape**, to be used by the builder, the scene, drape and metrics. Per chain:
+
+1. The polyline through the chain's nodes is trimmed at its junction ends by
+   `junction_trims`. Arms leaving a junction stay straight.
+2. Every inner node with deflection Δ gets a **symmetric corner**: spiral,
+   arc, spiral, or two spirals with a larger radius when they alone turn by Δ.
+   Its design radius is the minimum radius for the design speed (the faster
+   of the two edges) plus the offset to the innermost lane centre, so that
+   lane gets the minimum radius; its spirals follow `spiral_length`.
+3. The corner is **shrunk, keeping its shape**, by a scale λ ≤ 1 (lengths
+   ×λ, curvature ÷λ, so its tangent length scales by λ too):
+   - to a radius cap (`Node.radius_cap` from stage A4, or the caller's),
+   - to `max_corner_offset` if set,
+   - so that the corners on each straight segment fit (both shrunk in
+     proportion when they don't),
+   - so that the curve keeps `road_clearance` (1 m) from every other road it
+     didn't already touch as a straight polyline (bisection on λ).
+4. A corner below its design radius gets the **advisory speed** of its
+   innermost lane radius.
+
+Stations: every graph node maps to a station on its chain road (an inner node
+to its corner's midpoint), and distances along the straight polyline map
+piecewise linearly to stations: `edge_range`, `edge_station`, `node_station`.
+
+On the example cities, about 110–160 corners per network are fitted in about
+0.25 s. A corner of 60–135° (mostly grid corners) rarely has room for its
+design radius: a 90° bend at 50 km/h needs about 114 m of straight road on
+each side. Those get advisory speeds, typically 70 % of the design speed,
+like curve-warning signs at real 90° bends.
+
 ## Junction space (`junction_space.py`)
 
-See [OpenDRIVE builder → Trimming](opendrive.md#trimming-where-roads-stop).
+`node_trims` builds the arms at a node from the graph and calls
+`junction_trims`; see [OpenDRIVE builder → Trimming](opendrive.md#trimming-where-roads-stop).

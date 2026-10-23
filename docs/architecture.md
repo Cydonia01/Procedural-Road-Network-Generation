@@ -163,6 +163,8 @@ roadgen/
     design.py              design-speed rules: radii, advisory speeds, spirals, tapers
     primitives.py          line / arc / spiral pieces (Fresnel), alignments
     clothoid.py            G2 clothoid transitions (pyclothoids)
+    chains.py              runs of edges through road bends: one road each
+    alignment.py           fitted reference lines: corners, room, clearance, stations
   validate/
     connectivity.py        traffic traps / reachability on the RoadGraph
     topology.py            ids and links in the .xodr
