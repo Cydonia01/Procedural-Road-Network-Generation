@@ -165,6 +165,7 @@ roadgen/
     clothoid.py            G2 clothoid transitions (pyclothoids)
     chains.py              runs of edges through road bends: one road each
     alignment.py           fitted reference lines: corners, room, clearance, stations
+    profiles.py            lane widths and tapers, speeds, heights, bridges along a road
   validate/
     connectivity.py        traffic traps / reachability on the RoadGraph
     topology.py            ids and links in the .xodr

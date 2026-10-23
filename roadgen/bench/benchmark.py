@@ -220,8 +220,8 @@ def ensure_network(cfg: BenchConfig, grid: tuple[int, int], seed: int, out: Path
 def lane_capacity(builder: ScenarioBuilder, gap: float) -> int:
     """Upper bound on vehicles that fit with the spawn gap (perfect packing)."""
     total = 0
-    for sl in builder.slots:
-        usable = sl.length - 2 * END_MARGIN
+    for sl in builder.spawn_slots():
+        usable = sl.span - 2 * END_MARGIN
         if usable > 0:
             total += int(usable // gap) + 1 if gap > 0 else 10**9
     return total

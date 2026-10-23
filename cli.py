@@ -15,7 +15,7 @@ from typing import Iterator, Optional, Sequence
 
 import yaml
 
-from roadgen.config import load_config, merge, section
+from roadgen.config import DEFAULTS, load_config, merge, section
 from roadgen.generators.base import (
     generator_names,
     get_generator,
@@ -23,6 +23,7 @@ from roadgen.generators.base import (
     presets_of,
 )
 from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS
+from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
 from roadgen.graph.plot import plot_graph
@@ -67,11 +68,13 @@ def check_traffic(graph: RoadGraph, allow_traps: bool) -> list[str]:
 
 
 def build_and_validate(
-    graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str]
+    graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str],
+    cfg: Optional[dict] = None,
 ) -> list[str]:
     """Build and write the .xodr, then run every file validator; return all errors."""
     builder = OpenDriveBuilder(
-        name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin
+        name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
+        design=DesignParams(**section(cfg or DEFAULTS, "design")),
     )
     with timed("build xodr"):
         try:
@@ -84,7 +87,7 @@ def build_and_validate(
     log.info(
         "wrote %s (%d roads, %d junctions, %d connecting roads) and %s",
         xodr_path,
-        len(builder.edge_to_road),
+        len(set(builder.edge_to_road.values())),
         len(builder.node_to_junction),
         len(builder.movements),
         sidecar,
@@ -101,7 +104,7 @@ def build_and_validate(
 def cmd_build_xodr(args: argparse.Namespace) -> int:
     graph = load_json(args.input)
     check_traffic(graph, allow_traps=True)  # informational for hand-made graphs
-    errors = build_and_validate(graph, Path(args.output), args.junction_margin, args.xsd)
+    errors = build_and_validate(graph, Path(args.output), args.junction_margin, args.xsd, args.cfg)
     return 1 if errors else 0
 
 
@@ -292,7 +295,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     with timed("plot"):
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
-    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd)
+    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg)
     scenegraph = None
     if args.ground:
         if "elevation" not in layers:

@@ -13,7 +13,13 @@ python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120
 ### Spawning
 
 - Vehicles spawn on **driving lanes of normal roads** (never inside
-  junctions), at least 5 m from road ends.
+  junctions), at least 5 m from road ends, and only on stretches where the
+  lane has full, constant width and runs on to the road's end in its travel
+  direction: never in a lane taper or in a lane that is dropped further on.
+  With `explicit_routes`, only on lanes that run the whole road and have a
+  way on, since routes are planned over those (esmini's default controller
+  never changes lanes, and its route planner reports errors for lanes that
+  are missing in some lane section).
 - The lane is chosen at random, **weighted by usable lane length**, and the
   position is uniform along it.
 - Each vehicle keeps at least `--min-gap` metres (default 10) to any other

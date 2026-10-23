@@ -9,36 +9,56 @@ python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
 python -m cli view out/single_4way.xodr --density 2
 ```
 
-`OpenDriveBuilder(name, junction_margin=2.0)`:
+`OpenDriveBuilder(name, junction_margin=2.0, design=DesignParams())`:
 - `build(graph)` validates the graph and builds the network in memory.
 - `write(path)` writes the `.xodr` and the `.roadmap.json` sidecar.
-- After `build()`, `edge_to_road`, `node_to_junction` and `movements` are
-  available.
+- After `build()`, `alignment` (the fitted
+  [`NetworkAlignment`](geometry.md#chains-and-fitted-roads)), `edge_to_road`,
+  `edge_s_range`, `node_to_junction` and `movements` are available.
 
 ## Network structure
 
-- **Every edge → one normal road** with a single straight `<line>`, placed at
-  absolute (x, y, hdg). scenariogeneration's automatic geometry adjustment is
-  bypassed.
+The road shape comes from the neutral [geometry package](geometry.md); the
+builder only turns it into XML.
+
+- **Chains → roads.** A node with exactly two roads that the road simply
+  continues through (a bend or a lane-count change) is not a junction: the
+  edges on both sides are merged into one **chain**, and every chain becomes
+  one normal road (see [chains](geometry.md#chains-and-fitted-roads) for the
+  exact rule; `Node.kind = "junction"` keeps a node a junction).
+- **Plan view:** the chain's fitted `<line>`, `<spiral>` and `<arc>`
+  geometries, placed at absolute (x, y, hdg). Every bend is a symmetric
+  spiral–arc–spiral corner sized for the design speed, or shrunk to fit with
+  an advisory speed (see [corner fitting](geometry.md#chains-and-fitted-roads)).
+  Curvature is continuous along the whole road. scenariogeneration's
+  automatic geometry adjustment is bypassed.
 - **Nodes of degree 1** are dead ends. The road simply ends there.
-- **Nodes of degree ≥ 2 → a junction.** Roads are **trimmed back** to the
-  junction boundary, and the junction interior is covered only by
-  **connecting roads**. A degree-2 node (a bend or a lane-count change) is a
-  two-arm junction in which every lane continues.
+- **Chain ends with two or more roads → a junction.** Roads are **trimmed
+  back** to the junction boundary, and the junction interior is covered only
+  by **connecting roads**. Chain ends stay straight, so junction geometry is
+  as before. Two-road nodes that can't be merged (turning more than 135°, a
+  one-way meeting a two-way road, `kind = "junction"`, or the middle of a road
+  that would otherwise start and end at the same junction) stay two-arm
+  junctions in which every lane continues.
+- **Speeds:** `<type>` records with each edge's speed limit, lowered to a
+  corner's **advisory speed** from a deceleration lead before the corner
+  (at 1.5 m/s²) to its end. Speeds use the innermost lane's radius.
 - The header date is fixed (`1970-01-01T00:00:00`) for reproducible output.
-  Road type is `town` with the edge's speed limit.
+  Road type is `town`.
 - **Heights** are only written if the graph has any (`RoadGraph.has_elevation`,
-  set by [drape](maps.md#heights-from-the-maps-to-esmini)); a flat graph gives
-  exactly the same file as before. Each road's `<elevationProfile>` is a
-  monotone cubic Hermite fit (PCHIP) to its edge's heights, flat at both
-  ends at the node's height (`opendrive/elevation.py`). Connecting roads lie
-  flat at their junction node's height, so all roads of a junction meet at
-  the same height and grade. `Edge.bridges` become `<objects><bridge
-  type="concrete">` records on the road.
+  set by [drape](maps.md#heights-from-the-maps-to-esmini)). Each road's
+  `<elevationProfile>` is a monotone cubic Hermite fit (PCHIP) through all
+  height samples of its chain, placed by station; bend nodes are ordinary
+  knots, and the road is flat at both ends at its end nodes' heights
+  (`opendrive/elevation.py`). Connecting roads lie flat at their junction
+  node's height, so all roads of a junction meet at the same height and
+  grade. `Edge.bridges` become `<objects><bridge type="concrete">` records;
+  spans that touch across a bend node are merged.
 
 ### Id scheme
 
-1. Edge roads get ids `1..E` in edge-id order.
+1. Chain roads get ids `1..C` in chain order (by each chain's smallest edge
+   id).
 2. Then, per junction node in node-id order, the junction gets the next id and
    its connecting roads the ids right after it.
 
@@ -49,10 +69,19 @@ All road and junction ids are therefore unique across the file.
 Right-hand traffic. Right lanes (negative ids) carry traffic along the
 reference line, and left lanes (positive ids) carry traffic against it.
 
-- **Two-way edge:** `lanes_forward` on the right, `lanes_backward` on the left.
-- **One-way edge:** all lanes on the right. A backward-only edge gets a
-  **reversed reference line** (`oriented_lanes`), so its lanes become forward
-  lanes.
+- **Two-way chain:** the reference line runs along the chain's lowest-id
+  edge, so a single-edge road keeps its edge's direction. Each edge's lanes
+  along the chain go right, the others left.
+- **One-way chain:** all lanes on the right; the reference line runs in the
+  travel direction, so a backward-only edge gets a reversed reference line.
+- **Lane sections** (`make_lane_sections`, from
+  [`geometry/profiles.py`](geometry.md#along-road-profiles)): a new section
+  wherever the lane count or width changes along a chain. A dropped lane
+  narrows to 0 before the node, an added lane widens from 0 after it, and a
+  width change blends after it, each as a cubic smoothstep over the MUTCD
+  taper length (56 m for a 3.5 m lane at 50 km/h), at most half the edge.
+  Lanes are linked by position across section boundaries; a lane that
+  narrows to 0 or widens from 0 at a boundary has no link there.
 - **Road marks:** solid center line, broken lines (3 m dash, 9 m gap) between
   lanes, and a solid line on the outermost edge.
 
@@ -142,11 +171,23 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
       "from_edge": 1, "from_road": 1, "from_lane": -1,
       "to_edge": 2, "to_road": 2, "to_lane": -1
     }
-  ]
+  ],
+  "geometry_version": 2,
+  "edge_s_range": {"1": [1, 0.0, 74.5]},
+  "corners": []
 }
 ```
 
-`turn_angle` is the heading change in radians (counter-clockwise positive,
-in (−π, π]).
+- `edge_to_road` maps every edge to its chain road, so several edges can map
+  to one road; `edge_s_range` gives each edge's station range `[road, s0,
+  s1]` on it.
+- `corners` lists every fitted bend: `road`, `node`, `s_start`, `s_end`,
+  reference `radius`, innermost `lane_radius`, `design_speed`, `max_speed`
+  and `advisory_speed` (null when the corner has the design radius), all in
+  m and m/s.
+- `geometry_version` is 2 for chain roads (1, implicit, was one straight road
+  per edge).
+- `turn_angle` is the heading change in radians (counter-clockwise positive,
+  in (−π, π]).
 
 After writing, the CLI always runs the [validators](validation.md) on the file.

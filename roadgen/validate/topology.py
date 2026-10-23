@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from lxml import etree
 
@@ -58,7 +58,7 @@ def check_topology_tree(tree: etree._ElementTree) -> list[str]:
             incoming, connecting = roads[c.get("incomingRoad")], roads[c.get("connectingRoad")]
             if connecting.get("junction") != jid:
                 errors.append(f"{cid}: connecting road {connecting.get('id')} is not in this junction")
-            incoming_end = _contact_toward(incoming, jid)
+            incoming_end = _contact_toward(incoming, jid, connecting, c.get("contactPoint", "start"))
             if not incoming_end:
                 errors.append(f"{cid}: incoming road {incoming.get('id')} does not link to junction {jid}")
             for ll in c.findall("laneLink"):
@@ -79,13 +79,23 @@ def _lane_ids(road: etree._Element, contact: str) -> set[int]:
     return {int(l.get("id")) for l in section.iter("lane") if l.get("id") != "0"}
 
 
-def _contact_toward(road: etree._Element, junction_id: str) -> str:
-    """Which end of road touches the junction ('start'/'end'), or '' if unknown."""
-    for tag, contact in (("predecessor", "start"), ("successor", "end")):
-        link = road.find(f"link/{tag}")
-        if link is not None and link.get("elementType") == "junction" and link.get("elementId") == junction_id:
-            return contact
-    return ""
+def _contact_toward(road: etree._Element, junction_id: str,
+                    connecting: Optional[etree._Element] = None, connecting_contact: str = "start") -> str:
+    """Which end of road touches the junction ('start'/'end'), or '' if unknown.
+
+    A road whose both ends join the same junction (a loop) is disambiguated by
+    the connecting road's link back to it at connecting_contact, which names
+    the incoming road's contactPoint.
+    """
+    ends = [contact for tag, contact in (("predecessor", "start"), ("successor", "end"))
+            if (link := road.find(f"link/{tag}")) is not None
+            and link.get("elementType") == "junction" and link.get("elementId") == junction_id]
+    if len(ends) > 1 and connecting is not None:
+        tag = "predecessor" if connecting_contact == "start" else "successor"
+        back = connecting.find(f"link/{tag}")
+        if back is not None and back.get("elementId") == road.get("id") and back.get("contactPoint") in ends:
+            return back.get("contactPoint")
+    return ends[0] if ends else ""
 
 
 def _check_lane_links(road: etree._Element, link: etree._Element, other: etree._Element) -> list[str]:

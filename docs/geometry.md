@@ -15,6 +15,7 @@ generators never touch OpenDRIVE. Plan and reasoning:
 | `clothoid.py` | `g2_hermite`: curvature-continuous transitions with three clothoids |
 | `chains.py` | Chains: runs of edges through two-road nodes that become one road |
 | `alignment.py` | Fitted reference lines of the chains: corners, room, clearance, stations |
+| `profiles.py` | Along-road profiles of a chain road: lane widths and tapers, speeds, heights, bridges |
 
 ## Design-speed rules (`design.py`)
 
@@ -76,7 +77,8 @@ end at the same node (esmini confuses the two ends of such a road): its
 middle node then stays a junction, splitting it in two.
 
 `alignment.py`, `network_alignment(graph)`: the **single source of truth for
-road shape**, to be used by the builder, the scene, drape and metrics. Per chain:
+road shape**, used by the builder (and, from stage A4, the scene, drape and
+metrics). Per chain:
 
 1. The polyline through the chain's nodes is trimmed at its junction ends by
    `junction_trims`. Arms leaving a junction stay straight.
@@ -105,6 +107,21 @@ On the example cities, about 110–160 corners per network are fitted in about
 design radius: a 90° bend at 50 km/h needs about 114 m of straight road on
 each side. Those get advisory speeds, typically 70 % of the design speed,
 like curve-warning signs at real 90° bends.
+
+## Along-road profiles
+
+`profiles.py`, all in stations of a chain road:
+
+- `lane_layout`: each lane position's width pieces along the road. Lane-count
+  changes taper the outermost lanes (narrowing to 0 before the node, widening
+  from 0 after it) and lane-width changes blend after the node, all as cubic
+  smoothsteps over the MUTCD taper length, at most half the edge.
+  `LaneLayout.sections()` gives the lane sections, `half_widths(s)` the road
+  width at a station.
+- `speed_profile`: edge limits, lowered to each corner's advisory speed from
+  a deceleration lead (1.5 m/s²) before the corner to its end.
+- `height_samples`, `bridge_spans`: the edges' heights and bridges placed by
+  station.
 
 ## Junction space (`junction_space.py`)
 

@@ -9,7 +9,6 @@ import pytest
 from cli import main
 from roadgen.generators.manhattan import ManhattanGenerator, ManhattanParams, node_id
 from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.geometry.junction_space import oriented_lanes
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.validate.connectivity import check_traffic_connectivity
 
@@ -226,9 +225,9 @@ def test_every_incoming_lane_has_a_movement(boundary):
     stranded = []
     for node, junction in b.node_to_junction.items():
         incident = g.incident_edges(node)
-        outgoing = [e for e in incident if _lanes_leaving(e, node)]
+        outgoing = [e for e in incident if _lanes_leaving(b, e, node)]
         for e in incident:
-            lanes = _lanes_arriving(e, node)
+            lanes = _lanes_arriving(b, e, node)
             has_exit = any(o.id != e.id for o in outgoing)
             if lanes and has_exit:
                 missing = set(lanes) - exits[(junction, e.id)]
@@ -236,16 +235,23 @@ def test_every_incoming_lane_has_a_movement(boundary):
     assert stranded == []
 
 
-def _lanes_arriving(e: Edge, node: int) -> list[int]:
-    right, left, reverse = oriented_lanes(e)
-    end_node = e.from_node if reverse else e.to_node
-    return [-i for i in range(1, right + 1)] if node == end_node else list(range(1, left + 1))
+def _road_lanes(b: OpenDriveBuilder, e: Edge, node: int) -> tuple[list[int], list[int], bool]:
+    """(right lane ids, left lane ids, node is where the road's reference line ends)."""
+    chain = b.alignment.of_edge(e.id).chain
+    k = chain.edge_ids.index(e.id)
+    right, left = chain.edges[k].lanes(e)
+    at_end = node == chain.nodes[k + 1]
+    return [-i for i in range(1, right + 1)], list(range(1, left + 1)), at_end
 
 
-def _lanes_leaving(e: Edge, node: int) -> list[int]:
-    right, left, reverse = oriented_lanes(e)
-    start_node = e.to_node if reverse else e.from_node
-    return [-i for i in range(1, right + 1)] if node == start_node else list(range(1, left + 1))
+def _lanes_arriving(b: OpenDriveBuilder, e: Edge, node: int) -> list[int]:
+    right, left, at_end = _road_lanes(b, e, node)
+    return right if at_end else left
+
+
+def _lanes_leaving(b: OpenDriveBuilder, e: Edge, node: int) -> list[int]:
+    right, left, at_end = _road_lanes(b, e, node)
+    return left if at_end else right
 
 
 # --- CLI ------------------------------------------------------------------------------

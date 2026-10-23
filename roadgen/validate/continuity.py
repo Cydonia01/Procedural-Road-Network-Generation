@@ -3,8 +3,9 @@
 For every lane with a predecessor/successor lane link to another road, the
 lane-center position, travel heading, height and grade (from
 <elevationProfile>; 0 without one) must agree at the contact point.
-The .xodr is evaluated independently of the builder (line, arc and
-paramPoly3 geometries, laneOffset and polynomial lane widths).
+The .xodr is evaluated independently of the builder (line, arc, spiral and
+paramPoly3 geometries, laneOffset and polynomial lane widths); spirals use
+the shared clothoid maths of roadgen.geometry.primitives.
 """
 
 from __future__ import annotations
@@ -16,6 +17,9 @@ from pathlib import Path
 from typing import Optional, Union
 
 from lxml import etree
+
+from roadgen.geometry.planar import Pose
+from roadgen.geometry.primitives import Piece
 
 POS_TOL = 0.01  # m
 HDG_TOL = 0.01  # rad
@@ -78,6 +82,11 @@ class RoadEval:
                 return x0 + ds * math.cos(h0), y0 + ds * math.sin(h0), h0
             h = h0 + k * ds
             return x0 + (math.sin(h) - math.sin(h0)) / k, y0 - (math.cos(h) - math.cos(h0)) / k, h
+        if child.tag == "spiral":
+            piece = Piece(Pose(x0, y0, h0), float(g.get("length")),
+                          float(child.get("curvStart")), float(child.get("curvEnd")))
+            x, y = piece.xy(min(max(ds, 0.0), piece.length))
+            return float(x), float(y), float(piece.heading(ds))
         if child.tag == "paramPoly3":
             length = float(g.get("length"))
             p = ds / length if child.get("pRange", "normalized") == "normalized" else ds

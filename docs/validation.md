@@ -48,13 +48,16 @@ Structural integrity of the `.xodr`:
 - road-to-road lane links name lanes that exist at the linked contact end;
 - junction connections reference existing incoming and connecting roads, the
   connecting road belongs to that junction, the incoming road actually links
-  to the junction, and every `laneLink` from/to lane exists.
+  to the junction, and every `laneLink` from/to lane exists (at the incoming
+  road's end that the connecting road links to, if both ends of the incoming
+  road join that junction).
 
 ## Continuity
 
 Lane-level geometric continuity, evaluated **independently of the builder**.
-The check parses the XML and evaluates `line`, `arc` and `paramPoly3`
-geometry, `laneOffset` and polynomial lane widths itself.
+The check parses the XML and evaluates `line`, `arc`, `spiral` and
+`paramPoly3` geometry, `laneOffset` and polynomial lane widths itself
+(spirals with the clothoid maths of `roadgen/geometry/primitives.py`).
 
 For every lane with a predecessor or successor link to another road, the lane
 center must match at the contact point within **1 cm in position** and
