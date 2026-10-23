@@ -16,7 +16,12 @@ from typing import Iterator, Optional, Sequence
 import yaml
 
 from roadgen.config import load_config, merge, section
-from roadgen.generators.base import generator_names, get_generator, load_params, presets_of
+from roadgen.generators.base import (
+    generator_names,
+    get_generator,
+    load_params,
+    presets_of,
+)
 from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
@@ -513,6 +518,47 @@ def cmd_drive_check(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def cmd_metrics(args: argparse.Namespace) -> int:
+    """Geometry metrics of .xodr files and/or a build-failure sweep; optional JSON report."""
+    import json
+
+    from roadgen.metrics.geometry import (
+        GeometryMetricsParams,
+        geometry_metrics,
+        summary_lines,
+    )
+    from roadgen.metrics.sweep import build_sweep
+
+    if not args.inputs and not args.sweep:
+        raise SystemExit("error: metrics needs .xodr files and/or --sweep N")
+    params = GeometryMetricsParams(**section(args.cfg, "metrics"))
+    report: dict = {"networks": []}
+    for path in args.inputs:
+        with timed(f"metrics {path}"):
+            m = geometry_metrics(path, params)
+        for line in summary_lines(m):
+            log.info("%s", line)
+        report["networks"].append(m)
+    if args.sweep:
+        seeds = range(args.first_seed, args.first_seed + args.sweep)
+        with timed("build sweep"):
+            results = build_sweep(args.generator, args.preset, seeds, args.cfg)
+        failed = [r for r in results if not r.ok]
+        log.info("build sweep (%s, preset %s): %d of %d networks failed to build",
+                 args.generator, args.preset, len(failed), len(results))
+        report["sweep"] = {
+            "generator": args.generator, "preset": args.preset, "seeds": list(seeds),
+            "failed": len(failed),
+            "results": [dataclasses.asdict(r) for r in results],
+        }
+    if args.json:
+        out = Path(args.json)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2) + "\n")
+        log.info("wrote %s", out)
+    return 0
+
+
 def cmd_scenario(args: argparse.Namespace) -> int:
     from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
 
@@ -807,6 +853,19 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     )
     p.add_argument("input", help=".xodr file written by build-xodr (needs its .roadmap.json)")
     p.set_defaults(func=cmd_drive_check)
+
+    p = sub.add_parser("metrics", help="geometry metrics of .xodr files (curvature, lateral "
+                                       "acceleration, two-road junctions) and a build-failure sweep")
+    p.add_argument("inputs", nargs="*", help=".xodr files to measure")
+    p.add_argument("--json", metavar="OUT", help="write the full report as JSON")
+    p.add_argument("--sweep", type=int, metavar="N",
+                   help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
+                        "and count how many the builder rejects")
+    p.add_argument("--first-seed", type=int, default=0, help="first sweep seed (default %(default)s)")
+    p.add_argument("--generator", default="lsystem", choices=generator_names(),
+                   help="sweep generator (default %(default)s)")
+    p.add_argument("--preset", default="city", help="sweep generator preset (default %(default)s)")
+    p.set_defaults(func=cmd_metrics)
 
     return parser
 

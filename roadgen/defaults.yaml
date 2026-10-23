@@ -154,6 +154,11 @@ ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]
 
+metrics:  # `metrics` command: geometry quality of an .xodr (roadgen/metrics/geometry.py)
+  sample_step: 0.5          # spacing of curvature samples along a road [m]
+  comfort_lat_acc: 3.0      # comfortable lateral acceleration [m/s^2]
+  curvature_jump_tol: 0.002 # curvature jumps above this are counted [1/m]
+
 scenario:
   sim_duration: 60.0        # simulated time [s]
   spawn_mode: random_lanes  # random_lanes | explicit_routes

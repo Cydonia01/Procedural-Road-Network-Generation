@@ -95,3 +95,31 @@ For every movement in the `.roadmap.json`:
 
 Failures are logged with the route esmini actually took. Selector angles were
 calibrated empirically against esmini 3.9.
+
+## Geometry metrics
+
+```bash
+python -m cli metrics out/net.xodr --json out/net_metrics.json
+python -m cli metrics --sweep 200            # lsystem city + maps, seeds 0..199
+```
+
+Not a pass/fail check but a measurement of how realistic the geometry is
+(`metrics/geometry.py`), used to track the stage A work in
+`plans/2026-10-23-stage-a-geometry-implementation.md`. It reads only the
+`.xodr`, so any network is measured the same way.
+
+- **Lateral acceleration** `v² |κ|` per road at its posted `<type><speed>`,
+  with `κ` the peak lane-centre curvature (reference curvature `κ` turned
+  into `κ / (1 − κ t)` at each driving lane's offset `t`, sampled every
+  `sample_step`). Reported as percentiles and the share over
+  `comfort_lat_acc` (3 m/s²), separately for normal roads, connecting roads
+  of junctions that join only two roads (`bend`: bends and lane-count
+  changes) and connecting roads of real junctions (`turn`).
+- **Two-road junctions:** junctions linked to exactly two normal roads.
+- **Curvature jumps** in the travel direction across every lane link between
+  roads (`links`) and across geometry boundaries inside a road (`joins`),
+  counted above `curvature_jump_tol`. Roads that meet with only matching
+  position and heading (G1) show up here.
+- **Build-failure sweep** (`--sweep N`): generates N networks as
+  `pipeline --maps` would and runs the builder on each, reporting the ones
+  it rejects (typically an edge shorter than the junction trims at its ends).

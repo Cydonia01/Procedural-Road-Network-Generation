@@ -53,6 +53,7 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 | [`plot-graph`](#plot-graph) | RoadGraph JSON → image |
 | [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
 | [`drive-check`](#drive-check) | Drive every junction movement with esmini's RoadManager |
+| [`metrics`](#metrics) | Geometry metrics of `.xodr` files and a build-failure sweep |
 | [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
 | [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
 | [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize |
@@ -204,6 +205,22 @@ graphs often have dead ends.
 ```bash
 python -m cli drive-check NETWORK.xodr      # needs NETWORK.roadmap.json
 ```
+
+## metrics
+
+```bash
+python -m cli metrics A.xodr [B.xodr ...] [--json OUT.json]
+python -m cli metrics --sweep 20 [--first-seed 0] [--generator lsystem] [--preset city]
+```
+
+Measures how drivable and smooth a network is, from the `.xodr` alone (see
+[Validation → Geometry metrics](validation.md#geometry-metrics)): lateral
+acceleration at the posted speed per road group, the share of junctions
+joining only two roads, and curvature jumps at road links and geometry
+joins. `--sweep N` also generates N networks (seeds `--first-seed` … , maps
+as `pipeline --maps`) and counts how many the OpenDRIVE builder rejects.
+The report is informational: the command succeeds whatever the numbers are.
+Thresholds are in `defaults.yaml` under `metrics`.
 
 ## view
 

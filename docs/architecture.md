@@ -163,6 +163,9 @@ roadgen/
     topology.py            ids and links in the .xodr
     continuity.py          lane-center position/heading/height/grade continuity in the .xodr
     schema.py              XSD validation (optional)
+  metrics/
+    geometry.py            curvature, lateral acceleration, two-road junctions, curvature jumps of an .xodr
+    sweep.py               build-failure sweep over generator seeds
   scenario/
     xosc_builder.py        vehicle spawning, routes, .xosc writing
   sim/

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Optional, Union
 
@@ -51,10 +52,21 @@ class RoadEval:
     def length(self) -> float:
         return float(self.road.get("length"))
 
+    @cached_property
+    def geometries(self) -> list[etree._Element]:
+        return self.road.findall("planView/geometry")
+
+    @cached_property
+    def sections(self) -> list[etree._Element]:
+        return self.road.findall("lanes/laneSection")
+
+    @cached_property
+    def offsets(self) -> list[etree._Element]:
+        return self.road.findall("lanes/laneOffset")
+
     def reference(self, s: float) -> tuple[float, float, float]:
         """(x, y, hdg) of the reference line at s."""
-        geoms = self.road.findall("planView/geometry")
-        g = _piecewise(geoms, s, "s")
+        g = _piecewise(self.geometries, s, "s")
         x0, y0, h0 = float(g.get("x")), float(g.get("y")), float(g.get("hdg"))
         ds = s - float(g.get("s"))
         child = g[0]
@@ -78,6 +90,42 @@ class RoadEval:
             c, sn = math.cos(h0), math.sin(h0)
             return x0 + pu * c - pv * sn, y0 + pu * sn + pv * c, h0 + math.atan2(dv, du)
         raise NotImplementedError(f"road {self.id}: geometry <{child.tag}> not supported")
+
+    def curvature(self, s: float, geometry: Optional[etree._Element] = None) -> float:
+        """Signed curvature [1/m] of the reference line at s (positive = turning left).
+
+        geometry: evaluate this <geometry> element instead of the one covering s,
+        e.g. the previous one at its end, to see both sides of a geometry boundary.
+        """
+        g = geometry if geometry is not None else _piecewise(self.geometries, s, "s")
+        ds = s - float(g.get("s"))
+        child = g[0]
+        if child.tag == "line":
+            return 0.0
+        if child.tag == "arc":
+            return float(child.get("curvature"))
+        if child.tag == "spiral":
+            k0, k1 = float(child.get("curvStart")), float(child.get("curvEnd"))
+            return k0 + (k1 - k0) * ds / float(g.get("length"))
+        if child.tag == "paramPoly3":
+            length = float(g.get("length"))
+            p = ds / length if child.get("pRange", "normalized") == "normalized" else ds
+            u = [float(child.get(f"{c}U")) for c in "abcd"]
+            v = [float(child.get(f"{c}V")) for c in "abcd"]
+            du, dv = u[1] + 2 * u[2] * p + 3 * u[3] * p * p, v[1] + 2 * v[2] * p + 3 * v[3] * p * p
+            ddu, ddv = 2 * u[2] + 6 * u[3] * p, 2 * v[2] + 6 * v[3] * p
+            return (du * ddv - dv * ddu) / math.hypot(du, dv) ** 3
+        raise NotImplementedError(f"road {self.id}: geometry <{child.tag}> not supported")
+
+    def lane_curvature(self, lane_id: int, s: float, geometry: Optional[etree._Element] = None) -> float:
+        """Signed curvature [1/m] of a lane centre in its RHT travel direction.
+
+        The lane centre is the reference line offset by t: kappa / (1 - kappa t).
+        Width changes along s (tapers) are ignored.
+        """
+        k = self.curvature(s, geometry)
+        k_lane = k / (1.0 - k * self._lane_t(lane_id, s))
+        return k_lane if lane_id < 0 else -k_lane
 
     def elevation(self, s: float) -> tuple[float, float]:
         """(height [m], dz/ds) of the reference line at s."""
@@ -105,12 +153,10 @@ class RoadEval:
         return hdg if lane_id < 0 else hdg + math.pi
 
     def _section(self, s: float) -> etree._Element:
-        sections = self.road.findall("lanes/laneSection")
-        return _piecewise(sections, s, "s")
+        return _piecewise(self.sections, s, "s")
 
     def _lane_t(self, lane_id: int, s: float) -> float:
-        offsets = self.road.findall("lanes/laneOffset")
-        rec = _piecewise(offsets, s, "s")
+        rec = _piecewise(self.offsets, s, "s")
         t = _poly(rec, s - float(rec.get("s"))) if rec is not None else 0.0
         section = self._section(s)
         ds_section = s - float(section.get("s"))

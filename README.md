@@ -109,6 +109,7 @@ python -m cli map elevation fbm --preset hilly
 # Individual stages
 python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
 python -m cli drive-check out/single_4way.xodr
+python -m cli metrics out/single_4way.xodr          # curvature, lateral acceleration, two-road junctions
 python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 -o out/grid10x10.xosc
 python -m cli simulate out/grid10x10.xosc            # headless: timing, errors, .dat/.csv/.log
 python -m cli simulate out/grid10x10.xosc --gui      # watch it
@@ -170,6 +171,7 @@ roadgen/
   maps/         input maps: terrain, elevation, population (registry, noise, image loaders)
   opendrive/    RoadGraph -> OpenDRIVE builder (lanes, junctions, geometry)
   validate/     connectivity / topology / continuity / schema checks
+  metrics/      geometry metrics of an .xodr, build-failure sweep
   scenario/     OpenSCENARIO builder
   sim/          esmini runner and RoadManager drive-check
   scene/        3D buildings and ground (.osgt)
