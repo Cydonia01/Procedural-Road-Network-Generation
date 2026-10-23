@@ -34,11 +34,15 @@ from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, 
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.connectivity import check_traffic_connectivity
-from roadgen.validate.continuity import check_continuity
+from roadgen.validate.continuity import check_continuity, check_curvature
+from roadgen.validate.dynamics import check_dynamics
 from roadgen.validate.schema import validate_schema
 from roadgen.validate.topology import check_topology
 
 log = logging.getLogger("roadgen.cli")
+
+MAX_LISTED_WARNINGS = 5
+DYNAMICS_CHECKS_JUNCTIONS = False  # connecting roads keep the roads' speed limits until A7
 
 
 def cmd_plot_graph(args: argparse.Namespace) -> int:
@@ -96,7 +100,15 @@ def build_and_validate(
     with timed("validate"):
         errors = check_topology(xodr_path)
         errors += check_continuity(xodr_path)
+        curvature_errors, curvature_warnings = check_curvature(xodr_path)
+        errors += curvature_errors
+        a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
+        errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
         errors += validate_schema(xodr_path, xsd) or []
+    for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
+        log.warning("%s", warning)
+    if len(curvature_warnings) > MAX_LISTED_WARNINGS:
+        log.warning("... %d curvature warnings in all (paramPoly3 junction turns)", len(curvature_warnings))
     for err in errors:
         log.error("%s", err)
     return errors
@@ -532,10 +544,11 @@ def cmd_view(args: argparse.Namespace) -> int:
 
 
 def cmd_drive_check(args: argparse.Namespace) -> int:
-    from roadgen.sim.drive_check import drive_movements
+    from roadgen.sim.drive_check import drive_lanes, drive_movements
 
     try:
         results = drive_movements(args.input)
+        lanes = drive_lanes(args.input)
     except FileNotFoundError as e:
         log.error("%s", e)
         return 1
@@ -543,7 +556,12 @@ def cmd_drive_check(args: argparse.Namespace) -> int:
     for r in results:
         (log.error if not r.ok else log.debug)("%s", r.describe())
     log.info("%d/%d movements drove through correctly", len(results) - len(failed), len(results))
-    return 1 if failed else 0
+    bad_lanes = [r for r in lanes if not r.ok]
+    for r in lanes:
+        (log.error if not r.ok else log.debug)("%s", r.describe())
+    log.info("%d/%d road lanes drove end to end on the expected centre line",
+             len(lanes) - len(bad_lanes), len(lanes))
+    return 1 if failed or bad_lanes else 0
 
 
 def cmd_metrics(args: argparse.Namespace) -> int:

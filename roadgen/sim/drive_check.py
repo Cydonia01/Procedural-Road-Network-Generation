@@ -141,3 +141,82 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: flo
                 entry_lane = data.laneId
         prev = (data.x, data.y)
     return DriveResult(m, route, entry_lane, max_jump, min_rc)
+
+
+LANE_STEP = 1.0  # [m] per move when driving a road's lanes
+POS_TOL = 0.05  # [m] esmini's lane centre vs our own evaluation of the .xodr
+
+
+@dataclass
+class LaneDriveResult:
+    road: int
+    lane: int
+    length: float
+    max_deviation: float  # [m] between esmini's and our lane-centre position (x, y, z)
+    left_lane: bool  # esmini changed lane or road before the end
+    min_return_code: int
+
+    @property
+    def ok(self) -> bool:
+        return self.max_deviation < POS_TOL and not self.left_lane and self.min_return_code >= 0
+
+    def describe(self) -> str:
+        return (f"road {self.road} lane {self.lane} ({self.length:.1f} m): max deviation "
+                f"{self.max_deviation:.4f} m, left lane {self.left_lane}, min rc {self.min_return_code}")
+
+
+def drive_lanes(xodr_path: PathLike, lib_path: Optional[PathLike] = None) -> list[LaneDriveResult]:
+    """Drive every lane that runs a whole normal road, from end to end.
+
+    Checks that esmini keeps to the lane through all lane sections (tapers
+    and curves included) and that its position agrees with the .xodr as
+    evaluated by roadgen.validate.continuity (line, arc, spiral geometry,
+    lane offsets and widths, elevation and superelevation).
+    """
+    from roadgen.validate.continuity import RoadEval
+
+    xodr_path = Path(xodr_path)
+    roads = [RoadEval(r) for r in etree.parse(str(xodr_path)).getroot().findall("road")
+             if r.get("junction", "-1") == "-1"]
+    lib = _load_rm(lib_path)
+    if lib.RM_Init(str(xodr_path).encode()) != 0:
+        raise RuntimeError(f"esmini RoadManager failed to load {xodr_path}")
+    try:
+        return [_drive_lane(lib, road, lane) for road in roads for lane in _whole_lanes(road)]
+    finally:
+        lib.RM_Close()
+
+
+def _whole_lanes(road) -> list[int]:
+    """Driving lanes present in every lane section of the road."""
+    sets = [{int(lane.get("id")) for lane in sec.iterfind("*/lane")
+             if lane.get("id") != "0" and lane.get("type") == "driving"} for sec in road.sections]
+    return sorted(set.intersection(*sets)) if sets else []
+
+
+def _drive_lane(lib: ctypes.CDLL, road, lane: int) -> LaneDriveResult:
+    rid = int(road.id)
+    margin = min(1.0, road.length / 4)
+    forward = lane < 0  # right lanes travel along +s
+    s0 = margin if forward else road.length - margin
+    handle = lib.RM_CreatePosition()
+    lib.RM_SetLanePosition(handle, rid, lane, 0.0, s0, True)
+    data = _PositionData()
+    max_dev, left, min_rc = 0.0, False, 0
+    # esmini moves along the lane centre, which is shorter or longer than the
+    # reference line on curves: stop by s, a step before the road's end.
+    for k in range(4 * math.ceil(road.length / LANE_STEP) + 4):
+        if k:
+            rc = lib.RM_PositionMoveForward(handle, LANE_STEP, 0.0)
+            min_rc = min(min_rc, rc)
+        lib.RM_GetPositionData(handle, ctypes.byref(data))
+        if data.roadId != rid or data.laneId != lane:
+            left = True
+            break
+        x, y = road.lane_center(lane, data.s)
+        z = road.lane_height(lane, data.s)
+        max_dev = max(max_dev, math.hypot(data.x - x, data.y - y), abs(data.z - z))
+        remaining = road.length - data.s if forward else data.s
+        if remaining < 2 * LANE_STEP:
+            break
+    return LaneDriveResult(rid, lane, road.length, max_dev, left, min_rc)

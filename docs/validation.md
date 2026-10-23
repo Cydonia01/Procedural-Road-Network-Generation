@@ -1,8 +1,9 @@
 # Validation
 
-There are five independent checks: one runs on the RoadGraph, three run on
-the written `.xodr`, and one drives the network with esmini's own road logic.
-`pipeline` runs all of them and fails if any reports an error.
+There are independent checks: two run on the RoadGraph, five run on the
+written `.xodr`, and one drives the network with esmini's own road logic.
+`pipeline` and `build-xodr` run all of them except drive-check (opt-in) and
+fail if any reports an error.
 
 | Check | Runs on | When | Module |
 |-------|---------|------|--------|
@@ -10,6 +11,8 @@ the written `.xodr`, and one drives the network with esmini's own road logic.
 | Traffic connectivity | RoadGraph | always. Errors in `pipeline` unless `--allow-traps`, warnings in `build-xodr` | `validate/connectivity.py` |
 | Topology | `.xodr` | always | `validate/topology.py` |
 | Continuity | `.xodr` | always | `validate/continuity.py` |
+| Curvature continuity | `.xodr` | always (paramPoly3 jumps are warnings) | `validate/continuity.py` → `check_curvature` |
+| Lateral acceleration | `.xodr` | always | `validate/dynamics.py` |
 | XSD schema | `.xodr` | only if `OPENDRIVE_XSD` / `--xsd` is set | `validate/schema.py` |
 | Drive-check | `.xodr` + sidecar | `drive-check`, or `pipeline --drive-check` | `sim/drive_check.py` |
 
@@ -63,8 +66,30 @@ For every lane with a predecessor or successor link to another road, the lane
 center must match at the contact point within **1 cm in position** and
 **0.01 rad in travel heading**. Its **height** (from `<elevationProfile>`;
 0 without one) must match within 1 cm, and its **grade** in the travel
-direction within 0.01. A connecting-road lane without a lane link is also an
-error.
+direction within 0.01 (lane heights include the superelevation, `t·tan(roll)`).
+A connecting-road lane without a lane link is also an error.
+
+Inside a road, across every **lane-section boundary**: a lane linked to the
+next section must exist there with the same width (1 cm) and link back; a
+lane without a successor must have narrowed to 0 by the boundary, and one
+without a predecessor must start at 0 (lane drops and adds are tapers, never
+steps).
+
+## Curvature continuity
+
+`check_curvature`: the curvature must not jump by more than **0.002 1/m**
+across a geometry boundary inside a road or, as lane-centre curvature in the
+travel direction, across a lane link between roads. A jump is an error,
+except where a `paramPoly3` is involved (the fallback for junction turns no
+clothoid fits): those are warnings, listed as a count.
+
+## Lateral acceleration
+
+`check_dynamics`: the lateral acceleration `v²·|κ|` needed to drive each
+road's lanes at its posted `<type><speed>` must stay within
+`design.a_lat_max` (3 m/s²) plus 0.05. The peak is found at the ends of every
+line, arc and spiral (where curvature is extreme) and every 0.5 m along
+`paramPoly3` pieces.
 
 ## XSD schema
 
@@ -98,6 +123,13 @@ For every movement in the `.roadmap.json`:
 
 Failures are logged with the route esmini actually took. Selector angles were
 calibrated empirically against esmini 3.9.
+
+Then **every lane that runs a whole normal road** is driven end to end in
+1 m steps (`drive_lanes`). A lane passes if esmini stays on that road and
+lane through all lane sections, never returns an error, and its position
+agrees with the lane centre as evaluated by the continuity check (x, y and
+height, within 5 cm). This checks that esmini reads the spirals, lane
+sections, tapers, elevation and superelevation exactly as roadgen does.
 
 ## Geometry metrics
 

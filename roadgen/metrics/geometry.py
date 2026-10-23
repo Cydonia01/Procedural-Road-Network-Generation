@@ -76,13 +76,34 @@ def _driving_lanes(road: RoadEval, s: float) -> list[int]:
                   if lane.get("id") != "0" and lane.get("type") == "driving")
 
 
+def _peak_stations(road: RoadEval, step: float, speeds: list[tuple[float, float]]) -> list[float]:
+    """Stations where a road's lane curvature or speed can peak.
+
+    Curvature is linear along lines, arcs and spirals, so it peaks at their
+    ends; paramPoly3 pieces are sampled every step. Lane-section and speed
+    boundaries are added (lane offsets and speeds change there).
+    """
+    eps = 1e-6
+    out = {0.0, road.length}
+    for g in road.geometries:
+        s0, length = float(g.get("s")), float(g.get("length"))
+        if g[0].tag == "paramPoly3":
+            out.update(np.linspace(s0, s0 + length, max(2, math.ceil(length / step) + 1)).tolist())
+        else:
+            out.update((s0 + eps, s0 + length - eps))
+    for sec in road.sections:
+        s0 = float(sec.get("s"))
+        out.update((s0 - eps, s0 + eps))
+    for s0, _ in speeds:
+        out.update((s0 - eps, s0 + eps))
+    return sorted(s for s in out if 0.0 <= s <= road.length)
+
+
 def road_peak(road: RoadEval, step: float) -> tuple[float, float]:
     """(peak |lane-centre curvature| [1/m], peak lateral acceleration [m/s^2]) of a road."""
     speeds = speed_records(road.road)
-    n = max(2, math.ceil(road.length / step) + 1)
     k_max = a_max = 0.0
-    for s in np.linspace(0.0, road.length, n):
-        s = float(s)
+    for s in _peak_stations(road, step, speeds):
         v = _speed_at(speeds, s)
         for lane in _driving_lanes(road, s):
             k = abs(road.lane_curvature(lane, s))

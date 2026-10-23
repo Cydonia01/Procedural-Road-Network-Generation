@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from functools import cached_property
+from itertools import pairwise
 from pathlib import Path
 from typing import Optional, Union
 
@@ -145,6 +146,15 @@ class RoadEval:
         b, c, d = (float(rec.get(k, 0)) for k in ("b", "c", "d"))
         return _poly(rec, ds), b + 2 * c * ds + 3 * d * ds * ds
 
+    def superelevation(self, s: float) -> float:
+        """Roll angle [rad] of the cross section at s (positive: falls to the right)."""
+        rec = _piecewise(self.road.findall("lateralProfile/superelevation"), s, "s")
+        return 0.0 if rec is None else _poly(rec, s - float(rec.get("s")))
+
+    def lane_height(self, lane_id: int, s: float) -> float:
+        """Height [m] of the lane centre: the reference height plus t tan(superelevation)."""
+        return self.elevation(s)[0] + self._lane_t(lane_id, s) * math.tan(self.superelevation(s))
+
     def lane_ids(self, s: float) -> set[int]:
         section = self._section(s)
         return {int(l.get("id")) for l in section.iter("lane") if l.get("id") != "0"}
@@ -193,6 +203,7 @@ def check_continuity_tree(tree: etree._ElementTree) -> list[str]:
     roads = {r.get("id"): RoadEval(r) for r in tree.getroot().findall("road")}
     errors: list[str] = []
     for rid, road in sorted(roads.items(), key=lambda kv: int(kv[0])):
+        errors += _check_sections(road)
         for kind in ("predecessor", "successor"):
             link = road.road.find(f"link/{kind}")
             if link is None or link.get("elementType") != "road":
@@ -218,6 +229,103 @@ def check_continuity_tree(tree: etree._ElementTree) -> list[str]:
                     continue
                 errors += _compare(where, road, lane_id, s_here, other, other_lane, s_there)
     return errors
+
+
+def _width(lane: etree._Element, ds: float) -> float:
+    rec = _piecewise(lane.findall("width"), ds, "sOffset")
+    return _poly(rec, ds - float(rec.get("sOffset"))) if rec is not None else 0.0
+
+
+def _check_sections(road: RoadEval) -> list[str]:
+    """Lanes across lane-section boundaries inside a road.
+
+    A lane linked to the next section must exist there with the same width at
+    the boundary, linked back; a lane without a successor must have narrowed
+    to 0 by the boundary, and one without a predecessor must start at 0.
+    """
+    errors = []
+    sections = road.sections
+    for a, b in pairwise(sections):
+        s_b = float(b.get("s"))
+        ds = s_b - float(a.get("s"))
+        where = f"road {road.id} at s={s_b:.3f}"
+        for lane in a.iterfind("*/lane"):
+            lid = lane.get("id")
+            if lid == "0":
+                continue
+            w_end = _width(lane, ds)
+            succ = lane.find("link/successor")
+            if succ is None:
+                if w_end > POS_TOL:
+                    errors.append(f"{where}: lane {lid} ends {w_end:.3f} m wide without a successor")
+                continue
+            nxt = b.find(f"*/lane[@id='{succ.get('id')}']")
+            if nxt is None:
+                errors.append(f"{where}: lane {lid} successor {succ.get('id')} does not exist")
+                continue
+            if abs(_width(nxt, 0.0) - w_end) > POS_TOL:
+                errors.append(f"{where}: lane {lid} width jumps {w_end:.3f} -> {_width(nxt, 0.0):.3f} m")
+            back = nxt.find("link/predecessor")
+            if back is None or back.get("id") != lid:
+                errors.append(f"{where}: lane {succ.get('id')} does not link back to lane {lid}")
+        for lane in b.iterfind("*/lane"):
+            if lane.get("id") != "0" and lane.find("link/predecessor") is None and _width(lane, 0.0) > POS_TOL:
+                errors.append(f"{where}: lane {lane.get('id')} starts {_width(lane, 0.0):.3f} m wide "
+                              "without a predecessor")
+    return errors
+
+
+CURVATURE_TOL = 0.002  # [1/m] lane-centre curvature jump counted as a discontinuity
+
+
+def check_curvature(xodr_path: PathLike) -> tuple[list[str], list[str]]:
+    return check_curvature_tree(etree.parse(str(xodr_path)))
+
+
+def check_curvature_tree(tree: etree._ElementTree) -> tuple[list[str], list[str]]:
+    """(errors, warnings): curvature jumps (G2 breaks) inside roads and across lane links.
+
+    Jumps at a paramPoly3 geometry (the fallback for junction turns a
+    clothoid could not fit) are warnings; every other jump is an error.
+    """
+    roads = {r.get("id"): RoadEval(r) for r in tree.getroot().findall("road")}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    def report(msg: str, *geoms: Optional[etree._Element]) -> None:
+        poly = any(g is not None and g[0].tag == "paramPoly3" for g in geoms)
+        (warnings if poly else errors).append(msg)
+
+    for rid, road in sorted(roads.items(), key=lambda kv: int(kv[0])):
+        geoms = road.geometries
+        for prev, nxt in pairwise(geoms):
+            s = float(nxt.get("s"))
+            jump = abs(road.curvature(s, prev) - road.curvature(s, nxt))
+            if jump > CURVATURE_TOL:
+                report(f"road {rid} at s={s:.3f}: curvature jumps by {jump:.4f} 1/m", prev, nxt)
+        for kind in ("predecessor", "successor"):
+            link = road.road.find(f"link/{kind}")
+            if link is None or link.get("elementType") != "road":
+                continue
+            other = roads.get(link.get("elementId"))
+            if other is None:
+                continue
+            s_here = 0.0 if kind == "predecessor" else road.length
+            s_there = 0.0 if link.get("contactPoint") == "start" else other.length
+            for lane in road._section(s_here).iterfind("*/lane"):
+                lane_link = lane.find(f"link/{kind}")
+                if lane.get("id") == "0" or lane_link is None:
+                    continue
+                a, b = int(lane.get("id")), int(lane_link.get("id"))
+                try:
+                    jump = abs(road.lane_curvature(a, s_here) - other.lane_curvature(b, s_there))
+                except KeyError:
+                    continue  # reported by the continuity check
+                if jump > CURVATURE_TOL:
+                    report(f"road {rid} lane {a} {kind} road {other.id} lane {b}: curvature jumps by "
+                           f"{jump:.4f} 1/m", _piecewise(road.geometries, s_here, "s"),
+                           _piecewise(other.geometries, s_there, "s"))
+    return errors, warnings
 
 
 def _compare(
