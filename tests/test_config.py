@@ -11,6 +11,7 @@ from roadgen.config import DEFAULTS, load_config, merge, section
 from roadgen.generators.base import load_params
 from roadgen.generators.lsystem import LSystemParams
 from roadgen.generators.manhattan import ManhattanParams
+from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json
 from roadgen.maps.drape import DrapeParams
 from roadgen.metrics.geometry import GeometryMetricsParams
@@ -27,6 +28,7 @@ from roadgen.scene.ground import GroundParams
     (DrapeParams, ("drape",)),
     (GroundParams, ("ground",)),
     (GeometryMetricsParams, ("metrics",)),
+    (DesignParams, ("design",)),
 ])
 def test_dataclass_defaults_come_from_defaults_yaml(params_type, keys):
     defaults = section(DEFAULTS, *keys)

@@ -8,16 +8,11 @@ import pytest
 from lxml import etree
 
 from cli import main
+from roadgen.geometry.junction_space import Arm, junction_trims
+from roadgen.geometry.planar import Pose, hermite_poly3, wrap_angle
 from roadgen.graph.io import load_json
 from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.geometry import Pose, hermite_poly3, wrap_angle
-from roadgen.opendrive.junctions import (
-    classify,
-    continuation_pairs,
-    Arm,
-    junction_trims,
-    lane_pairs,
-)
+from roadgen.opendrive.junctions import classify, continuation_pairs, lane_pairs
 from roadgen.validate.continuity import check_continuity, check_continuity_tree
 from roadgen.validate.topology import check_topology, check_topology_tree
 
@@ -91,6 +86,18 @@ def test_junction_trims_acute_angle():
     assert trims[1] == pytest.approx((3.5 + 7 * math.cos(theta)) / math.sin(theta) + 2.0)
     assert trims[2] == pytest.approx((7 + 3.5 * math.cos(theta)) / math.sin(theta) + 2.0)
     assert trims[3] == pytest.approx(9.0)  # the opposite arm is unaffected
+
+
+@pytest.mark.parametrize("narrow_deg, wide_deg", [(180.6, 0.0), (184.3, 5.0), (177.7, 357.5)])
+def test_junction_trims_near_straight_arms_of_different_widths(narrow_deg, wide_deg):
+    # Arm pairs from build failures of the lsystem sweep (seeds 20, 49, 73): a 1+1
+    # road almost straight across from a 2+2 road. Their facing edges cross far out,
+    # but behind the wide arm's start, so the surfaces never overlap there.
+    arms = [Arm(1, math.radians(narrow_deg), 3.5, 3.5), Arm(2, math.radians(wide_deg), 7, 7),
+            Arm(3, math.radians(wide_deg + 80), 7, 7)]
+    trims = junction_trims(arms, 2.0)
+    assert trims[1] == pytest.approx(9.0)
+    assert max(trims.values()) < 30.0
 
 
 def test_junction_trims_reject_slivers():

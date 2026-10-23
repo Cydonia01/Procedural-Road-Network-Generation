@@ -11,7 +11,7 @@ from cli import main
 from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder, sidecar_path
-from roadgen.opendrive.geometry import segment_start, trim
+from roadgen.geometry.planar import segment_start, trim
 from roadgen.opendrive.lanes import make_lanes
 from roadgen.validate.schema import validate_schema
 from roadgen.validate.topology import check_topology, check_topology_tree

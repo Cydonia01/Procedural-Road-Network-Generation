@@ -18,7 +18,7 @@ from typing import Literal, Optional
 
 from scenariogeneration import xodr
 
-from roadgen.opendrive.geometry import (
+from roadgen.geometry.planar import (
     Pose,
     hermite_poly3,
     offset_point,
@@ -285,48 +285,3 @@ def _path_geometry(start: Pose, end: Pose) -> tuple[xodr.geometry._BaseGeometry,
         return xodr.Line(length), length
     curve = hermite_poly3(start, end)
     return xodr.ParamPoly3(*curve.u, *curve.v, prange="normalized", length=curve.length), curve.length
-
-
-MIN_ARM_ANGLE_DEG = 10.0  # roads meeting at a sharper angle cannot be separated sensibly
-
-
-@dataclass(frozen=True)
-class Arm:
-    """A road leaving a junction node, seen from the node."""
-
-    edge_id: int
-    heading: float  # outward direction from the node [rad]
-    left: float  # road width on the counter-clockwise side of `heading` [m]
-    right: float  # road width on the clockwise side [m]
-
-
-def junction_trims(arms: list[Arm], margin: float) -> dict[int, float]:
-    """Distance from the node at which each arm's road must stop.
-
-    Baseline: the widest half cross-section at the node, as for right-angle
-    junctions. For two neighboring arms an angle theta apart, the facing road
-    edges (offset a = left width of the first, b = right width of the second)
-    cross at distance (b + a cos theta) / sin theta along the first arm and
-    (a + b cos theta) / sin theta along the second; each arm is trimmed past
-    every such crossing, so acute junctions never overlap. Raises ValueError
-    for arms closer than MIN_ARM_ANGLE_DEG.
-    """
-    base = max(max(arm.left, arm.right) for arm in arms)
-    need = {arm.edge_id: base for arm in arms}
-    ordered = sorted(arms, key=lambda arm: (arm.heading % (2 * math.pi), arm.edge_id))
-    if len(ordered) >= 2:
-        for i, first in enumerate(ordered):
-            second = ordered[(i + 1) % len(ordered)]
-            theta = (second.heading - first.heading) % (2 * math.pi)
-            if theta < math.radians(MIN_ARM_ANGLE_DEG):
-                raise ValueError(
-                    f"edges {first.edge_id} and {second.edge_id} meet at {math.degrees(theta):.1f} deg "
-                    f"(< {MIN_ARM_ANGLE_DEG} deg); the junction cannot be built"
-                )
-            if theta >= math.pi - 1e-9:
-                continue  # facing edges diverge: no constraint
-            a, b = first.left, second.right
-            sin, cos = math.sin(theta), math.cos(theta)
-            need[first.edge_id] = max(need[first.edge_id], (b + a * cos) / sin)
-            need[second.edge_id] = max(need[second.edge_id], (a + b * cos) / sin)
-    return {eid: d + margin for eid, d in need.items()}

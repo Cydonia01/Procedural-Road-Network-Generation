@@ -30,16 +30,11 @@ from typing import Optional, Union
 from scenariogeneration import xodr
 
 from roadgen.config import DEFAULTS
+from roadgen.geometry.junction_space import Arm, junction_trims
+from roadgen.geometry.planar import segment_start, trim
 from roadgen.graph.model import Edge, RoadGraph
 from roadgen.opendrive.elevation import road_elevation
-from roadgen.opendrive.geometry import segment_start, trim
-from roadgen.opendrive.junctions import (
-    Arm,
-    Movement,
-    RoadEnd,
-    build_junction,
-    junction_trims,
-)
+from roadgen.opendrive.junctions import Movement, RoadEnd, build_junction
 from roadgen.opendrive.lanes import make_lanes
 
 log = logging.getLogger(__name__)

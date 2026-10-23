@@ -169,6 +169,7 @@ roadgen/
   graph/        RoadGraph model, JSON I/O, plotting
   generators/   procedural network generators (registry, manhattan, lsystem)
   maps/         input maps: terrain, elevation, population (registry, noise, image loaders)
+  geometry/     neutral road geometry: design-speed rules, curve pieces, junction trims
   opendrive/    RoadGraph -> OpenDRIVE builder (lanes, junctions, geometry)
   validate/     connectivity / topology / continuity / schema checks
   metrics/      geometry metrics of an .xodr, build-failure sweep

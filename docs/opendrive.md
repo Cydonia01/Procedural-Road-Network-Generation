@@ -60,15 +60,19 @@ reference line, and left lanes (positive ids) carry traffic against it.
 
 ### Trimming: where roads stop
 
-`junction_trims` computes, for each arm, how far from the node its road must
-stop:
+`junction_trims` (in the neutral `roadgen/geometry/junction_space.py`, so
+the ground mesh and generators can use it too) computes, for each arm, how
+far from the node its road must stop:
 
 - Baseline: the widest half cross-section at the node (enough for right-angle
   crossings).
 - For each pair of neighbouring arms *θ* apart, with facing edge widths *a*
   and *b*, the road edges cross at *(b + a cos θ)/sin θ* along the first arm
   and *(a + b cos θ)/sin θ* along the second. Each arm is trimmed past every
-  such crossing, so **acute junctions never overlap**.
+  such crossing, so **acute junctions never overlap**. A crossing counts only
+  if it lies on both arms (both distances positive); otherwise the surfaces
+  overlap only within the baseline. Without that rule, near-straight arms of
+  different widths got trims of hundreds of metres and failed to build.
 - `junction_margin` (default 2 m, CLI `--junction-margin`) is added as
   clearance.
 - Arms closer than **10°** raise an error, because they can't be separated

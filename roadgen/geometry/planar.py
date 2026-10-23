@@ -1,4 +1,4 @@
-"""Planar geometry helpers for straight OpenDRIVE road segments."""
+"""Planar geometry helpers: poses, straight segments, Hermite paramPoly3 curves."""
 
 from __future__ import annotations
 

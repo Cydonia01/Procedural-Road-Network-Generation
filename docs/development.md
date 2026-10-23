@@ -64,7 +64,7 @@ Each phase had acceptance checks before the next one started.
 |-------|---------|--------------|
 | 0 | Setup and RoadGraph data model | `graph/` |
 | 1 | Single road → OpenDRIVE → esmini | `opendrive/builder.py`, `lanes.py`, `validate/` |
-| 2 | Junctions | `opendrive/junctions.py`, `geometry.py`, `sim/drive_check.py` |
+| 2 | Junctions | `opendrive/junctions.py`, `geometry/planar.py`, `geometry/junction_space.py`, `sim/drive_check.py` |
 | 3 | Manhattan grid generator | `generators/manhattan.py` |
 | 4 | Manhattan realism: one-way, multi-lane, presets, ring road, connectivity | `manhattan.py`, `validate/connectivity.py` |
 | 5 | Agent scenarios | `scenario/`, `sim/runner.py` |

@@ -17,6 +17,8 @@ dependencies = [
     "scenariogeneration",
     "pyyaml",
     "psutil",
+    "scipy",        # Fresnel integrals for clothoid geometry
+    "pyclothoids",  # G2 clothoid interpolation (also a scenariogeneration dependency)
 ]
 
 [project.optional-dependencies]

@@ -156,8 +156,13 @@ roadgen/
     builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
     junctions.py           movement planning, connecting roads, junction trims
     lanes.py               lane sections and road marks
-    geometry.py            poses, trimming, Hermite paramPoly3 curves
     elevation.py           <elevationProfile> fit (monotone cubic Hermite)
+  geometry/                neutral road geometry (no OpenDRIVE imports), shared by all stages
+    planar.py              poses, trimming, Hermite paramPoly3 curves
+    junction_space.py      junction trims: where roads stop at a node
+    design.py              design-speed rules: radii, advisory speeds, spirals, tapers
+    primitives.py          line / arc / spiral pieces (Fresnel), alignments
+    clothoid.py            G2 clothoid transitions (pyclothoids)
   validate/
     connectivity.py        traffic traps / reachability on the RoadGraph
     topology.py            ids and links in the .xodr
