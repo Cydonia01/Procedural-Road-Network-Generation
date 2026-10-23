@@ -134,11 +134,21 @@ movement**. U-turns are never created.
   centered with a `laneOffset` of half the lane width. The width blends
   linearly if the two roads' lane widths differ.
 - **Straight ahead with the same heading:** a `<line>`.
-- **Otherwise:** a **cubic Hermite `paramPoly3`** matching position and
-  heading at both ends. Its tangent length is
-  *k = chord · 2 tan(θ/4) / sin(θ/2)*, the cubic approximation of a circular
-  arc. This keeps the parameter speed nearly uniform even for sharp turns.
-  Arc length is computed with 16-point Gauss–Legendre quadrature.
+- **Otherwise:** **three clothoids** (`<spiral>`, the middle one an `<arc>`
+  when its curvature is constant) from G2 Hermite interpolation
+  ([`g2_hermite`](geometry.md#clothoid-transitions-clothoidpy), pyclothoids'
+  `SolveG2`): they match position and heading at both ends and start and end
+  with zero curvature, like the straight road ends they join, so the
+  curvature is continuous into and out of every junction.
+- **Fallback** when the solver finds no good path (it never happened on the
+  example networks): a cubic Hermite `paramPoly3` matching position and
+  heading only, with tangent length *k = chord · 2 tan(θ/4) / sin(θ/2)*, the
+  cubic approximation of a circular arc. Each movement records its `path`
+  (`line`, `clothoid` or `poly3`) in the sidecar, and the builder logs the
+  number of fallbacks.
+- **Speed:** the lower speed limit of the two roads, or, where the turn's
+  tightest radius can't be driven at that within 3 m/s² (flat junction),
+  that radius's advisory speed (about 20–25 km/h for an urban right turn).
 - Each connecting road links predecessor → incoming road and successor →
   outgoing road with the correct `contactPoint`. Its lane links point at the
   exact lanes, and the junction `<connection>` has a matching `laneLink`.

@@ -38,11 +38,15 @@ from roadgen.geometry.alignment import (
     network_alignment,
 )
 from roadgen.geometry.design import DesignParams
-from roadgen.geometry.primitives import Piece
 from roadgen.geometry.profiles import bridge_spans, lane_layout, speed_profile
-from roadgen.graph.model import RoadGraph
 from roadgen.geometry.vertical import JunctionPlane, chain_elevation, flat_planes
-from roadgen.opendrive.junctions import Movement, RoadEnd, build_junction
+from roadgen.graph.model import RoadGraph
+from roadgen.opendrive.junctions import (
+    Movement,
+    RoadEnd,
+    build_junction,
+    piece_geometry,
+)
 from roadgen.opendrive.lanes import make_lane_sections
 
 log = logging.getLogger(__name__)
@@ -125,6 +129,9 @@ class OpenDriveBuilder:
             next_id = junction_id + 1 + len(roads)
             log.debug("node %d -> junction %d (%d connecting roads)", node_id, junction_id, len(roads))
 
+        fallbacks = sum(m.path == "poly3" for m in movements)
+        if fallbacks:
+            log.info("%d of %d junction turns use a paramPoly3 (no clothoid fit)", fallbacks, len(movements))
         self.odr = odr
         self.alignment = na
         self.edge_to_road = edge_to_road
@@ -212,7 +219,7 @@ class OpenDriveBuilder:
         """The chain's road, its ends at junctions, and its bridges as (s, length)."""
         planview = xodr.PlanView()
         for piece in ca.alignment.pieces:
-            planview.add_fixed_geometry(_geometry(piece), piece.start.x, piece.start.y, piece.start.hdg)
+            planview.add_fixed_geometry(piece_geometry(piece), piece.start.x, piece.start.y, piece.start.hdg)
         ids = ca.chain.edge_ids
         name = f"edge_{ids[0]}" if len(ids) == 1 else "edges_" + "_".join(map(str, ids))
         road = xodr.Road(road_id, planview, make_lane_sections(lane_layout(graph, ca)), name=name)
@@ -238,11 +245,3 @@ class OpenDriveBuilder:
                 speed_limit=edge.speed_limit,
             )))
         return road, ends, bridge_spans(graph, ca)
-
-
-def _geometry(piece: Piece) -> xodr.geometry._BaseGeometry:
-    if piece.kind == "line":
-        return xodr.Line(piece.length)
-    if piece.kind == "arc":
-        return xodr.Arc(piece.k0, length=piece.length)
-    return xodr.Spiral(piece.k0, piece.k1, length=piece.length)

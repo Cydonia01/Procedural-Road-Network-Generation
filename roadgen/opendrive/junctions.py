@@ -13,11 +13,15 @@ Conventions (right-hand traffic):
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal, Optional
 
+import numpy as np
 from scenariogeneration import xodr
 
+from roadgen.geometry import design as design_lib
+from roadgen.geometry.clothoid import g2_hermite
+from roadgen.geometry.design import DesignParams
 from roadgen.geometry.planar import (
     Pose,
     hermite_poly3,
@@ -25,9 +29,11 @@ from roadgen.geometry.planar import (
     segment_start,
     wrap_angle,
 )
+from roadgen.geometry.primitives import Piece
 
 Contact = Literal["start", "end"]
 MovementKind = Literal["straight", "left", "right"]
+PathKind = Literal["line", "clothoid", "poly3"]
 
 # |heading change| below this counts as straight.
 STRAIGHT_THRESHOLD = math.pi / 4
@@ -90,6 +96,7 @@ class Movement:
     to_edge: int
     to_road: int
     to_lane: int
+    path: PathKind = "line"  # connecting-road shape: line, clothoid, or poly3 (G1 fallback)
 
 
 def classify(heading_in: float, heading_out: float) -> MovementKind:
@@ -232,21 +239,26 @@ def build_junction(
     junction = xodr.Junction(f"junction_{junction_id}", junction_id)
     roads: list[xodr.Road] = []
     movements = plan_movements(junction_id, ends, first_road_id)
+    built = []
     for m in movements:
         a, b = by_edge[m.from_edge], by_edge[m.to_edge]
-        roads.append(_connecting_road(m, a, b, z))
+        road, kind = _connecting_road(m, a, b, z)
+        roads.append(road)
+        m = replace(m, path=kind)
+        built.append(m)
         conn = xodr.Connection(m.from_road, m.connecting_road, xodr.ContactPoint.start)
         conn.add_lanelink(m.from_lane, -1)
         junction.add_connection(conn)
-    return junction, roads, movements
+    return junction, roads, built
 
 
-def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd, z: Optional[float] = None) -> xodr.Road:
-    start = a.lane_pose(m.from_lane, incoming=True)
-    end = b.lane_pose(m.to_lane, incoming=False)
-    geometry, length = _path_geometry(start, end)
+def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd,
+                     z: Optional[float] = None) -> tuple[xodr.Road, PathKind]:
+    path = turn_path(a.lane_pose(m.from_lane, incoming=True), b.lane_pose(m.to_lane, incoming=False))
     planview = xodr.PlanView()
-    planview.add_fixed_geometry(geometry, start.x, start.y, start.hdg)
+    for geometry, pose in path.geometries:
+        planview.add_fixed_geometry(geometry, pose.x, pose.y, pose.hdg)
+    length = path.length
 
     w0, w1 = a.lane_width, b.lane_width
     dw = (w1 - w0) / length
@@ -269,19 +281,72 @@ def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd, z: Optional[float] = N
     )
     road.add_predecessor(xodr.ElementType.road, m.from_road, _CONTACT[a.contact])
     road.add_successor(xodr.ElementType.road, m.to_road, _CONTACT[b.contact])
-    road.add_type(ROAD_TYPE, speed=min(a.speed_limit, b.speed_limit), speed_unit="m/s")
+    road.add_type(ROAD_TYPE, speed=turn_speed(path, min(a.speed_limit, b.speed_limit)), speed_unit="m/s")
     if z is not None:
         road.add_elevation(0.0, z, 0.0, 0.0, 0.0)
-    return road
+    return road, path.kind
 
 
-def _path_geometry(start: Pose, end: Pose) -> tuple[xodr.geometry._BaseGeometry, float]:
-    """A <line> when end lies straight ahead with the same heading, else paramPoly3."""
+POLY3_SAMPLES = 65  # curvature samples of a paramPoly3 fallback
+
+
+@dataclass(frozen=True)
+class TurnPath:
+    """A connecting road's reference line (its lane centre)."""
+
+    geometries: list[tuple[xodr.geometry._BaseGeometry, Pose]]
+    length: float
+    max_curvature: float  # [1/m]
+    kind: PathKind
+
+
+def piece_geometry(piece: Piece) -> xodr.geometry._BaseGeometry:
+    """The OpenDRIVE geometry of a line / arc / spiral piece."""
+    if piece.kind == "line":
+        return xodr.Line(piece.length)
+    if piece.kind == "arc":
+        return xodr.Arc(piece.k0, length=piece.length)
+    return xodr.Spiral(piece.k0, piece.k1, length=piece.length)
+
+
+def turn_path(start: Pose, end: Pose) -> TurnPath:
+    """Lane-centre path through a junction from start to end.
+
+    A <line> when end lies straight ahead with the same heading. Otherwise
+    three clothoids (G2 Hermite interpolation, roadgen.geometry.clothoid) with
+    zero curvature at both ends, matching the straight road ends there, so
+    curvature is continuous into and out of the junction. If the solver
+    finds no good path, a cubic Hermite paramPoly3 (G1 only) is the fallback.
+    """
     pose, length = segment_start((start.x, start.y), (end.x, end.y))
     if (
         abs(wrap_angle(end.hdg - start.hdg)) < 1e-9
         and abs(wrap_angle(pose.hdg - start.hdg)) < 1e-9
     ):
-        return xodr.Line(length), length
+        return TurnPath([(xodr.Line(length), start)], length, 0.0, "line")
+    pieces = g2_hermite(start, 0.0, end, 0.0)
+    if pieces is not None:
+        return TurnPath([(piece_geometry(p), p.start) for p in pieces], sum(p.length for p in pieces),
+                        max(max(abs(p.k0), abs(p.k1)) for p in pieces), "clothoid")
     curve = hermite_poly3(start, end)
-    return xodr.ParamPoly3(*curve.u, *curve.v, prange="normalized", length=curve.length), curve.length
+    geometry = xodr.ParamPoly3(*curve.u, *curve.v, prange="normalized", length=curve.length)
+    return TurnPath([(geometry, start)], curve.length, _poly3_max_curvature(curve), "poly3")
+
+
+def _poly3_max_curvature(curve) -> float:
+    p = np.linspace(0.0, 1.0, POLY3_SAMPLES)
+    u, v = curve.u, curve.v
+    du, dv = u[1] + 2 * u[2] * p + 3 * u[3] * p * p, v[1] + 2 * v[2] * p + 3 * v[3] * p * p
+    ddu, ddv = 2 * u[2] + 6 * u[3] * p, 2 * v[2] + 6 * v[3] * p
+    return float(np.max(np.abs(du * ddv - dv * ddu) / np.hypot(du, dv) ** 3))
+
+
+def turn_speed(path: TurnPath, limit: float, design: DesignParams = DesignParams()) -> float:
+    """Posted speed of a connecting road [m/s]: the roads' limit, or the advisory
+    speed of the turn's tightest radius where that is lower (flat junction)."""
+    if path.max_curvature < 1e-9:
+        return limit
+    radius = 1.0 / path.max_curvature
+    if design_lib.max_speed(radius, 0.0, design) >= limit:
+        return limit
+    return min(limit, design_lib.advisory_speed(radius, 0.0, design))

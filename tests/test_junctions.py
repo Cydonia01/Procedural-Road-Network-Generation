@@ -224,8 +224,14 @@ def test_xodr_structure(tmp_path, name):
     by_id = {str(m.connecting_road): m for m in builder.movements}
     for rid in connecting:
         road, m = roads[rid], by_id[rid]
-        geom = road.find("planView/geometry")[0].tag
-        assert geom == ("line" if m.kind == "straight" else "paramPoly3")
+        geoms = [g[0].tag for g in road.findall("planView/geometry")]
+        # Turns are three clothoids (G2; a constant-curvature middle one is an arc),
+        # straight movements a single line.
+        if m.kind == "straight":
+            assert geoms == ["line"]
+        else:
+            assert geoms[0] == geoms[-1] == "spiral" and geoms[1] in ("spiral", "arc") and len(geoms) == 3
+        assert m.path == ("line" if m.kind == "straight" else "clothoid")
         lanes = road.findall("lanes/laneSection/*/lane")
         assert sorted(int(l.get("id")) for l in lanes) == [-1, 0]
         assert road.find("link/predecessor").get("elementId") == str(m.from_road)

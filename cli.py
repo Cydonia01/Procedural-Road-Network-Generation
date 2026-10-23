@@ -42,7 +42,7 @@ from roadgen.validate.topology import check_topology
 log = logging.getLogger("roadgen.cli")
 
 MAX_LISTED_WARNINGS = 5
-DYNAMICS_CHECKS_JUNCTIONS = False  # connecting roads keep the roads' speed limits until A7
+DYNAMICS_CHECKS_JUNCTIONS = True  # junction turns get speeds from their curvature
 
 
 def cmd_plot_graph(args: argparse.Namespace) -> int:
