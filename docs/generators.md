@@ -233,6 +233,26 @@ cell size as its step.
 | `prune_factor` | 0.4 | Share of a street that must remain after pruning |
 | `max_grade` | 0.15 | Max rise / run along any road; 0 disables |
 
+## Repair: edges too short for their junctions (`repair.py`)
+
+A generator places nodes without knowing how much road each junction will
+take: the builder trims a road back to every junction it ends at
+([trimming](opendrive.md#trimming-where-roads-stop)). Both generators end
+with `repair_short_edges`, which finds the edges the builder would reject
+(an edge between two junctions whose trims add up to more than its length)
+and fixes only those, so every network that could be built before is
+returned unchanged:
+
+1. **collapse** the edge: its two nodes merge at its midpoint (the lower id
+   survives) if the merged node joins at most 5 roads (Teng & Bidarra's
+   vertex-degree rule), no two roads would join the same pair of nodes, and
+   its arms stay at least 10° apart;
+2. otherwise **remove** it, if its two nodes stay connected;
+3. otherwise leave it and log a warning (the builder reports it).
+
+Over 200 lsystem `city` networks on generated maps (`metrics --sweep 200`),
+9 failed to build before the junction-trim fix and the repair, 0 after.
+
 ## Adding a generator
 
 1. Create `roadgen/generators/<name>.py` with a frozen params dataclass,

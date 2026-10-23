@@ -143,6 +143,7 @@ roadgen/
     base.py                RoadNetworkGenerator ABC, registry, params/presets loading
     manhattan.py           parametric grid (one-way patterns, ring road, jitter, drops)
     lsystem.py             Parish & Müller style growth (highways, map constraints)
+    repair.py              post-generation repair of edges too short for their junctions
   maps/
     model.py               GridSpec, MapLayer (sampling, .npz I/O), MapSet, terrain classes
     base.py                MapGenerator ABC, per-kind registry, make_map

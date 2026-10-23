@@ -54,6 +54,7 @@ import numpy as np
 
 from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
+from roadgen.generators.repair import repair_short_edges
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.model import VEGETATION, WATER, Bounds, MapLayer, MapSet
 
@@ -730,6 +731,8 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         growth = _Growth(params, rng, maps)
         growth.run()
         graph = self._to_graph(growth, params, seed, maps)
+        if repair_short_edges(graph):
+            assign_node_kinds(graph)
         if not graph.edges:
             log.warning("lsystem: no road could be grown from the seed point; on input maps it is "
                         "usually too steep around it (max_grade %.2f), or water, vegetation or "
