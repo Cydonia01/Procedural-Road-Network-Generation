@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from scenariogeneration import xodr
 
+from roadgen.geometry.profiles import LaneLayout, WidthPiece
+
 MARK_WIDTH = 0.15
 BROKEN_LENGTH = 3.0
 BROKEN_SPACE = 9.0
@@ -57,3 +59,46 @@ def make_lanes(
     lanes = xodr.Lanes()
     lanes.add_lanesection(section)
     return lanes
+
+
+def make_lane_sections(layout: LaneLayout) -> xodr.Lanes:
+    """Lane sections of a chain road from its lane layout.
+
+    Each section's lanes get polynomial widths (tapers included) and lane
+    links to the same position in the neighbouring sections where that lane
+    exists on both sides of the boundary; a lane that narrows to 0 at a section
+    end, or widens from 0 at a section start, has no link there.
+    """
+    lanes = xodr.Lanes()
+    previous: dict[str, list[xodr.Lane]] = {"right": [], "left": []}
+    for section in layout.sections():
+        center = xodr.Lane()
+        center.add_roadmark(solid_mark())
+        ls = xodr.LaneSection(section.s0, center)
+        current: dict[str, list[xodr.Lane]] = {"right": [], "left": []}
+        for side, pieces, add in (("right", section.right, ls.add_right_lane),
+                                  ("left", section.left, ls.add_left_lane)):
+            sign = -1 if side == "right" else 1
+            for pos, piece in enumerate(pieces, 1):
+                lane = _section_lane(piece, section.s0, outermost=pos == len(pieces))
+                before = previous[side]
+                if pos <= len(before) and _continues(piece, section.s0):
+                    lane.add_link("predecessor", sign * pos)
+                    before[pos - 1].add_link("successor", sign * pos)
+                add(lane)
+                current[side].append(lane)
+        lanes.add_lanesection(ls)
+        previous = current
+    return lanes
+
+
+def _continues(piece: WidthPiece, s0: float) -> bool:
+    """Whether the lane exists right before s0 too (it does not widen from 0 there)."""
+    return not (piece.s0 >= s0 - 1e-6 and piece.w0 == 0.0)
+
+
+def _section_lane(piece: WidthPiece, s0: float, outermost: bool) -> xodr.Lane:
+    a, b, c, d = piece.poly(s0)
+    lane = xodr.Lane(xodr.LaneType.driving, a=a, b=b, c=c, d=d)
+    lane.add_roadmark(solid_mark() if outermost else broken_mark())
+    return lane

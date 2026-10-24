@@ -18,7 +18,8 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
 - **Generators:**
   - `manhattan`: parametric grids with one-way patterns, multi-lane avenues,
     a ring road, jitter, dropped streets, and a Midtown-like preset.
-  - `lsystem`: Parish & Müller style growth.
+  - `lsystem`: Parish & Müller style growth, optionally with curved streets
+    (drifting, contour-following, bowed) instead of a straight grid.
 - **Input maps** (after Parish & Müller): pluggable generators, built as a
   linear pipeline so the maps agree: a water/land/vegetation map (lakes,
   coast, rivers, parks), then an elevation map on it (fBm, ridged
@@ -27,19 +28,31 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
   slopes). Real maps can be read from images.
   `lsystem` grows on them: highways seek population peaks and bridge
   rivers, and streets stop at shores, parks, steep slopes and empty land.
+- **Road geometry** (design-speed rules after AASHTO): road bends are not
+  junctions but one road of lines, spirals and arcs sized for the speed
+  limit, with advisory speeds where a bend is too tight, banking on curves,
+  lane-count changes as tapers, and sloped junction areas. Curvature is
+  continuous everywhere, and no road needs more than 3 m/s² of lateral
+  acceleration at its posted speed. Bends that would cut into water or
+  steep ground are capped against the maps.
 - **OpenDRIVE builder:**
   - junctions with any number of arms, at any angle down to 10°;
-  - one connecting road per lane movement, with arc-like cubic curves;
+  - one connecting road per lane movement, as three clothoids
+    (curvature-continuous) with a speed from the turn's radius;
   - no lane ever dead-ends.
 - **Validation:**
   - traffic connectivity (no traps, everything reachable);
   - id and link topology, and lane continuity within 1 cm;
+  - curvature continuity and lateral acceleration at the posted speed;
   - optional XSD schema check;
-  - a drive-through of every junction movement with esmini's own RoadManager.
+  - a drive-through of every junction movement and every lane with esmini's
+    own RoadManager.
+- **Geometry metrics:** `metrics` measures any `.xodr` (curvature, lateral
+  acceleration, curvature jumps) and sweeps generator seeds for build failures.
 - **Scenarios:** hundreds to thousands of vehicles, with random junction
   choices or shortest-path routes.
 - **Heights:** with an elevation map the roads follow the terrain
-  (`<elevationProfile>`, flat junction areas, `<bridge>` over water).
+  (`<elevationProfile>`, `<superelevation>`, junction planes, `<bridge>` over water).
 - **3D scene:** optional buildings, one extruded block per city block, and a
   ground mesh from the maps, both standing on the terrain.
 - **Benchmark:** resumable scalability sweep measuring real-time factor, load
@@ -109,6 +122,7 @@ python -m cli map elevation fbm --preset hilly
 # Individual stages
 python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
 python -m cli drive-check out/single_4way.xodr
+python -m cli metrics out/single_4way.xodr          # curvature, lateral acceleration, two-road junctions
 python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 -o out/grid10x10.xosc
 python -m cli simulate out/grid10x10.xosc            # headless: timing, errors, .dat/.csv/.log
 python -m cli simulate out/grid10x10.xosc --gui      # watch it
@@ -168,8 +182,10 @@ roadgen/
   graph/        RoadGraph model, JSON I/O, plotting
   generators/   procedural network generators (registry, manhattan, lsystem)
   maps/         input maps: terrain, elevation, population (registry, noise, image loaders)
+  geometry/     neutral road geometry: design-speed rules, curve pieces, junction trims
   opendrive/    RoadGraph -> OpenDRIVE builder (lanes, junctions, geometry)
   validate/     connectivity / topology / continuity / schema checks
+  metrics/      geometry metrics of an .xodr, build-failure sweep
   scenario/     OpenSCENARIO builder
   sim/          esmini runner and RoadManager drive-check
   scene/        3D buildings and ground (.osgt)

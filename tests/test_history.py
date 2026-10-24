@@ -115,3 +115,19 @@ def test_history_file_is_valid_json(history, tmp_path):
     assert data["schema_version"] == 1
     (run,) = data["runs"].values()
     assert run["config"] in data["configs"] and "history" not in data["configs"][run["config"]]
+
+
+def test_runs_record_the_geometry_version_and_replay_warns_on_change(history, tmp_path, caplog):
+    from roadgen.geometry import GEOMETRY_VERSION
+
+    out = str(tmp_path / "g.json")
+    main([*GEN, "-o", out])
+    (run,) = history.runs()
+    assert run.geometry_version == GEOMETRY_VERSION
+    data = json.loads(history.path.read_text())
+    data["runs"][run.hash].pop("geometry_version")  # a run recorded before versions existed
+    history.path.write_text(json.dumps(data))
+    assert history.runs()[0].geometry_version == 1
+    with caplog.at_level("WARNING"):
+        assert main([run.hash]) == 0
+    assert "geometry version 1" in caplog.text

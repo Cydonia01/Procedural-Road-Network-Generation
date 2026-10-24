@@ -1,7 +1,8 @@
 """Simple 3D buildings: one extruded box per city block.
 
 Blocks are the bounded faces of the planar road graph (shapely
-``polygonize``). A block's footprint is the face minus every road widened by
+``polygonize``), drawn along the fitted roads (roadgen.geometry.alignment)
+so that buildings follow the curves the OpenDRIVE builder builds. A block's footprint is the face minus every road widened by
 its half-width plus a setback, so dead-end roads inside a block stay clear
 too; convex corners are rounded so buildings keep clear of the turning
 paths inside junctions. Each footprint is extruded to a random height.
@@ -31,6 +32,7 @@ from shapely.geometry.polygon import orient
 from shapely.ops import polygonize, triangulate, unary_union
 
 from roadgen.config import DEFAULTS, section
+from roadgen.geometry.alignment import network_alignment
 from roadgen.graph.model import Edge, RoadGraph
 from roadgen.maps.model import WATER, MapLayer
 from roadgen.scene.osgt import Mesh
@@ -68,28 +70,40 @@ def road_half_extent(e: Edge) -> float:
     return max(e.lanes_forward, e.lanes_backward) * e.lane_width
 
 
-def blocks(graph: RoadGraph) -> list[Polygon]:
+def road_lines(graph: RoadGraph) -> list[tuple[Edge, LineString]]:
+    """Each edge's road centre line in edge-id order: along the fitted road, or the
+    straight edge if the graph can't be fitted."""
+    na = None
+    if not graph.validate():
+        try:
+            na = network_alignment(graph)
+        except ValueError as err:
+            log.debug("buildings: straight roads (%s)", err)
+    out = []
+    for _, e in sorted(graph.edges.items()):
+        a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
+        line = LineString(na.edge_line(graph, e.id) if na else [(a.x, a.y), (b.x, b.y)])
+        out.append((e, line))
+    return out
+
+
+def blocks(graph: RoadGraph, lines: Optional[list[tuple[Edge, LineString]]] = None) -> list[Polygon]:
     """Bounded faces of the road graph, in a deterministic order."""
-    lines = [
-        LineString([(graph.nodes[e.from_node].x, graph.nodes[e.from_node].y),
-                    (graph.nodes[e.to_node].x, graph.nodes[e.to_node].y)])
-        for _, e in sorted(graph.edges.items())
-    ]
-    faces = list(polygonize(unary_union(lines)))
+    lines = road_lines(graph) if lines is None else lines
+    faces = list(polygonize(unary_union([line for _, line in lines])))
     return sorted(faces, key=lambda f: (round(f.centroid.x, 3), round(f.centroid.y, 3)))
 
 
 def footprints(graph: RoadGraph, params: BuildingParams) -> list[Polygon]:
     """Buildable area per block: the face minus the widened roads, corners rounded."""
+    lines = road_lines(graph)
     roads = unary_union([
-        LineString([(graph.nodes[e.from_node].x, graph.nodes[e.from_node].y),
-                    (graph.nodes[e.to_node].x, graph.nodes[e.to_node].y)])
-        .buffer(road_half_extent(e) + params.setback, cap_style="round")  # round: clears dead-end tips
-        for e in graph.edges.values()
+        line.buffer(road_half_extent(e) + params.setback, cap_style="round")  # round: clears dead-end tips
+        for e, line in lines
     ])
     out: list[Polygon] = []
     r = params.corner_radius
-    for face in blocks(graph):
+    for face in blocks(graph, lines):
         area = face.difference(roads)
         if r > 0:  # morphological opening rounds convex corners
             area = area.buffer(-r, quad_segs=3).buffer(r, quad_segs=3, join_style="round")

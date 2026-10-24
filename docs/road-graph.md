@@ -12,11 +12,15 @@ its edges. Coordinates are in metres, headings in radians and speeds in m/s.
 |-------|------|---------|
 | `id` | int | Unique node id |
 | `x`, `y` | float | Position [m] |
-| `kind` | `"junction"` / `"dead_end"` / `"auto"` | Informational. Generators set it from the degree (1 → `dead_end`, ≥3 → `junction`, otherwise `auto`) |
+| `kind` | `"junction"` / `"dead_end"` / `"auto"` | Generators set it from the degree (1 → `dead_end`, ≥3 → `junction`, otherwise `auto`). `"junction"` on a two-road node keeps it an OpenDRIVE junction instead of a bend |
+| `radius_cap` | float or null, default null | Largest corner radius [m] at a bend, set by [`align`](maps.md#heights-from-the-maps-to-esmini) where the fitted curve would leave legal ground. Left out of the JSON when unset |
 | `z` | float, default 0 | Height [m]. At a junction it is the height of the whole (flat) junction area. Set by [drape](maps.md#heights-from-the-maps-to-esmini) |
 
-The builder ignores `kind`. It decides from the **degree**: degree 1 is a dead
-end, and every node of degree ≥2 becomes an OpenDRIVE junction.
+The builder decides from the **degree**: degree 1 is a dead end, and every
+node of degree ≥3 becomes an OpenDRIVE junction. A node of degree 2 is a
+**bend** that the road continues through (the two edges become one curved
+road, see [chains](geometry.md#chains-and-fitted-roads)) unless its `kind` is
+`"junction"` or it can't be merged, in which case it is a two-arm junction.
 
 ### `Edge`
 

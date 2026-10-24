@@ -20,6 +20,7 @@ PHASES = {
     "5": "Scenario (.xosc)",
     "6": "Simulation (headless esmini)",
     "7": "esmini GUI",
+    "8": "Road geometry (stage A): fitted curves, metrics, align, curved streets",
 }
 # From scratch to the GUI: the notes of each chain's runs, in order.
 CHAINS = {
@@ -53,6 +54,11 @@ CHAINS = {
         "6 simulate | coastal city on ground + buildings",
         "7 gui | esmini: coastal city on its ground + buildings",
         "7 gui | odrviewer: coastal city with heights, on its ground + buildings",
+    ],
+    "Road geometry: build, measure and drive the coastal city": [
+        "8 geometry | build-xodr: coastal city with fitted curves, banking and junction planes",
+        "8 geometry | metrics: coastal city (lateral acceleration, two-road junctions, curvature jumps)",
+        "8 geometry | drive-check: coastal city, every junction movement and every lane end to end",
     ],
     "City on generated maps in one command, then the GUI": [
         "6 simulate | whole chain in one pipeline: maps, city, ground, buildings, esmini run",
@@ -88,7 +94,8 @@ regenerates the input images in [`inputs/`](inputs/)); this page is written
 by [`make_readme.py`](make_readme.py). They write to `out/examples/`
 (git-ignored), and later runs read files written by earlier ones, so replay
 them in order. Each note starts with its phase (`1 maps |`, `2 network |`,
-`3 xodr |`, `4 scene |`, `5 scenario |`, `6 simulate |`, `7 gui |`):
+`3 xodr |`, `4 scene |`, `5 scenario |`, `6 simulate |`, `7 gui |`,
+`8 geometry |`):
 
 ```bash
 # everything, oldest first (phase 7 needs the gui service)
@@ -98,6 +105,11 @@ for h in $(python -m cli history --grep "1 maps |" | grep -oE '^[0-9a-f]{12}'); 
 ```
 
 or one chain from the list below.
+
+The runs of phases 1–7 were recorded with road geometry version 1 (one
+straight road per edge, every bend a junction). Replaying them builds the
+current geometry (version 2: fitted curves, banking, junction planes) and
+logs a warning that the network differs; phase 8 shows the new geometry.
 """
 
 

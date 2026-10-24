@@ -26,7 +26,8 @@ regenerates the input images in [`inputs/`](inputs/)); this page is written
 by [`make_readme.py`](make_readme.py). They write to `out/examples/`
 (git-ignored), and later runs read files written by earlier ones, so replay
 them in order. Each note starts with its phase (`1 maps |`, `2 network |`,
-`3 xodr |`, `4 scene |`, `5 scenario |`, `6 simulate |`, `7 gui |`):
+`3 xodr |`, `4 scene |`, `5 scenario |`, `6 simulate |`, `7 gui |`,
+`8 geometry |`):
 
 ```bash
 # everything, oldest first (phase 7 needs the gui service)
@@ -37,6 +38,11 @@ for h in $(python -m cli history --grep "1 maps |" | grep -oE '^[0-9a-f]{12}'); 
 
 or one chain from the list below.
 
+The runs of phases 1–7 were recorded with road geometry version 1 (one
+straight road per edge, every bend a junction). Replaying them builds the
+current geometry (version 2: fitted curves, banking, junction planes) and
+logs a warning that the network differs; phase 8 shows the new geometry.
+
 ## From scratch to the GUI
 
 **Manhattan grid with buildings: pipeline, scenario, simulation, GUI:** `495cd073e19e` → `9f82122169a2` → `99b10e867a5f` → `909299126a95` → `3369a331a99f`
@@ -46,6 +52,8 @@ or one chain from the list below.
 **Organic lsystem grid with buildings:** `7096c372e1bf` → `b829a179eecb` → `5cc2b1ab4f3b` → `97f8879ee028`
 
 **Coastal city on input maps, with ground and buildings:** `0bafbe99d5d4` → `606b0af80169` → `38855ef051e8` → `6b4975a09dbc` → `13ebf755086b` → `df96fadf942a` → `68fefd666ab7` → `ac96d08ca541` → `2e45f514ec2e` → `6539301a9834`
+
+**Road geometry: build, measure and drive the coastal city:** `9852ee91656d` → `2a9597708ab6` → `f72fb09c3674`
 
 **City on generated maps in one command, then the GUI:** `de96553ef40d` → `cbc76231e493`
 
@@ -469,4 +477,48 @@ or one chain from the list below.
 
   ```bash
   python -m cli view out/examples/pl/city_full.xodr --scenegraph out/examples/pl/city_full_scene.osgt
+  ```
+
+## 8. Road geometry (stage A): fitted curves, metrics, align, curved streets
+
+- `9852ee91656d` build-xodr: coastal city with fitted curves, banking and junction planes
+
+  ```bash
+  python -m cli build-xodr out/examples/net/coast_city.json out/examples/geometry/coast_city.xodr
+  ```
+
+- `2a9597708ab6` metrics: coastal city (lateral acceleration, two-road junctions, curvature jumps)
+
+  ```bash
+  python -m cli metrics out/examples/geometry/coast_city.xodr --json out/examples/geometry/coast_city_metrics.json
+  ```
+
+- `f72fb09c3674` drive-check: coastal city, every junction movement and every lane end to end
+
+  ```bash
+  python -m cli drive-check out/examples/geometry/coast_city.xodr
+  ```
+
+- `65bda359a875` align: coastal city bends capped where their curves would leave legal ground
+
+  ```bash
+  python -m cli align out/examples/net/coast_city.json --map-file terrain=out/examples/maps/coast_terrain.npz --map-file elevation=out/examples/maps/coast_elevation.npz -o out/examples/geometry/coast_city.aligned.json
+  ```
+
+- `75b46161625c` metrics: build-failure sweep over 20 lsystem cities on generated maps
+
+  ```bash
+  python -m cli metrics --sweep 20 --json out/examples/geometry/sweep20.json
+  ```
+
+- `16f9f56c8071` pipeline: lsystem organic_curved (drifting, bowed streets), drive-check
+
+  ```bash
+  python -m cli pipeline lsystem --preset organic_curved --seed 2 --allow-traps --drive-check -o out/examples/geometry/organic_curved
+  ```
+
+- `7eb244b18978` pipeline: lsystem hill_town on maps (contour streets), ground, buildings, drive-check
+
+  ```bash
+  python -m cli pipeline lsystem --preset hill_town --seed 1 --maps --allow-traps --ground --buildings --drive-check -o out/examples/geometry/hill_town
   ```

@@ -47,12 +47,14 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 | [`maps`](#maps) | List map generators, presets and parameters |
 | [`map`](#map) | Generate one input map (`.npz` + `.png`) |
 | [`plot-map`](#plot-map) | Map `.npz` → image |
+| [`align`](#align) | Cap bend radii where a fitted curve would leave legal ground |
 | [`drape`](#drape) | Heights from an elevation map into a RoadGraph |
 | [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps, levelled under a network |
 | [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate (→ buildings → drive-check → simulate) |
 | [`plot-graph`](#plot-graph) | RoadGraph JSON → image |
 | [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
 | [`drive-check`](#drive-check) | Drive every junction movement with esmini's RoadManager |
+| [`metrics`](#metrics) | Geometry metrics of `.xodr` files and a build-failure sweep |
 | [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
 | [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
 | [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize |
@@ -157,6 +159,17 @@ Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
 | `--graph FILE.json` | Draw this RoadGraph on the preview |
 | `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population), e.g. `map elevation fbm --on terrain=out/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
 
+## align
+
+```bash
+python -m cli align NET.json --map-file terrain=T.npz [--map-file elevation=E.npz] [-o OUT.json]
+```
+
+Caps the radius of bends whose fitted curve would cross new water or climb
+steeper than `align.max_grade` (sets `Node.radius_cap`; see
+[maps](maps.md#heights-from-the-maps-to-esmini)). Default output:
+`NET.aligned.json`. `pipeline` runs it automatically when it has maps.
+
 ## drape
 
 ```bash
@@ -204,6 +217,22 @@ graphs often have dead ends.
 ```bash
 python -m cli drive-check NETWORK.xodr      # needs NETWORK.roadmap.json
 ```
+
+## metrics
+
+```bash
+python -m cli metrics A.xodr [B.xodr ...] [--json OUT.json]
+python -m cli metrics --sweep 20 [--first-seed 0] [--generator lsystem] [--preset city]
+```
+
+Measures how drivable and smooth a network is, from the `.xodr` alone (see
+[Validation → Geometry metrics](validation.md#geometry-metrics)): lateral
+acceleration at the posted speed per road group, the share of junctions
+joining only two roads, and curvature jumps at road links and geometry
+joins. `--sweep N` also generates N networks (seeds `--first-seed` … , maps
+as `pipeline --maps`) and counts how many the OpenDRIVE builder rejects.
+The report is informational: the command succeeds whatever the numbers are.
+Thresholds are in `defaults.yaml` under `metrics`.
 
 ## view
 

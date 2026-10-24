@@ -29,6 +29,7 @@ import numpy as np
 
 from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
+from roadgen.generators.repair import repair_short_edges
 from roadgen.graph.model import Edge, Node, RoadClass, RoadGraph
 
 log = logging.getLogger(__name__)
@@ -167,6 +168,7 @@ class ManhattanGenerator(RoadNetworkGenerator[ManhattanParams]):
         if params.boundary_mode == "loop":
             self._add_ring(b)
         dropped = self._drop_street_edges(graph, params, street_ids, rng)
+        repair_short_edges(graph)
         assign_node_kinds(graph)
         log.debug(
             "manhattan %dx%d: %d nodes, %d edges (%d dropped)",

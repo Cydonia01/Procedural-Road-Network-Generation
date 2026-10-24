@@ -15,9 +15,16 @@ from typing import Iterator, Optional, Sequence
 
 import yaml
 
-from roadgen.config import load_config, merge, section
-from roadgen.generators.base import generator_names, get_generator, load_params, presets_of
+from roadgen.config import DEFAULTS, load_config, merge, section
+from roadgen.generators.base import (
+    generator_names,
+    get_generator,
+    load_params,
+    presets_of,
+)
 from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS
+from roadgen.geometry import GEOMETRY_VERSION
+from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
 from roadgen.graph.plot import plot_graph
@@ -27,11 +34,15 @@ from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, 
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.connectivity import check_traffic_connectivity
-from roadgen.validate.continuity import check_continuity
+from roadgen.validate.continuity import check_continuity, check_curvature
+from roadgen.validate.dynamics import check_dynamics
 from roadgen.validate.schema import validate_schema
 from roadgen.validate.topology import check_topology
 
 log = logging.getLogger("roadgen.cli")
+
+MAX_LISTED_WARNINGS = 5
+DYNAMICS_CHECKS_JUNCTIONS = True  # junction turns get speeds from their curvature
 
 
 def cmd_plot_graph(args: argparse.Namespace) -> int:
@@ -62,11 +73,13 @@ def check_traffic(graph: RoadGraph, allow_traps: bool) -> list[str]:
 
 
 def build_and_validate(
-    graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str]
+    graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str],
+    cfg: Optional[dict] = None,
 ) -> list[str]:
     """Build and write the .xodr, then run every file validator; return all errors."""
     builder = OpenDriveBuilder(
-        name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin
+        name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
+        design=DesignParams(**section(cfg or DEFAULTS, "design")),
     )
     with timed("build xodr"):
         try:
@@ -79,7 +92,7 @@ def build_and_validate(
     log.info(
         "wrote %s (%d roads, %d junctions, %d connecting roads) and %s",
         xodr_path,
-        len(builder.edge_to_road),
+        len(set(builder.edge_to_road.values())),
         len(builder.node_to_junction),
         len(builder.movements),
         sidecar,
@@ -87,7 +100,15 @@ def build_and_validate(
     with timed("validate"):
         errors = check_topology(xodr_path)
         errors += check_continuity(xodr_path)
+        curvature_errors, curvature_warnings = check_curvature(xodr_path)
+        errors += curvature_errors
+        a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
+        errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
         errors += validate_schema(xodr_path, xsd) or []
+    for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
+        log.warning("%s", warning)
+    if len(curvature_warnings) > MAX_LISTED_WARNINGS:
+        log.warning("... %d curvature warnings in all (paramPoly3 junction turns)", len(curvature_warnings))
     for err in errors:
         log.error("%s", err)
     return errors
@@ -96,7 +117,7 @@ def build_and_validate(
 def cmd_build_xodr(args: argparse.Namespace) -> int:
     graph = load_json(args.input)
     check_traffic(graph, allow_traps=True)  # informational for hand-made graphs
-    errors = build_and_validate(graph, Path(args.output), args.junction_margin, args.xsd)
+    errors = build_and_validate(graph, Path(args.output), args.junction_margin, args.xsd, args.cfg)
     return 1 if errors else 0
 
 
@@ -185,9 +206,21 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
     log.info("generated %d nodes, %d edges", len(graph.nodes), len(graph.edges))
     if (chosen or files) and not maps:
         layers = input_maps(args, GridSpec.around(graph, margin, cell), chosen, files)
+    if layers:
+        graph = align_graph(graph, layers, args.cfg)
     if "elevation" in layers and not args.flat:
         graph = drape_graph(graph, layers, args.cfg)
     return graph, layers
+
+
+def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
+    """Radius caps for bends whose fitted curve would leave legal ground."""
+    from roadgen.maps.align import AlignParams, align
+
+    with timed("align"):
+        return align(graph, layers.get("terrain"), layers.get("elevation"),
+                     AlignParams(**section(cfg, "align")), DesignParams(**section(cfg, "design")),
+                     cfg["opendrive"]["junction_margin"])
 
 
 def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
@@ -196,7 +229,8 @@ def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> Roa
 
     with timed("drape"):
         return drape(graph, layers["elevation"], layers.get("terrain"),
-                     DrapeParams(**section(cfg, "drape")))
+                     DrapeParams(**section(cfg, "drape")), DesignParams(**section(cfg, "design")),
+                     cfg["opendrive"]["junction_margin"])
 
 
 def map_requests(args: argparse.Namespace) -> tuple[dict[str, str], dict[str, str]]:
@@ -287,7 +321,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     with timed("plot"):
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
-    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd)
+    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg)
     scenegraph = None
     if args.ground:
         if "elevation" not in layers:
@@ -323,7 +357,7 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
     elevation, terrain = layers["elevation"], layers.get("terrain")
     with timed("scene"):
         meshes = [ground_mesh(elevation, terrain, graph, GroundParams(**section(cfg, "ground")),
-                              junction_margin)]
+                              junction_margin, DesignParams(**section(cfg, "design")))]
         n = 0
         if buildings:
             params = BuildingParams(seed=seed, **section(cfg, "buildings"))
@@ -347,6 +381,17 @@ def load_layers(items: Optional[list[str]], flag: str = "--map-file") -> dict[st
         if layers[kind].kind != kind:
             raise SystemExit(f"error: {flag} {kind}: {path} holds a {layers[kind].kind} map")
     return layers
+
+
+def cmd_align(args: argparse.Namespace) -> int:
+    layers = load_layers(args.map_file)
+    if not {"terrain", "elevation"} & set(layers):
+        raise SystemExit("error: align needs --map-file terrain=FILE.npz and/or elevation=FILE.npz")
+    graph = align_graph(load_json(args.input), layers, args.cfg)
+    output = Path(args.output) if args.output else Path(args.input).with_suffix(".aligned.json")
+    save_json(graph, output)
+    log.info("wrote %s", output)
+    return 0
 
 
 def cmd_drape(args: argparse.Namespace) -> int:
@@ -499,10 +544,11 @@ def cmd_view(args: argparse.Namespace) -> int:
 
 
 def cmd_drive_check(args: argparse.Namespace) -> int:
-    from roadgen.sim.drive_check import drive_movements
+    from roadgen.sim.drive_check import drive_lanes, drive_movements
 
     try:
         results = drive_movements(args.input)
+        lanes = drive_lanes(args.input)
     except FileNotFoundError as e:
         log.error("%s", e)
         return 1
@@ -510,7 +556,53 @@ def cmd_drive_check(args: argparse.Namespace) -> int:
     for r in results:
         (log.error if not r.ok else log.debug)("%s", r.describe())
     log.info("%d/%d movements drove through correctly", len(results) - len(failed), len(results))
-    return 1 if failed else 0
+    bad_lanes = [r for r in lanes if not r.ok]
+    for r in lanes:
+        (log.error if not r.ok else log.debug)("%s", r.describe())
+    log.info("%d/%d road lanes drove end to end on the expected centre line",
+             len(lanes) - len(bad_lanes), len(lanes))
+    return 1 if failed or bad_lanes else 0
+
+
+def cmd_metrics(args: argparse.Namespace) -> int:
+    """Geometry metrics of .xodr files and/or a build-failure sweep; optional JSON report."""
+    import json
+
+    from roadgen.metrics.geometry import (
+        GeometryMetricsParams,
+        geometry_metrics,
+        summary_lines,
+    )
+    from roadgen.metrics.sweep import build_sweep
+
+    if not args.inputs and not args.sweep:
+        raise SystemExit("error: metrics needs .xodr files and/or --sweep N")
+    params = GeometryMetricsParams(**section(args.cfg, "metrics"))
+    report: dict = {"networks": []}
+    for path in args.inputs:
+        with timed(f"metrics {path}"):
+            m = geometry_metrics(path, params)
+        for line in summary_lines(m):
+            log.info("%s", line)
+        report["networks"].append(m)
+    if args.sweep:
+        seeds = range(args.first_seed, args.first_seed + args.sweep)
+        with timed("build sweep"):
+            results = build_sweep(args.generator, args.preset, seeds, args.cfg)
+        failed = [r for r in results if not r.ok]
+        log.info("build sweep (%s, preset %s): %d of %d networks failed to build",
+                 args.generator, args.preset, len(failed), len(results))
+        report["sweep"] = {
+            "generator": args.generator, "preset": args.preset, "seeds": list(seeds),
+            "failed": len(failed),
+            "results": [dataclasses.asdict(r) for r in results],
+        }
+    if args.json:
+        out = Path(args.json)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2) + "\n")
+        log.info("wrote %s", out)
+    return 0
 
 
 def cmd_scenario(args: argparse.Namespace) -> int:
@@ -685,6 +777,14 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                        help="[s] (default %(default)s)")
         g.set_defaults(func=cmd_pipeline)
 
+    p = sub.add_parser("align", help="cap bend radii where a fitted curve would leave legal "
+                                     "ground (water, steep grades)")
+    p.add_argument("input", help="RoadGraph JSON file")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
+                   help="terrain and/or elevation map, repeatable")
+    p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.aligned.json)")
+    p.set_defaults(func=cmd_align)
+
     p = sub.add_parser("drape", help="give a RoadGraph heights from an elevation map")
     p.add_argument("input", help="RoadGraph JSON file")
     p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
@@ -808,6 +908,19 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("input", help=".xodr file written by build-xodr (needs its .roadmap.json)")
     p.set_defaults(func=cmd_drive_check)
 
+    p = sub.add_parser("metrics", help="geometry metrics of .xodr files (curvature, lateral "
+                                       "acceleration, two-road junctions) and a build-failure sweep")
+    p.add_argument("inputs", nargs="*", help=".xodr files to measure")
+    p.add_argument("--json", metavar="OUT", help="write the full report as JSON")
+    p.add_argument("--sweep", type=int, metavar="N",
+                   help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
+                        "and count how many the builder rejects")
+    p.add_argument("--first-seed", type=int, default=0, help="first sweep seed (default %(default)s)")
+    p.add_argument("--generator", default="lsystem", choices=generator_names(),
+                   help="sweep generator (default %(default)s)")
+    p.add_argument("--preset", default="city", help="sweep generator preset (default %(default)s)")
+    p.set_defaults(func=cmd_metrics)
+
     return parser
 
 
@@ -918,6 +1031,9 @@ def cmd_replay(args: argparse.Namespace) -> int:
             print(f"(config file {run.config_file} at the time; its content is in the history)")
         return 0
     log.info("replaying %s: %s", run.hash, run.command_line())
+    if run.geometry_version != GEOMETRY_VERSION:
+        log.warning("run %s was recorded with road geometry version %d, this code builds version %d: "
+                    "its road network will differ", run.hash, run.geometry_version, GEOMETRY_VERSION)
     # Exactly the recorded configuration; keys added to defaults.yaml since then come from it.
     return main(run.argv, merge(load_config(), run.config), expected_hash=run.hash)
 
@@ -944,7 +1060,8 @@ def _record(args: argparse.Namespace, argv: list[str], config_file: Optional[str
     strip.add_argument("--no-history", action="store_true")
     _, argv = strip.parse_known_args(argv)
     try:
-        h, new = history.record(argv, run_params(vars(args)), args.cfg, config_file, args.note)
+        h, new = history.record(argv, run_params(vars(args)), args.cfg, config_file, args.note,
+                                GEOMETRY_VERSION)
     except (OSError, ValueError) as e:
         log.warning("run history: %s", e)
         return

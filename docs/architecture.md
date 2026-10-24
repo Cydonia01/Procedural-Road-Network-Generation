@@ -38,6 +38,7 @@ flowchart LR
 |-------|----------------|--------|
 | Maps | params + grid + seed → `MapLayer` (`.npz` + `.png`) | `roadgen/maps/` |
 | Generate | params + seed (+ `MapSet`) → `RoadGraph` | `roadgen/generators/` |
+| Align | `RoadGraph` + terrain / elevation map → `RoadGraph` with bend radius caps | `roadgen/maps/align.py` |
 | Drape | `RoadGraph` + elevation (+ terrain) map → `RoadGraph` with heights and bridges | `roadgen/maps/drape.py` |
 | Check traffic | `RoadGraph` → traps / unreachable roads | `roadgen/validate/connectivity.py` |
 | Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` |
@@ -142,6 +143,7 @@ roadgen/
     base.py                RoadNetworkGenerator ABC, registry, params/presets loading
     manhattan.py           parametric grid (one-way patterns, ring road, jitter, drops)
     lsystem.py             Parish & Müller style growth (highways, map constraints)
+    repair.py              post-generation repair of edges too short for their junctions
   maps/
     model.py               GridSpec, MapLayer (sampling, .npz I/O), MapSet, terrain classes
     base.py                MapGenerator ABC, per-kind registry, make_map
@@ -149,6 +151,7 @@ roadgen/
     terrain.py             water / land / vegetation (noise, image)
     elevation.py           heightmaps (fbm + thermal erosion, image)
     population.py          density (polycentric Clark model, image)
+    align.py               radius caps for bends whose fitted curve leaves legal ground
     drape.py               heights and bridges for a RoadGraph from the maps
     image.py               reading PNG / JPEG / .npy rasters onto a grid
     plot.py                map previews with optional roads on top
@@ -156,13 +159,24 @@ roadgen/
     builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
     junctions.py           movement planning, connecting roads, junction trims
     lanes.py               lane sections and road marks
-    geometry.py            poses, trimming, Hermite paramPoly3 curves
-    elevation.py           <elevationProfile> fit (monotone cubic Hermite)
+  geometry/                neutral road geometry (no OpenDRIVE imports), shared by all stages
+    planar.py              poses, trimming, Hermite paramPoly3 curves
+    junction_space.py      junction trims: where roads stop at a node
+    design.py              design-speed rules: radii, advisory speeds, spirals, tapers
+    primitives.py          line / arc / spiral pieces (Fresnel), alignments
+    clothoid.py            G2 clothoid transitions (pyclothoids)
+    chains.py              runs of edges through road bends: one road each
+    alignment.py           fitted reference lines: corners, room, clearance, stations
+    profiles.py            lane widths and tapers, speeds, heights, bridges along a road
+    vertical.py            elevation fits (monotone cubic Hermite), junction planes, banking
   validate/
     connectivity.py        traffic traps / reachability on the RoadGraph
     topology.py            ids and links in the .xodr
     continuity.py          lane-center position/heading/height/grade continuity in the .xodr
     schema.py              XSD validation (optional)
+  metrics/
+    geometry.py            curvature, lateral acceleration, two-road junctions, curvature jumps of an .xodr
+    sweep.py               build-failure sweep over generator seeds
   scenario/
     xosc_builder.py        vehicle spawning, routes, .xosc writing
   sim/

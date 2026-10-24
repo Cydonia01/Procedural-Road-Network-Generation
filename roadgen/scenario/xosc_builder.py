@@ -78,9 +78,26 @@ class ScenarioParams:
 
 @dataclass(frozen=True)
 class LaneSlot:
+    """A stretch [s0, s1] of a lane where it exists at full, constant width."""
+
     road: int
     lane: int
-    length: float
+    length: float  # of the road [m]
+    s0: float
+    s1: float
+
+    @property
+    def span(self) -> float:
+        return self.s1 - self.s0
+
+    @property
+    def entry(self) -> float:
+        """Station where traffic in this lane enters the road (right lanes drive along +s)."""
+        return 0.0 if self.lane < 0 else self.length
+
+    @property
+    def exit(self) -> float:
+        return self.length if self.lane < 0 else 0.0
 
 
 @dataclass
@@ -124,7 +141,11 @@ class ScenarioBuilder:
     # --- network --------------------------------------------------------------------
 
     def _lane_slots(self) -> list[LaneSlot]:
-        """Driving lanes on normal roads, in road/lane order."""
+        """Full-width stretches of the driving lanes on normal roads, in road/lane/s order.
+
+        Lane sections where a lane widens or narrows (tapers) are left out, so a
+        stretch ends where its lane starts to be dropped.
+        """
         root = etree.parse(str(self.xodr_path)).getroot()
         normal = set(self.edge_to_road.values())
         slots = []
@@ -133,21 +154,37 @@ class ScenarioBuilder:
             if rid not in normal:
                 continue
             length = float(road.get("length"))
-            for lane in road.iterfind("lanes/laneSection/*/lane"):
-                lid = int(lane.get("id"))
-                if lid != 0 and lane.get("type") == "driving":
-                    slots.append(LaneSlot(rid, lid, length))
-        slots.sort(key=lambda sl: (sl.road, sl.lane))
+            sections = road.findall("lanes/laneSection")
+            bounds = [float(sec.get("s")) for sec in sections] + [length]
+            open_at: dict[int, float] = {}
+            for k, sec in enumerate(sections):
+                full = {int(lane.get("id")) for lane in sec.iterfind("*/lane")
+                        if lane.get("id") != "0" and lane.get("type") == "driving" and _full_width(lane)}
+                for lid in sorted(set(open_at) - full):
+                    slots.append(LaneSlot(rid, lid, length, open_at.pop(lid), bounds[k]))
+                for lid in sorted(full - set(open_at)):
+                    open_at[lid] = bounds[k]
+            for lid, s0 in sorted(open_at.items()):
+                slots.append(LaneSlot(rid, lid, length, s0, length))
+        slots.sort(key=lambda sl: (sl.road, sl.lane, sl.s0))
         return slots
 
     def _lane_graph(self) -> nx.DiGraph:
-        """(road, lane) -> (road, lane) through junction movements, weighted by length."""
+        """(road, lane) -> (road, lane) through junction movements, weighted by length.
+
+        Only lanes that run the whole road at full width are nodes: a vehicle
+        following its lane (esmini's default controller never changes lanes)
+        can only drive those end to end, and esmini's route planner reports
+        errors for routes through lanes missing in some lane section.
+        """
         lengths = {sl.road: sl.length for sl in self.slots}
+        whole = {(sl.road, sl.lane) for sl in self.slots if sl.s0 < 1e-6 and sl.s1 > sl.length - 1e-6}
         g = nx.DiGraph()
-        g.add_nodes_from((sl.road, sl.lane) for sl in self.slots)
+        g.add_nodes_from(sorted(whole))
         for m in self.movements:
             src, dst = (m["from_road"], m["from_lane"]), (m["to_road"], m["to_lane"])
-            g.add_edge(src, dst, weight=lengths.get(m["to_road"], 1.0))
+            if src in whole and dst in whole:
+                g.add_edge(src, dst, weight=lengths.get(m["to_road"], 1.0))
         return g
 
     # --- planning ---------------------------------------------------------------------
@@ -168,11 +205,20 @@ class ScenarioBuilder:
         self.plans = plans
         return plans
 
+    def spawn_slots(self, routed: bool = False) -> list[LaneSlot]:
+        """Slots a vehicle can spawn on: long enough, and running on to the road's
+        end in the lane's travel direction (not into a dropped lane); with routed,
+        only route-graph lanes (whole-road lanes) with a way on."""
+        return [sl for sl in self.slots if sl.span > 2 * END_MARGIN
+                and abs((sl.s1 if sl.lane < 0 else sl.s0) - sl.exit) < 1e-6
+                and (not routed or ((sl.road, sl.lane) in self.lane_graph
+                                    and self.lane_graph.out_degree((sl.road, sl.lane)) > 0))]
+
     def _spawn(self, params: ScenarioParams, rng: np.random.Generator) -> list[tuple[int, int, float]]:
-        usable = [sl for sl in self.slots if sl.length > 2 * END_MARGIN]
+        usable = self.spawn_slots(routed=params.spawn_mode == "explicit_routes")
         if params.n_vehicles and not usable:
             raise ValueError("no lane is long enough to spawn on")
-        weights = np.array([sl.length - 2 * END_MARGIN for sl in usable])
+        weights = np.array([sl.span - 2 * END_MARGIN for sl in usable])
         weights = weights / weights.sum() if len(usable) else weights
         taken: dict[tuple[int, int], list[float]] = {}
         spawns: list[tuple[int, int, float]] = []
@@ -185,7 +231,7 @@ class ScenarioBuilder:
                     f"min_spawn_gap={params.min_spawn_gap} m; use fewer vehicles or a smaller gap"
                 )
             sl = usable[int(rng.choice(len(usable), p=weights))]
-            s = float(rng.uniform(END_MARGIN, sl.length - END_MARGIN))
+            s = float(rng.uniform(sl.s0 + END_MARGIN, sl.s1 - END_MARGIN))
             others = taken.setdefault((sl.road, sl.lane), [])
             i = bisect_left(others, s)
             near = [others[j] for j in (i - 1, i) if 0 <= j < len(others)]
@@ -204,6 +250,15 @@ class ScenarioBuilder:
             return [start]
         return paths[targets[int(rng.integers(len(targets)))]]
 
+    def _waypoint_s(self, road: int, lane: int) -> float:
+        """Middle of the lane's stretch where traffic enters the road (where a route arrives)."""
+        stretches = [sl for sl in self.slots if sl.road == road and sl.lane == lane]
+        if not stretches:
+            raise ValueError(f"road {road} has no lane {lane}")
+        entry = [sl for sl in stretches if sl.s0 - 1e-6 <= sl.entry <= sl.s1 + 1e-6]
+        sl = entry[0] if entry else max(stretches, key=lambda x: x.span)
+        return 0.5 * (sl.s0 + sl.s1)
+
     # --- output -------------------------------------------------------------------------
 
     def build(
@@ -213,8 +268,6 @@ class ScenarioBuilder:
         xosc_dir = Path(xosc_path).resolve().parent
         roadfile = os.path.relpath(self.xodr_path.resolve(), xosc_dir)
         scenefile = os.path.relpath(Path(scenegraph).resolve(), xosc_dir) if scenegraph else None
-        lengths = {sl.road: sl.length for sl in self.slots}
-
         entities, init = xosc.Entities(), xosc.Init()
         for p in plans:
             vehicle = xosc.Vehicle(
@@ -234,7 +287,8 @@ class ScenarioBuilder:
                 route.add_waypoint(xosc.LanePosition(p.s, 0, p.lane, p.road), xosc.RouteStrategy.shortest)
                 for road, lane in p.route[1:]:
                     route.add_waypoint(
-                        xosc.LanePosition(lengths[road] / 2, 0, lane, road), xosc.RouteStrategy.shortest
+                        xosc.LanePosition(self._waypoint_s(road, lane), 0, lane, road),
+                        xosc.RouteStrategy.shortest,
                     )
                 init.add_init_action(p.name, xosc.AssignRouteAction(route))
 
@@ -270,3 +324,10 @@ class ScenarioBuilder:
             params.sim_duration,
         )
         return xosc_path
+
+
+def _full_width(lane: etree._Element) -> bool:
+    """A lane whose width is a positive constant over its section (no taper)."""
+    widths = lane.findall("width")
+    return bool(widths) and all(
+        float(w.get("a", 0)) > 0 and all(abs(float(w.get(k, 0))) < 1e-12 for k in "bcd") for w in widths)
