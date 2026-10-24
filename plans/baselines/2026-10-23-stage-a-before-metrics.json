@@ -1,0 +1,316 @@
+{
+  "networks": [
+    {
+      "xodr": "coast_city.xodr",
+      "params": {
+        "sample_step": 0.5,
+        "comfort_lat_acc": 3.0,
+        "curvature_jump_tol": 0.002
+      },
+      "counts": {
+        "roads": 766,
+        "connecting_roads": 3987,
+        "junctions": 489,
+        "two_road_junctions": 119,
+        "two_road_junction_share": 0.2434,
+        "road_length_m": 63021.7
+      },
+      "lateral_acceleration": {
+        "road": {
+          "n": 766,
+          "p50": 0.0,
+          "p90": 0.0,
+          "p99": 0.0,
+          "max": 0.0,
+          "over_limit": 0,
+          "over_limit_share": 0.0
+        },
+        "bend": {
+          "n": 402,
+          "p50": 12.6875,
+          "p90": 35.247,
+          "p99": 49.2915,
+          "max": 178.5643,
+          "over_limit": 310,
+          "over_limit_share": 0.7711
+        },
+        "turn": {
+          "n": 3585,
+          "p50": 11.441,
+          "p90": 48.4962,
+          "p99": 158.9721,
+          "max": 207.0579,
+          "over_limit": 2450,
+          "over_limit_share": 0.6834
+        }
+      },
+      "min_radius": {
+        "road": {
+          "n": 0
+        },
+        "bend": {
+          "n": 374,
+          "p50": 10.5557,
+          "p90": 351.128,
+          "p99": 1407.4002,
+          "max": 1507.0167
+        },
+        "turn": {
+          "n": 3063,
+          "p50": 11.1901,
+          "p90": 307.2135,
+          "p99": 2334.9052,
+          "max": 22020.8304
+        }
+      },
+      "curvature_jumps": {
+        "links": {
+          "n": 7974,
+          "p50": 0.0341,
+          "p90": 0.2512,
+          "p99": 0.3428,
+          "max": 0.3599,
+          "over_limit": 6282,
+          "over_limit_share": 0.7878
+        },
+        "joins": {
+          "n": 0
+        }
+      }
+    },
+    {
+      "xodr": "city_maps.xodr",
+      "params": {
+        "sample_step": 0.5,
+        "comfort_lat_acc": 3.0,
+        "curvature_jump_tol": 0.002
+      },
+      "counts": {
+        "roads": 780,
+        "connecting_roads": 3794,
+        "junctions": 517,
+        "two_road_junctions": 167,
+        "two_road_junction_share": 0.323,
+        "road_length_m": 64341.7
+      },
+      "lateral_acceleration": {
+        "road": {
+          "n": 780,
+          "p50": 0.0,
+          "p90": 0.0,
+          "p99": 0.0,
+          "max": 0.0,
+          "over_limit": 0,
+          "over_limit_share": 0.0
+        },
+        "bend": {
+          "n": 550,
+          "p50": 12.6309,
+          "p90": 31.701,
+          "p99": 49.3055,
+          "max": 95.9462,
+          "over_limit": 410,
+          "over_limit_share": 0.7455
+        },
+        "turn": {
+          "n": 3244,
+          "p50": 11.2445,
+          "p90": 47.8448,
+          "p99": 154.3134,
+          "max": 280.3317,
+          "over_limit": 2107,
+          "over_limit_share": 0.6495
+        }
+      },
+      "min_radius": {
+        "road": {
+          "n": 0
+        },
+        "bend": {
+          "n": 534,
+          "p50": 10.598,
+          "p90": 306.993,
+          "p99": 5566.2857,
+          "max": 10254.1872
+        },
+        "turn": {
+          "n": 2762,
+          "p50": 10.8657,
+          "p90": 413.0597,
+          "p99": 5196.0849,
+          "max": 18394.6651
+        }
+      },
+      "curvature_jumps": {
+        "links": {
+          "n": 7588,
+          "p50": 0.0393,
+          "p90": 0.2435,
+          "p99": 0.3326,
+          "max": 0.3595,
+          "over_limit": 5998,
+          "over_limit_share": 0.7905
+        },
+        "joins": {
+          "n": 0
+        }
+      }
+    },
+    {
+      "xodr": "organic.xodr",
+      "params": {
+        "sample_step": 0.5,
+        "comfort_lat_acc": 3.0,
+        "curvature_jump_tol": 0.002
+      },
+      "counts": {
+        "roads": 160,
+        "connecting_roads": 740,
+        "junctions": 104,
+        "two_road_junctions": 39,
+        "two_road_junction_share": 0.375,
+        "road_length_m": 17799.4
+      },
+      "lateral_acceleration": {
+        "road": {
+          "n": 160,
+          "p50": 0.0,
+          "p90": 0.0,
+          "p99": 0.0,
+          "max": 0.0,
+          "over_limit": 0,
+          "over_limit_share": 0.0
+        },
+        "bend": {
+          "n": 124,
+          "p50": 12.4622,
+          "p90": 32.1716,
+          "p99": 48.7897,
+          "max": 49.1956,
+          "over_limit": 78,
+          "over_limit_share": 0.629
+        },
+        "turn": {
+          "n": 616,
+          "p50": 10.9219,
+          "p90": 47.243,
+          "p99": 49.3786,
+          "max": 49.5156,
+          "over_limit": 374,
+          "over_limit_share": 0.6071
+        }
+      },
+      "min_radius": {
+        "road": {
+          "n": 0
+        },
+        "bend": {
+          "n": 124,
+          "p50": 9.8884,
+          "p90": 157.2008,
+          "p99": 320.3137,
+          "max": 324.6187
+        },
+        "turn": {
+          "n": 594,
+          "p50": 11.0087,
+          "p90": 305.2906,
+          "p99": 797.5657,
+          "max": 1149.3327
+        }
+      },
+      "curvature_jumps": {
+        "links": {
+          "n": 1480,
+          "p50": 0.0604,
+          "p90": 0.2301,
+          "p99": 0.3059,
+          "max": 0.3195,
+          "over_limit": 1388,
+          "over_limit_share": 0.9378
+        },
+        "joins": {
+          "n": 0
+        }
+      }
+    },
+    {
+      "xodr": "manhattan_like.xodr",
+      "params": {
+        "sample_step": 0.5,
+        "comfort_lat_acc": 3.0,
+        "curvature_jump_tol": 0.002
+      },
+      "counts": {
+        "roads": 724,
+        "connecting_roads": 2916,
+        "junctions": 384,
+        "two_road_junctions": 4,
+        "two_road_junction_share": 0.0104,
+        "road_length_m": 83268.0
+      },
+      "lateral_acceleration": {
+        "road": {
+          "n": 724,
+          "p50": 0.0,
+          "p90": 0.0,
+          "p99": 0.0,
+          "max": 0.0,
+          "over_limit": 0,
+          "over_limit_share": 0.0
+        },
+        "bend": {
+          "n": 16,
+          "p50": 14.6001,
+          "p90": 33.7099,
+          "p99": 33.7099,
+          "max": 33.7099,
+          "over_limit": 16,
+          "over_limit_share": 1.0
+        },
+        "turn": {
+          "n": 2900,
+          "p50": 0.0,
+          "p90": 45.0457,
+          "p99": 45.0457,
+          "max": 45.0457,
+          "over_limit": 780,
+          "over_limit_share": 0.269
+        }
+      },
+      "min_radius": {
+        "road": {
+          "n": 0
+        },
+        "bend": {
+          "n": 16,
+          "p50": 8.9293,
+          "p90": 14.1376,
+          "p99": 14.1376,
+          "max": 14.1376
+        },
+        "turn": {
+          "n": 780,
+          "p50": 7.9507,
+          "p90": 17.6098,
+          "p99": 21.0817,
+          "max": 21.0817
+        }
+      },
+      "curvature_jumps": {
+        "links": {
+          "n": 5832,
+          "p50": 0.0,
+          "p90": 0.091,
+          "p99": 0.2609,
+          "max": 0.2609,
+          "over_limit": 1592,
+          "over_limit_share": 0.273
+        },
+        "joins": {
+          "n": 0
+        }
+      }
+    }
+  ]
+}

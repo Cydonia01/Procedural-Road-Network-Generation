@@ -31,6 +31,22 @@ live in the Copilot instructions and apply here too:
   CLI reference and the README when adding commands or modules.
 - Reference papers: `files/*.pdf` (`file1.pdf` is Parish & Müller 2001).
 
+## Plans and prompts (traceability)
+
+- Every plan, design discussion or review gets its own Markdown file in
+  `plans/`, named `YYYY-MM-DD-<short-slug>.md`. Discussions (pros/cons,
+  options, decisions) are saved too, not only final plans. Add each file to
+  the index in `plans/README.md`.
+- Each file starts with a **Prompts** section quoting, verbatim and dated,
+  the user prompts that led to it. Follow-up prompts that change a plan are
+  appended there, and the plan is updated rather than duplicated.
+- Record the decisions the user made, and the ones left to Claude with the
+  reasoning, in a **Decisions** section.
+- When implementation deviates from a plan, update the plan file in the
+  same change and note why.
+- Small helper scripts used to produce numbers quoted in a plan go in
+  `plans/scripts/`.
+
 ## Conventions beyond the Copilot file
 
 - New pluggable components follow the existing pattern: ABC + `register`

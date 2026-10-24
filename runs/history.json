@@ -1289,6 +1289,32 @@
    "note": "8 geometry | pipeline: lsystem hill_town on maps (contour streets), ground, buildings, drive-check",
    "recorded": "2026-10-23T22:45:21+00:00",
    "geometry_version": 2
+  },
+  "d77181cbe072": {
+   "argv": [
+    "view",
+    "out/examples/pl/city_full.xodr",
+    "--scenegraph",
+    "out/examples/pl/city_full_scene.osgt"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "",
+   "recorded": "2026-10-24T13:41:39+00:00",
+   "geometry_version": 2
+  },
+  "2e0ab998541e": {
+   "argv": [
+    "view",
+    "out/compare/city_full.xodr",
+    "--scenegraph",
+    "out/compare/city_full_scene.osgt"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "",
+   "recorded": "2026-10-24T13:44:03+00:00",
+   "geometry_version": 2
   }
  },
  "configs": {
