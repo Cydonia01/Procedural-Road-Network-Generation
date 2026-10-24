@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fills runs/history.json with example runs, phase by phase: input maps ->
 # road network -> OpenDRIVE -> 3D scene -> scenario -> headless simulation ->
-# esmini GUI. Run from the repository root on the host:
+# road geometry (stage A) -> esmini GUI. Run from the repository root on the host:
 #
 #   bash runs/examples.sh            # everything (the GUI phase opens windows)
 #   NO_GUI=1 bash runs/examples.sh   # skip phase 7
@@ -173,6 +173,25 @@ cli --note "6 simulate | whole chain in one pipeline: maps, city, ground, buildi
 cli --note "6 simulate | whole chain in one pipeline: manhattan_like with buildings, esmini run" \
     pipeline manhattan --preset manhattan_like --seed 1 --buildings --simulate --sim-vehicles 100 \
     -o $P/manhattan_full
+
+echo "== 8 road geometry (stage A)"
+G=$O/geometry
+cli --note "8 geometry | build-xodr: coastal city with fitted curves, banking and junction planes" \
+    build-xodr $N/coast_city.json $G/coast_city.xodr
+cli --note "8 geometry | metrics: coastal city (lateral acceleration, two-road junctions, curvature jumps)" \
+    metrics $G/coast_city.xodr --json $G/coast_city_metrics.json
+cli --note "8 geometry | drive-check: coastal city, every junction movement and every lane end to end" \
+    drive-check $G/coast_city.xodr
+cli --note "8 geometry | align: coastal city bends capped where their curves would leave legal ground" \
+    align $N/coast_city.json --map-file terrain=$M/coast_terrain.npz \
+    --map-file elevation=$M/coast_elevation.npz -o $G/coast_city.aligned.json
+cli --note "8 geometry | metrics: build-failure sweep over 20 lsystem cities on generated maps" \
+    metrics --sweep 20 --json $G/sweep20.json
+cli --note "8 geometry | pipeline: lsystem organic_curved (drifting, bowed streets), drive-check" \
+    pipeline lsystem --preset organic_curved --seed 2 --allow-traps --drive-check -o $G/organic_curved
+cli --note "8 geometry | pipeline: lsystem hill_town on maps (contour streets), ground, buildings, drive-check" \
+    pipeline lsystem --preset hill_town --seed 1 --maps --allow-traps --ground --buildings --drive-check \
+    -o $G/hill_town
 
 [ -n "${NO_GUI:-}" ] && exit 0
 echo "== 7 esmini GUI (views stay open until you close the window)"

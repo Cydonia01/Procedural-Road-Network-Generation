@@ -18,7 +18,8 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
 - **Generators:**
   - `manhattan`: parametric grids with one-way patterns, multi-lane avenues,
     a ring road, jitter, dropped streets, and a Midtown-like preset.
-  - `lsystem`: Parish & Müller style growth.
+  - `lsystem`: Parish & Müller style growth, optionally with curved streets
+    (drifting, contour-following, bowed) instead of a straight grid.
 - **Input maps** (after Parish & Müller): pluggable generators, built as a
   linear pipeline so the maps agree: a water/land/vegetation map (lakes,
   coast, rivers, parks), then an elevation map on it (fBm, ridged
@@ -27,19 +28,31 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
   slopes). Real maps can be read from images.
   `lsystem` grows on them: highways seek population peaks and bridge
   rivers, and streets stop at shores, parks, steep slopes and empty land.
+- **Road geometry** (design-speed rules after AASHTO): road bends are not
+  junctions but one road of lines, spirals and arcs sized for the speed
+  limit, with advisory speeds where a bend is too tight, banking on curves,
+  lane-count changes as tapers, and sloped junction areas. Curvature is
+  continuous everywhere, and no road needs more than 3 m/s² of lateral
+  acceleration at its posted speed. Bends that would cut into water or
+  steep ground are capped against the maps.
 - **OpenDRIVE builder:**
   - junctions with any number of arms, at any angle down to 10°;
-  - one connecting road per lane movement, with arc-like cubic curves;
+  - one connecting road per lane movement, as three clothoids
+    (curvature-continuous) with a speed from the turn's radius;
   - no lane ever dead-ends.
 - **Validation:**
   - traffic connectivity (no traps, everything reachable);
   - id and link topology, and lane continuity within 1 cm;
+  - curvature continuity and lateral acceleration at the posted speed;
   - optional XSD schema check;
-  - a drive-through of every junction movement with esmini's own RoadManager.
+  - a drive-through of every junction movement and every lane with esmini's
+    own RoadManager.
+- **Geometry metrics:** `metrics` measures any `.xodr` (curvature, lateral
+  acceleration, curvature jumps) and sweeps generator seeds for build failures.
 - **Scenarios:** hundreds to thousands of vehicles, with random junction
   choices or shortest-path routes.
 - **Heights:** with an elevation map the roads follow the terrain
-  (`<elevationProfile>`, flat junction areas, `<bridge>` over water).
+  (`<elevationProfile>`, `<superelevation>`, junction planes, `<bridge>` over water).
 - **3D scene:** optional buildings, one extruded block per city block, and a
   ground mesh from the maps, both standing on the terrain.
 - **Benchmark:** resumable scalability sweep measuring real-time factor, load

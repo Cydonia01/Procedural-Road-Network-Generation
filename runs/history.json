@@ -1181,6 +1181,114 @@
    "config_file": null,
    "note": "7 gui | odrviewer: the one-command city (maps, ground, buildings) from phase 6",
    "recorded": "2026-10-18T22:26:58+00:00"
+  },
+  "9852ee91656d": {
+   "argv": [
+    "build-xodr",
+    "out/examples/net/coast_city.json",
+    "out/examples/geometry/coast_city.xodr"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "8 geometry | build-xodr: coastal city with fitted curves, banking and junction planes",
+   "recorded": "2026-10-23T22:39:17+00:00",
+   "geometry_version": 2
+  },
+  "2a9597708ab6": {
+   "argv": [
+    "metrics",
+    "out/examples/geometry/coast_city.xodr",
+    "--json",
+    "out/examples/geometry/coast_city_metrics.json"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "8 geometry | metrics: coastal city (lateral acceleration, two-road junctions, curvature jumps)",
+   "recorded": "2026-10-23T22:39:22+00:00",
+   "geometry_version": 2
+  },
+  "f72fb09c3674": {
+   "argv": [
+    "drive-check",
+    "out/examples/geometry/coast_city.xodr"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "8 geometry | drive-check: coastal city, every junction movement and every lane end to end",
+   "recorded": "2026-10-23T22:40:36+00:00",
+   "geometry_version": 2
+  },
+  "65bda359a875": {
+   "argv": [
+    "align",
+    "out/examples/net/coast_city.json",
+    "--map-file",
+    "terrain=out/examples/maps/coast_terrain.npz",
+    "--map-file",
+    "elevation=out/examples/maps/coast_elevation.npz",
+    "-o",
+    "out/examples/geometry/coast_city.aligned.json"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "8 geometry | align: coastal city bends capped where their curves would leave legal ground",
+   "recorded": "2026-10-23T22:40:40+00:00",
+   "geometry_version": 2
+  },
+  "75b46161625c": {
+   "argv": [
+    "metrics",
+    "--sweep",
+    "20",
+    "--json",
+    "out/examples/geometry/sweep20.json"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "8 geometry | metrics: build-failure sweep over 20 lsystem cities on generated maps",
+   "recorded": "2026-10-23T22:42:52+00:00",
+   "geometry_version": 2
+  },
+  "16f9f56c8071": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "organic_curved",
+    "--seed",
+    "2",
+    "--allow-traps",
+    "--drive-check",
+    "-o",
+    "out/examples/geometry/organic_curved"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "8 geometry | pipeline: lsystem organic_curved (drifting, bowed streets), drive-check",
+   "recorded": "2026-10-23T22:43:02+00:00",
+   "geometry_version": 2
+  },
+  "7eb244b18978": {
+   "argv": [
+    "pipeline",
+    "lsystem",
+    "--preset",
+    "hill_town",
+    "--seed",
+    "1",
+    "--maps",
+    "--allow-traps",
+    "--ground",
+    "--buildings",
+    "--drive-check",
+    "-o",
+    "out/examples/geometry/hill_town"
+   ],
+   "config": "e2c56b792af7",
+   "config_file": null,
+   "note": "8 geometry | pipeline: lsystem hill_town on maps (contour streets), ground, buildings, drive-check",
+   "recorded": "2026-10-23T22:45:21+00:00",
+   "geometry_version": 2
   }
  },
  "configs": {
@@ -1668,6 +1776,297 @@
     "setback": 3.0,
     "corner_radius": 6.0,
     "min_height": 15.0,
+    "max_height": 60.0,
+    "min_area": 150.0,
+    "color": [
+     0.78,
+     0.76,
+     0.72
+    ],
+    "y_up": true
+   },
+   "esmini": {
+    "timestep": 0.05,
+    "window": [
+     60,
+     60,
+     1280,
+     800
+    ],
+    "camera": "top",
+    "view_density": 1.0
+   },
+   "pipeline": {
+    "sim_vehicles": 50,
+    "sim_duration": 30.0,
+    "sim_timeout": 600.0
+   },
+   "bench": {
+    "sim_duration": 60.0,
+    "timestep": 0.05,
+    "spawn_mode": "random_lanes",
+    "min_spawn_gap": 10.0,
+    "speed_range": [
+     8.0,
+     13.9
+    ],
+    "timeout_s": 900.0,
+    "memory_cap_mb": 8192.0,
+    "network": {},
+    "out_dir": "out/bench"
+   }
+  },
+  "e2c56b792af7": {
+   "seed": 0,
+   "generators": {
+    "manhattan": {
+     "avenue_spacing": 250.0,
+     "street_spacing": 80.0,
+     "rotation_deg": 0.0,
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "avenue_lanes": [
+      2,
+      2
+     ],
+     "street_lanes": [
+      1,
+      1
+     ],
+     "lane_width": 3.5,
+     "avenue_speed": 13.9,
+     "street_speed": 11.1,
+     "jitter": 0.0,
+     "edge_drop_prob": 0.0,
+     "avenue_oneway_pattern": "none",
+     "street_oneway_pattern": "none",
+     "boundary_mode": "dead_end",
+     "ring_offset": 60.0,
+     "ring_lanes": [
+      2,
+      2
+     ]
+    },
+    "lsystem": {
+     "global_goal": "grid",
+     "extent": [
+      1000.0,
+      600.0
+     ],
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "rotation_deg": 0.0,
+     "start": [
+      0.5,
+      0.5
+     ],
+     "block_size": [
+      250.0,
+      80.0
+     ],
+     "branch_prob": 1.0,
+     "branch_delay": 3,
+     "angle_jitter_deg": 0.0,
+     "length_jitter": 0.0,
+     "snap_radius": 15.0,
+     "min_segment_length": 30.0,
+     "min_angle_deg": 30.0,
+     "max_segments": 20000,
+     "major_lanes": [
+      2,
+      2
+     ],
+     "minor_lanes": [
+      1,
+      1
+     ],
+     "lane_width": 3.5,
+     "major_speed": 13.9,
+     "minor_speed": 11.1,
+     "highways": true,
+     "highway_length": 150.0,
+     "highway_rays": 7,
+     "highway_max_turn_deg": 25.0,
+     "highway_max_detour_deg": 60.0,
+     "highway_ray_length": 800.0,
+     "highway_ray_samples": 8,
+     "highway_branch_prob": 0.1,
+     "highway_branch_delay": 6,
+     "highway_min_density": 1500.0,
+     "highway_lanes": [
+      2,
+      2
+     ],
+     "highway_speed": 22.2,
+     "max_bridge_length": 250.0,
+     "street_min_density": 500.0,
+     "avoid_vegetation": true,
+     "prune_factor": 0.4,
+     "max_grade": 0.15,
+     "curve_mode": "none",
+     "curve_drift_deg": 6.0,
+     "curve_reversion": 0.3,
+     "curve_tortuosity": 1.0
+    }
+   },
+   "maps": {
+    "grid": {
+     "origin": [
+      0.0,
+      0.0
+     ],
+     "size": [
+      3000.0,
+      3000.0
+     ],
+     "cell_size": 10.0,
+     "margin": 200.0
+    },
+    "pipeline": {
+     "terrain": "noise",
+     "elevation": "fbm",
+     "population": "centers"
+    },
+    "terrain": {
+     "noise": {
+      "scale": 1500.0,
+      "octaves": 5,
+      "lacunarity": 2.0,
+      "gain": 0.5,
+      "warp": 0.3,
+      "water_fraction": 0.12,
+      "coast_strength": 0.0,
+      "coast_angle_deg": null,
+      "smoothing": 2,
+      "rivers": 1,
+      "river_width": 50.0,
+      "river_meander": 150.0,
+      "river_wavelength": 1800.0,
+      "vegetation_fraction": 0.15,
+      "vegetation_scale": 400.0
+     },
+     "image": {
+      "water_color": [
+       0.23,
+       0.48,
+       0.78
+      ],
+      "land_color": [
+       0.91,
+       0.87,
+       0.78
+      ],
+      "vegetation_color": [
+       0.42,
+       0.62,
+       0.29
+      ],
+      "gray_threshold": 0.5,
+      "water_is_dark": true
+     }
+    },
+    "elevation": {
+     "fbm": {
+      "min_elevation": 0.0,
+      "max_elevation": 80.0,
+      "scale": 1500.0,
+      "octaves": 6,
+      "lacunarity": 2.0,
+      "gain": 0.5,
+      "warp": 0.2,
+      "ridge": 0.0,
+      "exponent": 1.0,
+      "erosion_iterations": 20,
+      "talus_deg": 30.0,
+      "erosion_rate": 0.5,
+      "shore_width": 600.0,
+      "shore_height": 2.0
+     },
+     "image": {
+      "min_elevation": 0.0,
+      "max_elevation": 100.0,
+      "stretch": false
+     }
+    },
+    "population": {
+     "centers": {
+      "n_centers": 3,
+      "peak_density": 15000.0,
+      "decay_length": 700.0,
+      "profile": "exponential",
+      "secondary_weight": [
+       0.3,
+       0.7
+      ],
+      "min_center_distance": 800.0,
+      "center_margin": 0.15,
+      "noise_amount": 0.35,
+      "noise_scale": 400.0,
+      "base_density": 50.0,
+      "vegetation_factor": 0.1,
+      "max_slope_deg": 20.0
+     },
+     "image": {
+      "min_density": 0.0,
+      "max_density": 20000.0
+     }
+    }
+   },
+   "drape": {
+    "sample_spacing": 20.0,
+    "smoothing": 80.0,
+    "bridge_clearance": 2.0
+   },
+   "ground": {
+    "cell_size": 20.0,
+    "road_margin": 2.0,
+    "below_road": 0.3
+   },
+   "opendrive": {
+    "junction_margin": 2.0
+   },
+   "design": {
+    "e_max_street": 0.04,
+    "e_max_avenue": 0.04,
+    "e_max_highway": 0.06,
+    "a_lat_max": 3.0,
+    "jerk_rate": 1.2,
+    "spiral_min_shift": 0.2,
+    "spiral_max_shift": 1.0,
+    "banking": true,
+    "bank_ramp_length": 30.0,
+    "junction_max_grade": 0.04,
+    "max_merge_deflection_deg": 135.0,
+    "road_clearance": 1.0,
+    "max_corner_offset": 0.0,
+    "min_lane_radius": 10.0
+   },
+   "align": {
+    "max_grade": 0.15,
+    "grade_length": 25.0
+   },
+   "metrics": {
+    "sample_step": 0.5,
+    "comfort_lat_acc": 3.0,
+    "curvature_jump_tol": 0.002
+   },
+   "scenario": {
+    "sim_duration": 60.0,
+    "spawn_mode": "random_lanes",
+    "speed_range": [
+     8.0,
+     13.9
+    ],
+    "min_spawn_gap": 10.0
+   },
+   "buildings": {
+    "setback": 3.0,
+    "corner_radius": 6.0,
+    "min_height": 12.0,
     "max_height": 60.0,
     "min_area": 150.0,
     "color": [

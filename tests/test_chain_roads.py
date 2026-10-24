@@ -10,10 +10,10 @@ from lxml import etree
 
 from roadgen.geometry import design
 from roadgen.geometry.profiles import WidthPiece
+from roadgen.geometry.vertical import evaluate
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.metrics.geometry import geometry_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.geometry.vertical import evaluate
 from roadgen.validate.continuity import RoadEval, check_continuity
 from roadgen.validate.topology import check_topology
 

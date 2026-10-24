@@ -72,6 +72,7 @@ Each phase had acceptance checks before the next one started.
 | 7 (optional) | Pluggable generators and 3D | `generators/base.py`, `lsystem.py`, `scene/` |
 | 8 | Procedural input maps (terrain, elevation, population) | `maps/` |
 | 9 | Map-driven growth: highways, bridges, terrain / density / grade constraints | `lsystem.py`, `generators/base.py` |
+| 10 (stage A) | Geometry accuracy: fitted curves, design speeds, banking, junction planes, clothoid turns, repair, curved growth (plan in `plans/`) | `geometry/`, `metrics/`, `maps/align.py`, `generators/repair.py`, `validate/dynamics.py` |
 
 ## Known issues
 
@@ -83,3 +84,7 @@ Each phase had acceptance checks before the next one started.
   kill or the test should accept it on Linux.
 - **The schema check needs the ASAM XSD**, which can't be redistributed.
   Without it, the check is skipped with a warning.
+- **Runs recorded before stage A replay with the new geometry.** Their
+  hashes and inputs are unchanged, but the builder now makes version 2
+  geometry; `replay` warns. Results quoted for such runs (e.g. benchmark
+  rows) were measured on version 1 networks.
