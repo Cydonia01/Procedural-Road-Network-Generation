@@ -39,11 +39,14 @@ Read it in data-flow order: each step only uses what came before it.
 Shorthand used below:
 
 ```bash
-cli() { docker compose run --rm -T dev python -m cli "$@"; }
+cli() { docker compose run --rm -T dev python -m cli --no-history "$@"; }
 ```
 
-**Parameter priority (lowest to highest):**
-`defaults.yaml` < `--config FILE` < `--preset` < `--params FILE.yaml` < `--set`
+`--no-history` keeps the walkthrough's file chains short: outputs go to the
+`-o` paths as given. Without it, every run writes into its own folder
+`out/<hash>/` and `-o` only names the files ([CLI reference](cli-reference.md#outputs)).
+
+
 
 ### Phase 1: Input maps (`maps`, `map`, `plot-map`)
 

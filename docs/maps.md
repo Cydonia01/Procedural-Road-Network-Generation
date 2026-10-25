@@ -34,7 +34,8 @@ the maps enter the pipeline.
   from `roadgen/defaults.yaml` (`maps:`). It is registered with
   `@register_map(kind, name)`, may offer presets, and is deterministic for
   (params, grid, seed). Parameters use the same layering: `defaults.yaml` <
-  `--config` < `--preset` < `--params` < `--set`.
+  preset < `--config` < `--params` < `--set`, all stored in the run's
+  config section `maps.<kind>.<name>`.
 - **One grid, world coordinates.** A `GridSpec` (lower-left `origin`,
   `size` in metres, square `cell_size`) defines where a map lies. Noise is
   sampled in world metres divided by a feature `scale`, so changing only
@@ -168,19 +169,22 @@ choose `max_density` to match) to get people/km².
 
 ## CLI
 
+Each run writes into its own folder `out/<hash>/`; below, `out/<hash>/` stands
+for the folder of the run that wrote the file, and `-o` only names outputs.
+
 ```bash
 python -m cli maps                                             # generators, presets, parameters
 
 # One map on its own grid (default origin [0, 0], size 3000 x 3000 m, 10 m cells)
-python -m cli map terrain noise --preset coastal --seed 3 -o out/coast
+python -m cli map terrain noise --preset coastal --seed 3 -o coast
 python -m cli map elevation fbm --preset hilly --size 4000 3000 --cell-size 20
-python -m cli map population centers --set n_centers=5 --graph out/net.json   # roads on the preview
+python -m cli map population centers --set n_centers=5 --graph out/<hash>/net.json   # roads on the preview
 # The pipeline by hand: elevation on the terrain, population on both
-python -m cli map elevation fbm --on terrain=out/coast.npz -o out/coast_elev
-python -m cli map population centers --on terrain=out/coast.npz \
-    --on elevation=out/coast_elev.npz -o out/coast_pop
+python -m cli map elevation fbm --on terrain=out/<hash>/coast.npz -o coast_elev
+python -m cli map population centers --on terrain=out/<hash>/coast.npz \
+    --on elevation=out/<hash>/coast_elev.npz -o coast_pop
 python -m cli map elevation image --set path=heightmap.png --set max_elevation=250
-python -m cli plot-map out/coast.npz out/coast_roads.png --graph out/net.json
+python -m cli plot-map out/<hash>/coast.npz coast_roads.png --graph out/<hash>/net.json
 
 # In the pipeline: lsystem grows on the maps (grid = its area + maps.grid.margin)
 python -m cli pipeline lsystem --preset city --allow-traps --maps
@@ -190,8 +194,8 @@ python -m cli pipeline lsystem --preset city --allow-traps --maps --elevation im
     --map-set elevation.path=heightmap.png
 
 # Reuse maps from files (e.g. made with `map`, or by an earlier pipeline run)
-python -m cli generate lsystem --preset city --map-file terrain=out/coast.npz \
-    --map-file population=out/lsystem_city_s0_population.npz -o out/net.json
+python -m cli generate lsystem --preset city --map-file terrain=out/<hash>/coast.npz \
+    --map-file population=out/<hash>/lsystem_city_s0_population.npz -o net.json
 
 # Generators without map support get the maps around the network, for reference
 python -m cli pipeline manhattan --preset manhattan_like --maps
@@ -316,12 +320,12 @@ flowchart LR
    SceneGraphFile.
 
 ```bash
-python -m cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings -o out/hills
+python -m cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings -o hills
 python -m cli pipeline lsystem --preset city --allow-traps --maps --flat      # roads stay flat
-python -m cli drape out/net.json --map-file elevation=out/net_elevation.npz \
-    --map-file terrain=out/net_terrain.npz                                    # -> out/net.draped.json
-python -m cli ground out/scene.osgt --map-file elevation=out/net_elevation.npz \
-    --graph out/net.draped.json --buildings
+python -m cli drape out/<hash>/net.json --map-file elevation=out/<hash>/net_elevation.npz \
+    --map-file terrain=out/<hash>/net_terrain.npz                                    # -> net.draped.json in its run folder
+python -m cli ground scene.osgt --map-file elevation=out/<hash>/net_elevation.npz \
+    --graph out/<hash>/net.draped.json --buildings
 ```
 
 A graph without heights (all `Node.z = 0`, no profiles) gives exactly the

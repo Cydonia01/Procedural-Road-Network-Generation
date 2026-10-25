@@ -132,9 +132,9 @@ the input maps), and the code follows them throughout:
 cli.py                     command-line entry point (python -m cli ...)
 pyproject.toml             package metadata and dependencies
 configs/                   benchmark sweep configs (YAML)
-runs/                      run history (history.json), example runs and their inputs
+runs/                      example runs (examples.sh, README) and their inputs
 roadgen/
-  history.py               run history: hashes of successful CLI runs, replay
+  history.py               run folders out/<hash>/: hashes of successful CLI runs, replay
   graph/
     model.py               Node, Edge, RoadGraph dataclasses
     io.py                  JSON (de)serialization, schema_version 1
@@ -197,8 +197,11 @@ Dockerfile, compose.yaml   containerized dev environment (see docker.md)
 
 ## Files produced
 
-All generated files go under `out/`, which git ignores. For an output prefix
-`out/net`:
+All generated files go under `out/`, which git ignores. Each successful
+command writes into its own folder `out/<hash>/`, next to a `run.yaml` with
+the command and its non-default arguments and parameters
+([CLI reference → history](cli-reference.md#history)). For an output prefix
+`-o net` (shown as `out/net` below, which is the path with `--no-history`):
 
 | File | Written by | Contents |
 |------|-----------|----------|
@@ -212,4 +215,5 @@ All generated files go under `out/`, which git ignores. For an output prefix
 | `out/net.xosc` | `scenario`, `pipeline --simulate` | OpenSCENARIO traffic scenario |
 | `out/net.log` / `.stdout` | `simulate` | esmini log and console output |
 | `out/net.dat` / `.csv` | `simulate` | esmini recording (replayable) and per-step CSV |
-| `out/bench/…` | `bench` | Cached networks, scenarios, `results.csv`, `plots/` |
+| `out/bench/…` | `bench` | Cached networks, scenarios, `results.csv`, `plots/` (in the run folder when recorded) |
+| `out/<hash>/run.yaml` | every recorded command | The run: command, args and parameters that differ from the defaults |

@@ -13,9 +13,12 @@ live in the Copilot instructions and apply here too:
 - `tests/test_bench.py::test_monitor_memory_cap_and_peak` is known to fail in
   this environment; it is not caused by code changes.
 - Generated files go under `out/` (git-ignored).
-- Every successful CLI run is recorded in `runs/history.json` under a hash
-  of its inputs (`roadgen/history.py`; `python -m cli HASH` replays it). Use
-  `--no-history` for throwaway runs; tests are redirected by `tests/conftest.py`.
+- Every successful CLI run gets a folder `out/<hash>/` with its outputs
+  (`-o` only names them) and `run.yaml`: the command plus only the args and
+  parameters that differ from defaults (`roadgen/history.py`). `python -m cli
+  HASH` or `python -m cli run out/HASH/run.yaml` reruns it. Use
+  `--no-history` for throwaway runs (no folder, `-o` is a path); tests run
+  with recording off (`tests/conftest.py`).
 
 ## Where things are
 

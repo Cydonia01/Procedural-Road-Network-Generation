@@ -4,8 +4,10 @@
 # To change defaults without editing this file, write a YAML file with only the
 # keys you want to change (same nesting) and pass it before the command:
 #   python -m cli --config my_defaults.yaml pipeline manhattan ...
-# Precedence, lowest first: this file < --config file < --preset < --params
-# < command-line flags and --set.
+# A generator or map generator section may also name a preset (preset: city).
+# Precedence, lowest first: this file < preset < --config file < --params
+# < command-line flags and --set. All of it ends up in one run config: the
+# config part of out/<hash>/run.yaml, which holds only what differs from here.
 
 seed: 0  # random seed for generate, pipeline, scenario and buildings
 
@@ -204,8 +206,8 @@ esmini:
   camera: top                   # camera mode for `simulate --gui`
   view_density: 1.0             # cars per 100 m in `view`
 
-history:  # every successful CLI run, under a hash of its inputs (`history`, `replay`)
-  file: runs/history.json   # $ROADGEN_HISTORY overrides; "off" disables
+history:  # every successful CLI run in <dir>/<hash>/ with its outputs (`history`, `replay`, `run`)
+  dir: out                  # $ROADGEN_HISTORY overrides; "off" disables (outputs go where -o says)
 
 pipeline:
   sim_vehicles: 50      # --simulate: number of vehicles

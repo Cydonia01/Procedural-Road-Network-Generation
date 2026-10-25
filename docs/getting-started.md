@@ -53,17 +53,19 @@ python -m cli generators
 # 3. Full pipeline on a small grid: graph → PNG → .xodr → validation
 #    → drive-check → short simulation
 python -m cli pipeline manhattan --avenues 4 --streets 4 --seed 1 \
-    --drive-check --simulate -o out/first
+    --drive-check --simulate -o first
 
 # 4. Look at the result
-#    out/first.png            top-down plot of the graph
-#    out/first.xodr           OpenDRIVE road network
-#    out/first.roadmap.json   graph-id → OpenDRIVE-id mapping
-#    out/first.xosc           traffic scenario (from --simulate)
-python -m cli view out/first.xodr    # natively; in Docker see below
+#    out/<hash>/first.png            top-down plot of the graph
+#    out/<hash>/first.xodr           OpenDRIVE road network
+#    out/<hash>/first.roadmap.json   graph-id → OpenDRIVE-id mapping
+#    out/<hash>/first.xosc           traffic scenario (from --simulate)
+python -m cli view out/<hash>/first.xodr    # natively; in Docker see below
 ```
 
-A passing run ends with `INFO roadgen.cli: pipeline passed (out/first)`.
+A passing run ends with `INFO roadgen.cli: run <hash>: out/<hash>`: the run's
+folder, with all its outputs and `run.yaml` (its command and non-default
+parameters).
 
 Opening a window (`view`, `simulate --gui`) needs a display. The `dev`
 service has none, so `odrviewer` exits immediately without an error.
@@ -71,11 +73,11 @@ In Docker, use the GUI service for your OS:
 
 ```bash
 # Linux (X11 or Wayland/XWayland), from a terminal in your desktop session
-docker compose run --rm gui python -m cli view out/first.xodr
+docker compose run --rm gui python -m cli view out/<hash>/first.xodr
 
 # macOS: XQuartz running, "Allow connections from network clients" on,
 # and `xhost +localhost` run once (see docker.md#macos-dev-and-gui-mac)
-docker compose run --rm gui-mac python -m cli view out/first.xodr
+docker compose run --rm gui-mac python -m cli view out/<hash>/first.xodr
 ```
 
 ## Where to go next

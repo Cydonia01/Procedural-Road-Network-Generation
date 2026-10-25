@@ -84,7 +84,8 @@ Each phase had acceptance checks before the next one started.
   kill or the test should accept it on Linux.
 - **The schema check needs the ASAM XSD**, which can't be redistributed.
   Without it, the check is skipped with a warning.
-- **Runs recorded before stage A replay with the new geometry.** Their
-  hashes and inputs are unchanged, but the builder now makes version 2
-  geometry; `replay` warns. Results quoted for such runs (e.g. benchmark
-  rows) were measured on version 1 networks.
+- **Hashes quoted in plans before 2026-10-25 are the old `runs/history.json`
+  hashes.** The run folders (`out/<hash>/`) hash runs differently;
+  `out/migration.json` maps the old hashes to the new ones for the example
+  runs. Results quoted for runs recorded before stage A (e.g. benchmark rows)
+  were measured on version 1 geometry networks.

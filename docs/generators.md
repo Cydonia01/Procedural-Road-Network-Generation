@@ -31,16 +31,22 @@ class RoadNetworkGenerator(ABC, Generic[P]):
   Built-ins are registered when `roadgen.generators` is imported.
 - **Presets.** A params class may define `PRESETS: dict[str, dict]` and a
   `preset(name, **overrides)` classmethod.
-- **Parameter resolution** (`load_params`). Later sources override earlier ones:
-  1. a YAML file (`--params file.yaml`), containing either the fields
+- **Parameter resolution.** The CLI writes every source into the run's
+  config section `generators.<name>` (stored in `out/<hash>/run.yaml`, only
+  what differs from the defaults), and the params are built from it. Later
+  sources override earlier ones:
+  1. `defaults.yaml`, then the preset (`--preset <name>`, or `preset:` in
+     the `--params` file or in the config section);
+  2. a `--config` file's values for the section;
+  3. a YAML file (`--params file.yaml`), containing either the fields
      directly or `preset: <name>` plus a `params:` mapping;
-  2. `--preset <name>` (wins over a preset named in the file);
-  3. overrides: dedicated flags (Manhattan only) and repeatable
-     `--set key=value` (values parsed as YAML, so `--set origin=[10,20]` works).
+  4. dedicated flags (Manhattan only) and repeatable `--set key=value`
+     (values parsed as YAML, so `--set origin=[10,20]` works).
 
   Unknown field names are rejected. YAML lists become tuples where the
-  dataclass expects tuples.
-- **Default output:** `out/<generator>[_<preset>]_s<seed>`.
+  dataclass expects tuples. For library use, `load_params` does the same
+  for a file, a preset and overrides.
+- **Default output name:** `<generator>[_<preset>]_s<seed>`, in the run's folder `out/<hash>/`.
 
 ```yaml
 # example params file: my_grid.yaml
@@ -98,7 +104,7 @@ lanes, both alternating, 11.2 m/s (25 mph), with a ring road.
 ```bash
 python -m cli pipeline manhattan --preset manhattan_like --seed 1
 python -m cli pipeline manhattan --avenues 10 --streets 10 --jitter 3 \
-    --edge-drop 0.2 --rotation 15 --seed 1 -o out/grid_variant
+    --edge-drop 0.2 --rotation 15 --seed 1 -o grid_variant
 ```
 
 ## `lsystem`: growth after Parish & Müller (`lsystem.py`)

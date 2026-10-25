@@ -103,3 +103,19 @@ def test_bench_config_defaults(tmp_path):
     assert BenchConfig.from_yaml(path).timeout_s == DEFAULTS["bench"]["timeout_s"]
     cfg = BenchConfig.from_yaml(path, {**DEFAULTS["bench"], "timeout_s": 5.0})
     assert cfg.timeout_s == 5.0
+
+
+def test_cli_precedence_preset_config_params_set(tmp_path):
+    """defaults < preset < --config < --params < flags and --set."""
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text("generators:\n  manhattan:\n    rotation_deg: 5.0\n    jitter: 1.0\n    lane_width: 3.0\n")
+    params = tmp_path / "p.yaml"
+    params.write_text("jitter: 2.0\nlane_width: 3.25\n")
+    out = tmp_path / "g.json"
+    assert main(["--config", str(cfg), "generate", "manhattan", "--preset", "manhattan_like",
+                 "--params", str(params), "--set", "lane_width=3.75", "-o", str(out)]) == 0
+    p = load_json(out).metadata["params"]
+    assert p["rotation_deg"] == 5.0  # --config beats the preset (29)
+    assert p["jitter"] == 2.0  # --params beats --config
+    assert p["lane_width"] == 3.75  # --set beats --params
+    assert p["n_avenues"] > 0  # from the preset

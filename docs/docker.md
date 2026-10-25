@@ -47,7 +47,7 @@ docker compose build                               # first time, or after depend
 docker compose run --rm dev                        # interactive shell
 docker compose run --rm dev pytest                 # one-off command
 docker compose run --rm dev python -m cli pipeline manhattan --preset manhattan_like --simulate
-docker compose run --rm gui python -m cli view out/manhattan_like_s1.xodr
+docker compose run --rm gui python -m cli view out/<hash>/manhattan_like_s1.xodr
 ```
 
 | Service | Use for | Platforms |
@@ -97,7 +97,7 @@ GUI setup:
    clients**, then quit XQuartz (⌘Q) and start it again.
 3. With XQuartz running, run `xhost +localhost` once per session (use
    `/opt/X11/bin/xhost` if it isn't on your `PATH`).
-4. `docker compose run --rm gui-mac python -m cli view out/<name>.xodr`
+4. `docker compose run --rm gui-mac python -m cli view out/<hash>/<name>.xodr`
 
 Mesa can't create OpenGL contexts on XQuartz ("No matching fbConfigs or
 visuals found"), and XQuartz's own indirect GLX only reports OpenGL 1.4,
@@ -129,7 +129,7 @@ Troubleshooting:
 `xvfb-run` is in the image for off-screen rendering:
 
 ```bash
-docker compose run --rm dev xvfb-run -a odrviewer --odr out/net.xodr --capture_screen
+docker compose run --rm dev xvfb-run -a odrviewer --odr out/<hash>/net.xodr --capture_screen
 ```
 
 Pass `--path $ESMINI_RESOURCES/models` to `odrviewer`/`esmini` to see real
