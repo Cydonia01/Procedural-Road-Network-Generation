@@ -1,182 +1,175 @@
-"""Run history: every successful CLI command, under a hash of its inputs.
+"""Run folders: every successful CLI command in out/<hash>/, with its outputs.
 
-A run's hash covers everything that decides its result: the fully resolved
-command-line parameters (defaults included, so spelling a default out or
-leaving it away gives the same hash) and the effective configuration
-(packaged defaults merged with ``--config``). Equal inputs therefore give one
-entry, never two.
+A run is defined by its *spec*: the command, the arguments that differ from
+their defaults, and the configuration that differs from roadgen/defaults.yaml
+(--config, --preset, --params, --set and the parameter flags folded in, see
+cli.compile_spec). The hash is a hash of the spec, so the same inputs,
+however they were typed, give the same hash and the same folder::
 
-The history is one JSON file (default ``runs/history.json``)::
+    out/<hash>/
+      run.yaml        # hash, note, recorded, cli + the spec (command, args, config)
+      <outputs>       # everything the command wrote; -o only names them
 
-    {"schema_version": 1,
-     "runs":    {"<hash>": {"argv": [...], "config": "<config hash>",
-                            "config_file": "...", "note": "...", "recorded": "...",
-                            "geometry_version": 2}},
-     "configs": {"<config hash>": {...effective configuration...}}}
-
-Configurations are stored once each and shared by the runs that used them,
-so replaying a hash (``python -m cli <hash>``) uses exactly the recorded
-inputs, even after defaults.yaml or the --config file changed. The code
-itself is not recorded: results can still change with it. Each run records
-the road geometry version it was made with (roadgen.geometry.GEOMETRY_VERSION;
-runs without one are version 1), so a replay can tell when it changed.
+A command runs in a temporary folder next to the final one, which becomes
+out/<hash>/ only if it succeeds: a failed command leaves nothing behind.
+Running the same spec again replaces the folder. Replay (`python -m cli
+HASH`, or `python -m cli run out/<hash>/run.yaml`) runs the spec against the
+current defaults and code.
 """
 
 from __future__ import annotations
 
-import copy
 import datetime as dt
 import hashlib
 import json
 import os
-import tempfile
+import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Union
 
-SCHEMA_VERSION = 1
+import yaml
+
 HASH_LENGTH = 12  # hex digits of sha256 kept
 MIN_PREFIX = 4  # shortest hash prefix accepted by lookup
-ENV_VAR = "ROADGEN_HISTORY"  # history file path; "" or "off" disables recording
+ENV_VAR = "ROADGEN_HISTORY"  # run folder root; "" or "off" disables recording
 DISABLED = ("", "off", "none", "0")
-# Namespace keys that don't change a run's result.
-IGNORED_PARAMS = frozenset({"cfg", "func", "config_file", "verbose", "note", "no_history"})
-# Config sections that don't change a run's result.
-IGNORED_CONFIG = frozenset({"history"})
+RUN_FILE = "run.yaml"
+SPEC_KEYS = ("command", "args", "config")
+RUN_DIR = re.compile(rf"[0-9a-f]{{{HASH_LENGTH}}}")
 
 PathLike = Union[str, Path]
 
 
-def _canonical(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=list)
+def plain(value: Any) -> Any:
+    """JSON-ready copy: tuples become lists."""
+    return json.loads(json.dumps(value, default=list))
 
 
 def digest(value: Any, length: int = HASH_LENGTH) -> str:
-    return hashlib.sha256(_canonical(value).encode()).hexdigest()[:length]
+    text = json.dumps(value, sort_keys=True, separators=(",", ":"), default=list)
+    return hashlib.sha256(text.encode()).hexdigest()[:length]
 
 
-def run_params(namespace: dict[str, Any]) -> dict[str, Any]:
-    """The parsed arguments that decide a run's result, JSON-ready."""
+def run_hash(spec: dict[str, Any]) -> str:
+    return digest({k: spec.get(k) or ([] if k == "command" else {}) for k in SPEC_KEYS})
+
+
+def diff(config: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+    """The part of config that differs from base (nested mappings key by key)."""
     out = {}
-    for key, value in namespace.items():
-        if key in IGNORED_PARAMS:
-            continue
-        out[key] = list(value) if isinstance(value, tuple) else value
-    return json.loads(_canonical(out))  # tuples -> lists, as they are stored
-
-
-def config_snapshot(config: dict[str, Any]) -> dict[str, Any]:
-    return {k: copy.deepcopy(v) for k, v in config.items() if k not in IGNORED_CONFIG}
-
-
-def run_hash(params: dict[str, Any], config_hash: str) -> str:
-    return digest({"params": params, "config": config_hash})
+    for key, value in config.items():
+        ref = base.get(key)
+        if isinstance(value, dict) and isinstance(ref, dict):
+            sub = diff(value, ref)
+            if sub:
+                out[key] = sub
+        elif key not in base or plain(value) != plain(ref):
+            out[key] = plain(value)
+    return out
 
 
 @dataclass(frozen=True)
 class Run:
     hash: str
-    argv: list[str]
-    config: dict[str, Any]  # effective configuration
-    config_file: Optional[str]
+    path: Path  # the run folder
+    spec: dict[str, Any]  # command, args, config
     note: str
     recorded: str
-    geometry_version: int = 1
+    cli: str  # the command as typed
 
     def command_line(self) -> str:
-        """The command as typed (without --config, whose content is in config)."""
-        return " ".join(["python -m cli", *(_quote(a) for a in self.argv)])
+        return self.cli or " ".join(["python -m cli", *self.spec["command"]])
 
 
-def _quote(arg: str) -> str:
-    return arg if arg and all(c.isalnum() or c in "-_./=:,[]+" for c in arg) else repr(arg)
+class RunStore:
+    """The run folders under root (default out/)."""
 
-
-class History:
-    """The history file. Missing until the first run is recorded."""
-
-    def __init__(self, path: PathLike) -> None:
-        self.path = Path(path)
+    def __init__(self, root: PathLike) -> None:
+        self.root = Path(root)
 
     @classmethod
-    def from_env(cls, default: Optional[str]) -> Optional[History]:
-        """The history at $ROADGEN_HISTORY or default; None if recording is off."""
-        path = os.environ.get(ENV_VAR, default)
-        if path is None or path.strip().lower() in DISABLED:
+    def from_env(cls, default: Optional[str]) -> Optional[RunStore]:
+        """The runs at $ROADGEN_HISTORY or default; None if recording is off."""
+        root = os.environ.get(ENV_VAR, default)
+        if root is None or root.strip().lower() in DISABLED:
             return None
-        return cls(path)
+        return cls(root)
 
-    def _load(self) -> dict[str, Any]:
-        if not self.path.is_file():
-            return {"schema_version": SCHEMA_VERSION, "runs": {}, "configs": {}}
-        data = json.loads(self.path.read_text())
-        if data.get("schema_version") != SCHEMA_VERSION:
-            raise ValueError(f"{self.path}: unsupported schema_version {data.get('schema_version')!r}")
-        return data
+    def begin(self, h: str) -> Path:
+        """An empty temporary folder for run h, at the same depth as its final folder
+        (relative paths between outputs stay valid when it is renamed)."""
+        tmp = self.root / f".tmp-{h}-{os.getpid()}"
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True)
+        return tmp
 
-    def _save(self, data: dict[str, Any]) -> None:
-        """Atomic write: a crash never leaves a half-written history."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=f".{self.path.name}.")
-        try:
-            with os.fdopen(fd, "w") as f:
-                json.dump(data, f, indent=1, sort_keys=False)
-                f.write("\n")
-            os.replace(tmp, self.path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
+    @staticmethod
+    def discard(tmp: Path) -> None:
+        shutil.rmtree(tmp, ignore_errors=True)
 
-    def record(self, argv: list[str], params: dict[str, Any], config: dict[str, Any],
-               config_file: Optional[str] = None, note: Optional[str] = None,
-               geometry_version: Optional[int] = None) -> tuple[str, bool]:
-        """(hash, whether it is new). An existing run keeps its argv; a note replaces its note."""
-        data = self._load()
-        snapshot = config_snapshot(config)
-        config_hash = digest(snapshot)
-        h = run_hash(params, config_hash)
-        known = data["runs"].get(h)
-        if known is not None:
-            if note and note != known.get("note"):
-                known["note"] = note
-                self._save(data)
-            return h, False
-        stored = data["configs"].get(config_hash)
-        if stored is not None and digest(stored) != config_hash:
-            raise ValueError(f"{self.path}: config hash collision on {config_hash}")
-        data["configs"].setdefault(config_hash, snapshot)
-        data["runs"][h] = {
-            "argv": list(argv),
-            "config": config_hash,
-            "config_file": config_file,
+    def commit(self, h: str, tmp: Path, spec: dict[str, Any], note: Optional[str] = None,
+               cli: Optional[str] = None) -> Path:
+        """Write run.yaml and move tmp to root/h (replacing an earlier run of h, whose
+        note is kept unless a new one is given)."""
+        final = self.root / h
+        if not note and (final / RUN_FILE).is_file():
+            note = load_run(final / RUN_FILE).note
+        record = {
+            "hash": h,
             "note": note or "",
             "recorded": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+            "cli": cli or "",
+            **{k: plain(spec.get(k) or ([] if k == "command" else {})) for k in SPEC_KEYS},
         }
-        if geometry_version is not None:
-            data["runs"][h]["geometry_version"] = geometry_version
-        self._save(data)
-        return h, True
+        (tmp / RUN_FILE).write_text(
+            yaml.safe_dump(record, sort_keys=False, default_flow_style=None, allow_unicode=True,
+                           width=100))
+        if final.exists():
+            shutil.rmtree(final)
+        os.replace(tmp, final)
+        return final
 
     def runs(self) -> list[Run]:
         """All runs, oldest first."""
-        data = self._load()
-        return [self._run(data, h) for h in data["runs"]]
+        if not self.root.is_dir():
+            return []
+        paths = [p for p in self.root.iterdir()
+                 if RUN_DIR.fullmatch(p.name) and (p / RUN_FILE).is_file()]
+        runs = [load_run(p / RUN_FILE) for p in paths]
+        return sorted(runs, key=lambda r: (r.recorded, (r.path / RUN_FILE).stat().st_mtime_ns))
 
     def get(self, prefix: str) -> Run:
         """The run whose hash starts with prefix (at least MIN_PREFIX digits, unique)."""
         prefix = prefix.lower()
         if len(prefix) < MIN_PREFIX:
             raise KeyError(f"hash prefix {prefix!r} is too short (need {MIN_PREFIX}+ digits)")
-        data = self._load()
-        matches = [h for h in data["runs"] if h.startswith(prefix)]
+        matches = sorted(p for p in (self.root.iterdir() if self.root.is_dir() else [])
+                         if RUN_DIR.fullmatch(p.name) and p.name.startswith(prefix)
+                         and (p / RUN_FILE).is_file())
         if not matches:
-            raise KeyError(f"no run {prefix!r} in {self.path}")
+            raise KeyError(f"no run {prefix!r} in {self.root}")
         if len(matches) > 1:
-            raise KeyError(f"hash prefix {prefix!r} is ambiguous: {', '.join(sorted(matches))}")
-        return self._run(data, matches[0])
+            raise KeyError(f"hash prefix {prefix!r} is ambiguous: {', '.join(p.name for p in matches)}")
+        return load_run(matches[0] / RUN_FILE)
 
-    @staticmethod
-    def _run(data: dict[str, Any], h: str) -> Run:
-        r = data["runs"][h]
-        return Run(h, r["argv"], data["configs"][r["config"]], r.get("config_file"),
-                   r.get("note", ""), r.get("recorded", ""), r.get("geometry_version", 1))
+
+def load_spec(path: PathLike) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(spec, the whole file) from a run.yaml or a hand-written file of the same form."""
+    data = yaml.safe_load(Path(path).read_text()) or {}
+    if not isinstance(data, dict) or not data.get("command"):
+        raise ValueError(f"{path}: expected a mapping with a 'command' list")
+    command = data["command"]
+    spec = {
+        "command": command.split() if isinstance(command, str) else list(command),
+        "args": data.get("args") or {},
+        "config": data.get("config") or {},
+    }
+    return spec, data
+
+
+def load_run(path: Path) -> Run:
+    spec, data = load_spec(path)
+    return Run(path.parent.name, path.parent, spec, data.get("note") or "",
+               str(data.get("recorded") or ""), data.get("cli") or "")

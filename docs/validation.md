@@ -102,7 +102,7 @@ Without it, the check is skipped with a warning.
 ## Drive-check (esmini RoadManager)
 
 ```bash
-python -m cli drive-check out/single_4way.xodr
+python -m cli drive-check out/<hash>/single_4way.xodr
 ```
 
 This is the strongest check. It uses esmini's own lane-following logic, the
@@ -138,7 +138,7 @@ sections, tapers, elevation and superelevation exactly as roadgen does.
 ## Geometry metrics
 
 ```bash
-python -m cli metrics out/net.xodr --json out/net_metrics.json
+python -m cli metrics out/<hash>/net.xodr --json net_metrics.json
 python -m cli metrics --sweep 200            # lsystem city + maps, seeds 0..199
 ```
 

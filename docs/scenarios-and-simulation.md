@@ -6,9 +6,12 @@ Builds an OpenSCENARIO file that fills a network written by the OpenDRIVE
 builder with many vehicles. It needs the `.xodr` and its `.roadmap.json`.
 
 ```bash
-python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 \
-    -o out/grid10x10.xosc
+python -m cli scenario out/<hash>/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 \
+    -o grid10x10.xosc
 ```
+
+`out/<hash>/` stands for the folder of the run that wrote a file; this run
+writes `grid10x10.xosc` into its own folder.
 
 ### Spawning
 
@@ -51,9 +54,9 @@ attaches a 3D model (see [Buildings](#3d-buildings)).
 ## Running esmini (`roadgen/sim/runner.py`)
 
 ```bash
-python -m cli simulate out/grid10x10.xosc                # headless
-python -m cli simulate out/grid10x10.xosc --gui          # window, top camera
-python -m cli simulate out/grid10x10.xosc --gui --camera orbit
+python -m cli simulate out/<hash>/grid10x10.xosc                # headless
+python -m cli simulate out/<hash>/grid10x10.xosc --gui          # window, top camera
+python -m cli simulate out/<hash>/grid10x10.xosc --gui --camera orbit
 ```
 
 `run_esmini()` builds the command line:
@@ -131,9 +134,9 @@ Formats:
 - **`.obj` + `.mtl`** (y-up by default). For Blender, MeshLab and similar tools.
 
 ```bash
-python -m cli pipeline manhattan --avenues 5 --streets 5 --buildings --simulate -o out/city
-python -m cli simulate out/city.xosc --gui
+python -m cli pipeline manhattan --avenues 5 --streets 5 --buildings --simulate -o city
+python -m cli simulate out/<hash>/city.xosc --gui
 # Hilly city: roads follow the terrain, ground and buildings in the 3D view
-python -m cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings --simulate -o out/hills
-python -m cli simulate out/hills.xosc --gui
+python -m cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings --simulate -o hills
+python -m cli simulate out/<hash>/hills.xosc --gui
 ```

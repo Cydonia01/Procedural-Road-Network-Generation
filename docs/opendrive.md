@@ -5,8 +5,8 @@ OpenDRIVE 1.6 file. It only consumes the graph and knows nothing about which
 generator made it.
 
 ```bash
-python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
-python -m cli view out/single_4way.xodr --density 2
+python -m cli build-xodr tests/fixtures/single_4way.json single_4way.xodr
+python -m cli view out/<hash>/single_4way.xodr --density 2
 ```
 
 `OpenDriveBuilder(name, junction_margin=2.0, design=DesignParams())`:

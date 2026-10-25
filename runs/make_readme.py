@@ -1,4 +1,4 @@
-"""Writes runs/README.md from runs/history.json: the example runs by phase.
+"""Writes runs/README.md from the run folders out/<hash>/: the example runs by phase.
 
     python runs/make_readme.py
 
@@ -7,11 +7,15 @@ The phase of a run is the number its --note starts with ("3 xodr | ...").
 
 from __future__ import annotations
 
-import json
-import shlex
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
+ROOT = HERE.parent
+sys.path.insert(0, str(ROOT))
+
+from roadgen.history import RunStore  # noqa: E402
+
 PHASES = {
     "1": "Input maps",
     "2": "Road network (RoadGraph JSON)",
@@ -68,19 +72,23 @@ CHAINS = {
 
 INTRO = """# Example runs
 
-Every successful `python -m cli` command is recorded in
-[`history.json`](history.json) under a 12-digit hash of its inputs (all
-parsed parameters, defaults included, and the effective configuration).
-The same inputs are stored once, however they were typed. See
+Every successful `python -m cli` command gets its own folder `out/<hash>/`
+(git-ignored), named by a 12-digit hash of what defines the run: the
+command, the arguments that differ from their defaults and the parameters
+that differ from `roadgen/defaults.yaml`. The folder holds the command's
+outputs (`-o` only names them) and `run.yaml`, which shows exactly those
+non-default parameters. The same inputs, however they were typed, give the
+same hash; running them again replaces the folder. See
 [CLI reference → history](../docs/cli-reference.md#history).
 
 ```bash
 python -m cli history                 # all runs: hash, note, command
 python -m cli history --grep "7 gui"  # filter by note or command
 python -m cli HASH                    # run it again (same as: replay HASH)
-python -m cli replay HASH --show      # only print the command
-python -m cli --note "my run" ...     # describe a run in the history
-python -m cli --no-history ...        # don't record a throwaway run
+python -m cli run out/HASH/run.yaml   # the same, from its run file (copy and edit it for a new run)
+python -m cli replay HASH --show      # only print the command and the folder
+python -m cli --note "my run" ...     # describe a run in its run.yaml
+python -m cli --no-history ...        # throwaway run: no folder, -o is a path
 ```
 
 In Docker, prefix the commands with `docker compose run --rm -T dev`, or
@@ -89,13 +97,13 @@ with `docker compose run --rm gui` for phase 7 (needs a desktop session; see
 until you close the window; the `simulate --gui` runs close when the scenario
 ends.
 
-The runs below were made by [`examples.sh`](examples.sh) (which also
+The runs below are made by [`examples.sh`](examples.sh) (which also
 regenerates the input images in [`inputs/`](inputs/)); this page is written
-by [`make_readme.py`](make_readme.py). They write to `out/examples/`
-(git-ignored), and later runs read files written by earlier ones, so replay
-them in order. Each note starts with its phase (`1 maps |`, `2 network |`,
-`3 xodr |`, `4 scene |`, `5 scenario |`, `6 simulate |`, `7 gui |`,
-`8 geometry |`):
+from the run folders by [`make_readme.py`](make_readme.py). Later runs read
+files from the folders of earlier ones, so on a fresh checkout run
+`examples.sh` (or replay the hashes in order). Each note starts with its
+phase (`1 maps |`, `2 network |`, `3 xodr |`, `4 scene |`, `5 scenario |`,
+`6 simulate |`, `7 gui |`, `8 geometry |`):
 
 ```bash
 # everything, oldest first (phase 7 needs the gui service)
@@ -105,32 +113,22 @@ for h in $(python -m cli history --grep "1 maps |" | grep -oE '^[0-9a-f]{12}'); 
 ```
 
 or one chain from the list below.
-
-The runs of phases 1–7 were recorded with road geometry version 1 (one
-straight road per edge, every bend a junction). Replaying them builds the
-current geometry (version 2: fitted curves, banking, junction planes) and
-logs a warning that the network differs; phase 8 shows the new geometry.
 """
 
 
 def main() -> None:
-    data = json.loads((HERE / "history.json").read_text())
-    runs = [(h, r) for h, r in data["runs"].items()]
-    by_note = {r["note"]: h for h, r in runs}
+    runs = [r for r in RunStore(ROOT / "out").runs() if r.note[:1].isdigit()]
+    by_note = {r.note: r.hash for r in runs}
     out = [INTRO, "## From scratch to the GUI\n"]
     for title, notes in CHAINS.items():
         hashes = [by_note[n] for n in notes if n in by_note]
         out.append(f"**{title}:** " + " → ".join(f"`{h}`" for h in hashes) + "\n")
     for phase, title in PHASES.items():
         out.append(f"## {phase}. {title}\n")
-        for h, r in runs:
-            if not r["note"].startswith(f"{phase} "):
-                continue
-            what = r["note"].split("|", 1)[-1].strip()
-            cmd = "python -m cli " + shlex.join(r["argv"])
-            if r.get("config_file"):
-                cmd = cmd.replace("python -m cli ", f"python -m cli --config {r['config_file']} ", 1)
-            out.append(f"- `{h}` {what}\n\n  ```bash\n  {cmd}\n  ```\n")
+        for r in runs:
+            if r.note.startswith(f"{phase} "):
+                what = r.note.split("|", 1)[-1].strip()
+                out.append(f"- `{r.hash}` {what}\n\n  ```bash\n  {r.command_line()}\n  ```\n")
     (HERE / "README.md").write_text("\n".join(out))
 
 

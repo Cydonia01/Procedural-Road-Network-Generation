@@ -9,8 +9,8 @@ Global options must come **before** the command, e.g. `python -m cli -v pipeline
 |--------|---------|
 | `-v, --verbose` | Debug logging |
 | `--config FILE` | YAML file overriding default parameters |
-| `--note TEXT` | Description stored with this run in the [run history](#history) |
-| `--no-history` | Don't record this run in the run history |
+| `--note TEXT` | Description stored in this run's [`run.yaml`](#history) |
+| `--no-history` | Don't record this run: no `out/<hash>/` folder, `-o` is a path |
 
 ### Defaults and `--config`
 
@@ -19,20 +19,29 @@ generator parameters (`generators.manhattan`, `generators.lsystem`), the seed,
 `opendrive.junction_margin`, `scenario`, `buildings`, `esmini` (timestep,
 window, camera, view density), `pipeline` (`--simulate` settings) and `bench`
 (keys a sweep config leaves out). A `--config` file uses the same nesting and
-only needs the keys it changes; unknown keys are an error. For example:
+only needs the keys it changes; unknown keys are an error. A generator or
+map generator section may also name a preset. For example:
 
 ```yaml
 seed: 42
 generators:
   manhattan:
+    preset: manhattan_like
     lane_width: 3.25
 scenario:
   speed_range: [5.0, 10.0]
 ```
 
-Precedence, lowest first: `defaults.yaml` < `--config` file < `--preset` <
-`--params` file < command-line flags and `--set`. `--help` shows the defaults
-in effect, including those from `--config`. Benchmark networks use
+Precedence, lowest first: `defaults.yaml` < preset < `--config` file <
+`--params` file < command-line flags and `--set`. A preset is where a
+parameter section starts; anything you write wins over it. `--help` shows
+the defaults in effect, including those from `--config`.
+
+All of these end up in one **run config**: the `config` part of the run's
+`run.yaml` (see [history](#history)), which holds only what differs from
+`defaults.yaml`. `--preset`, `--params`, `--set`, Manhattan's flags and
+`--map-set` are written into the section they set
+(`generators.<name>`, `maps.<kind>.<name>`). Benchmark networks use
 `bench.network`, not `generators.manhattan`, so a sweep's config id only
 depends on the sweep settings.
 
@@ -62,6 +71,17 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 | [`bench-plot`](#bench-plot) | Plot a benchmark `results.csv` |
 | [`history`](#history) | List recorded runs (hash, note, command) |
 | [`replay`](#replay) | Run a recorded command again from its hash (also `python -m cli HASH`) |
+| [`run`](#run) | Run a run config: `out/<hash>/run.yaml`, or one written by hand |
+
+### Outputs
+
+A recorded run (the default) writes every output into its own folder
+`out/<hash>/` ([history](#history)). There, `-o` and the output arguments
+below are only **file names**, not paths. A path is an error. Without them, the
+default names below are used. With `--no-history` (or `ROADGEN_HISTORY=off`)
+no folder is made, and outputs go where `-o` says, as paths. To read the
+output of an earlier run, give its path in its folder, e.g.
+`--map-file terrain=out/0bafbe99d5d4/coast_terrain.npz`.
 
 ## generators
 
@@ -75,7 +95,7 @@ python -m cli generators
 python -m cli generate <manhattan|lsystem> [generator options] [-o out.json]
 ```
 
-Default output: `out/<name>[_<preset>]_s<seed>.json`.
+Default output: `<name>[_<preset>]_s<seed>.json`.
 
 ### Options for every generator
 
@@ -114,7 +134,7 @@ python -m cli pipeline <generator> [generator options] [pipeline options] [-o PR
 
 Writes `PREFIX.json`, `.png`, `.xodr` and `.roadmap.json`, then runs all
 validators and logs the time each stage took. Default prefix:
-`out/<name>[_<preset>]_s<seed>`.
+`<name>[_<preset>]_s<seed>`.
 
 | Option | Meaning |
 |--------|---------|
@@ -129,7 +149,7 @@ validators and logs the time each stage took. Default prefix:
 | `--sim-duration S` | Simulated seconds for `--simulate` (default 30) |
 | `--maps` | Generate terrain, elevation (on the terrain) and population (on both) maps (generators from `maps.pipeline`) first, on a grid around the generator's area, and grow the network on them. Written to `PREFIX_<kind>.npz` / `.png`. Generators that don't read maps get them around the finished network, for reference |
 | `--terrain`, `--elevation`, `--population NAME` | Same for one kind, with generator `NAME` (overrides `--maps` for that kind) |
-| `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
+| `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`, the same as `maps.terrain.<generator>.rivers` in the config. Repeatable |
 
 With an elevation map the network gets heights before it is written, unless
 `--flat` is given: nodes, profiles along the edges and bridges over water
@@ -148,7 +168,7 @@ python -m cli map <terrain|elevation|population> <generator> [options] [-o PREFI
 ```
 
 Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
-`out/<kind>_<name>[_<preset>]_s<seed>`. See [Input maps](maps.md).
+`<kind>_<name>[_<preset>]_s<seed>`. See [Input maps](maps.md).
 
 | Option | Meaning |
 |--------|---------|
@@ -157,7 +177,7 @@ Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
 | `--size W H` | Map size [m] (default `maps.grid.size`) |
 | `--cell-size M` | Cell size [m] (default `maps.grid.cell_size`) |
 | `--graph FILE.json` | Draw this RoadGraph on the preview |
-| `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population), e.g. `map elevation fbm --on terrain=out/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
+| `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population), e.g. `map elevation fbm --on terrain=out/<hash>/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
 
 ## align
 
@@ -182,31 +202,31 @@ map). Default output: `NET.draped.json`. Parameters: `drape:` in the config.
 ## ground
 
 ```bash
-python -m cli ground OUT.osgt --map-file elevation=E.npz [--map-file terrain=T.npz] \
+python -m cli ground [OUT.osgt] --map-file elevation=E.npz [--map-file terrain=T.npz] \
     [--graph NET.json [--buildings]] [--seed N] [--junction-margin M]
 ```
 
 A 3D ground mesh from the maps, colored by terrain class. With `--graph` (a
 draped network), the ground is levelled under its roads; `--buildings` adds
-its buildings on top. Use the result as `scenario --scenegraph`. Parameters:
-`ground:` in the config.
+its buildings on top. Use the result as `scenario --scenegraph`. Default
+output: `scene.osgt`. Parameters: `ground:` in the config.
 
 ## plot-map
 
 ```bash
-python -m cli plot-map INPUT.npz OUTPUT.png [--graph FILE.json]
+python -m cli plot-map INPUT.npz [OUTPUT.png] [--graph FILE.json]     # default: <input>.png
 ```
 
 ## plot-graph
 
 ```bash
-python -m cli plot-graph INPUT.json OUTPUT.png [--node-ids]
+python -m cli plot-graph INPUT.json [OUTPUT.png] [--node-ids]          # default: <input>.png
 ```
 
 ## build-xodr
 
 ```bash
-python -m cli build-xodr INPUT.json OUTPUT.xodr [--xsd FILE] [--junction-margin M]
+python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M]   # default: <input>.xodr
 ```
 
 Traffic connectivity problems are only warnings here, since hand-made test
@@ -259,7 +279,7 @@ The same applies to `simulate --gui`.
 ## scenario
 
 ```bash
-python -m cli scenario NETWORK.xodr -o OUT.xosc --vehicles N [options]
+python -m cli scenario NETWORK.xodr [-o OUT.xosc] --vehicles N [options]   # default: <input>.xosc
 ```
 
 | Option | Default | Meaning |
@@ -287,11 +307,17 @@ python -m cli simulate SCENARIO.xosc [options]
 | `--no-record` | – | Skip the `.dat` recording |
 | `--no-csv` | – | Skip the `.csv` log |
 
+The `.dat`, `.csv` and `.log` go into the run's folder (next to the `.xosc`
+with `--no-history`).
+
 ## bench
 
 ```bash
 python -m cli bench CONFIG.yaml [--out-dir DIR] [--no-plot]
 ```
+
+A recorded sweep writes into its run folder (`out_dir` and `--out-dir` only
+apply with `--no-history`).
 
 ## bench-plot
 
@@ -305,6 +331,7 @@ python -m cli bench-plot RESULTS.csv [--out-dir DIR]     # default: <results dir
 |----------|---------|---------|
 | `ESMINI_HOME` | everything esmini-related | esmini root containing `bin/` (falls back to `./esmini`) |
 | `OPENDRIVE_XSD` | schema check | Path to the ASAM OpenDRIVE XSD |
+| `ROADGEN_HISTORY` | every recorded command | Root of the run folders (default `out`); `off` disables recording |
 
 ## history
 
@@ -312,26 +339,42 @@ python -m cli bench-plot RESULTS.csv [--out-dir DIR]     # default: <results dir
 python -m cli history [--grep TEXT]
 ```
 
-Every command that **succeeds** (exit code 0) is recorded in a run history,
-`runs/history.json` by default (`history.file` in the config; the
-environment variable `ROADGEN_HISTORY` overrides it, and `ROADGEN_HISTORY=off`
-turns recording off). Commands that fail, or that only list things
-(`generators`, `maps`, `history`, `replay`), are not recorded.
+Every command that **succeeds** (exit code 0) gets its own folder
+`out/<hash>/` (`history.dir` in the config; the environment variable
+`ROADGEN_HISTORY` overrides it, and `ROADGEN_HISTORY=off` turns recording
+off). The folder holds everything the command wrote, plus `run.yaml`. A
+command that fails leaves no folder and no output: it runs in a temporary
+folder, which only becomes `out/<hash>/` on success. Commands that only list
+things (`generators`, `maps`, `history`) are not recorded.
 
-A run is stored under a 12-digit hash of its inputs: every parsed parameter,
-defaults included, and the effective configuration (`defaults.yaml` merged
-with `--config`). Different ways of writing the same inputs therefore share
-one entry and are never stored twice: an explicit default, flags in another
-order, `-v` or a different `--note`. A different seed, output path or config
-value is a new run. Each configuration is stored once in the file, and the
-runs that used it point to it.
+`run.yaml` defines the run, with only what differs from the defaults:
+
+```yaml
+hash: 3fa2c81b9d04
+note: my run
+recorded: '2026-10-25T18:00:00+00:00'
+cli: python -m cli pipeline lsystem --preset city --maps --seed 7 -o city
+command: [pipeline, lsystem]
+args: {maps: true, output: city, seed: 7}      # arguments that differ from their defaults
+config:                                        # parameters that differ from defaults.yaml
+  generators:
+    lsystem: {preset: city}
+```
+
+The hash is a hash of `command`, `args` and `config`. Different ways of
+writing the same run therefore share one folder: an explicit default, flags
+in another order, `--avenues 3` or `--set n_avenues=3` or the same value in
+a `--config` file, `-v` or another `--note`. Running the same inputs again
+replaces the folder and keeps its note. A parameter file's content
+(`--params`) goes into `config`, so the run doesn't depend on the file
+afterwards.
 
 `history` lists the runs, oldest first, with their notes and command lines;
 `--grep` keeps the runs whose note or command contains TEXT. Each successful
-command also logs its hash:
+command also logs its folder:
 
 ```
-INFO roadgen.cli: run 3fa2c81b9d04 recorded in runs/history.json
+INFO roadgen.cli: run 3fa2c81b9d04: out/3fa2c81b9d04
 ```
 
 ## replay
@@ -341,13 +384,33 @@ python -m cli replay HASH [--show]
 python -m cli HASH                 # the same
 ```
 
-Runs a recorded command again. A unique prefix of 4 or more digits is
-enough. The recorded configuration is used as it was, even if
-`defaults.yaml` or the `--config` file changed since (or the file is gone).
-Only the code is not recorded, so a result can still change when the code
-does. If `defaults.yaml` gained keys since the run was recorded, the replay
-logs that its inputs differ and records itself under a new hash. `--show`
-prints the command instead of running it. A command that reads files reads
-them from where they are now, so replay the runs that write them first.
-See [runs/README.md](../runs/README.md) for the example runs.
+Runs a recorded run again from its `run.yaml`. A unique prefix of 4 or more
+digits is enough. It uses today's code and defaults with the run's
+non-default arguments and parameters, so the result follows the pipeline
+as it changes. The outputs replace the folder's. `--show` prints the
+command and the folder instead of running it. A command that reads files
+reads them from where they are now, so replay the runs that write them
+first. See [runs/README.md](../runs/README.md) for the example runs.
 
+## run
+
+```bash
+python -m cli run out/HASH/run.yaml     # the same as python -m cli HASH
+python -m cli run my_run.yaml           # a run config written by hand
+```
+
+Runs a file of the `run.yaml` form. Only `command` is required; `args` uses
+the argument names (as in `run.yaml`), and `config` holds parameters as in
+`defaults.yaml`. Copying a run's `run.yaml` and editing it is a way to make
+a new run; it is recorded under its own hash.
+
+```yaml
+command: pipeline lsystem
+args: {maps: true, allow_traps: true}
+config:
+  seed: 4
+  generators:
+    lsystem: {preset: city, branch_prob: 0.8}
+  maps:
+    terrain: {noise: {rivers: 2}}
+```

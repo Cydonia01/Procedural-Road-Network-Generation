@@ -86,8 +86,9 @@ export OPENDRIVE_XSD=/path/to/opendrive_16_core.xsd   # optional
 
 ```bash
 pytest
-python -m cli pipeline manhattan --avenues 4 --streets 4 --seed 1 --drive-check --simulate -o out/first
-python -m cli view out/first.xodr           # natively; in Docker see below
+python -m cli pipeline manhattan --avenues 4 --streets 4 --seed 1 --drive-check --simulate -o first
+# logs "run <hash>: out/<hash>": the run's folder, with first.xodr and the rest of its outputs
+python -m cli view out/<hash>/first.xodr    # natively; in Docker see below
 ```
 
 Opening a window (`view`, `simulate --gui`) needs a display. The `dev`
@@ -96,11 +97,11 @@ In Docker, use the GUI service for your OS:
 
 ```bash
 # Linux (X11 or Wayland/XWayland), from a terminal in your desktop session
-docker compose run --rm gui python -m cli view out/first.xodr
+docker compose run --rm gui python -m cli view out/<hash>/first.xodr
 
 # macOS: XQuartz running, "Allow connections from network clients" on,
 # and `xhost +localhost` run once (see docs/docker.md)
-docker compose run --rm gui-mac python -m cli view out/first.xodr
+docker compose run --rm gui-mac python -m cli view out/<hash>/first.xodr
 ```
 
 ## Common commands
@@ -109,38 +110,40 @@ docker compose run --rm gui-mac python -m cli view out/first.xodr
 python -m cli generators                                       # list generators, presets, parameters
 
 # Generate + build + validate (writes .json, .png, .xodr, .roadmap.json)
-python -m cli pipeline manhattan --avenues 10 --streets 10 --seed 1 -o out/grid10x10
+python -m cli pipeline manhattan --avenues 10 --streets 10 --seed 1 -o grid10x10   # -> out/<G>/grid10x10.*
 python -m cli pipeline manhattan --preset manhattan_like --seed 1
 python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
 python -m cli pipeline lsystem --preset city --allow-traps --maps   # grown on terrain/elevation/population maps
 
 # Input maps on their own
 python -m cli maps                                   # list map generators, presets, parameters
-python -m cli map terrain noise --preset coastal --seed 3 -o out/coast
+python -m cli map terrain noise --preset coastal --seed 3 -o coast
 python -m cli map elevation fbm --preset hilly
 
-# Individual stages
-python -m cli build-xodr tests/fixtures/single_4way.json out/single_4way.xodr
-python -m cli drive-check out/single_4way.xodr
-python -m cli metrics out/single_4way.xodr          # curvature, lateral acceleration, two-road junctions
-python -m cli scenario out/grid10x10.xodr --vehicles 200 --seed 1 --duration 120 -o out/grid10x10.xosc
-python -m cli simulate out/grid10x10.xosc            # headless: timing, errors, .dat/.csv/.log
-python -m cli simulate out/grid10x10.xosc --gui      # watch it
-python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings -o out/organic
-python -m cli view out/organic.xodr --scenegraph out/organic_buildings.osgt   # roads, random cars and buildings
+# Individual stages; each run writes into its own out/<hash>/ (X, S, O: the folders they log)
+python -m cli build-xodr tests/fixtures/single_4way.json     # -> out/<X>/single_4way.xodr
+python -m cli drive-check out/<X>/single_4way.xodr
+python -m cli metrics out/<X>/single_4way.xodr      # curvature, lateral acceleration, two-road junctions
+python -m cli scenario out/<G>/grid10x10.xodr --vehicles 200 --seed 1 --duration 120   # -> out/<S>/grid10x10.xosc
+python -m cli simulate out/<S>/grid10x10.xosc        # headless: timing, errors, .dat/.csv/.log
+python -m cli simulate out/<S>/grid10x10.xosc --gui  # watch it
+python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings -o organic
+python -m cli view out/<O>/organic.xodr --scenegraph out/<O>/organic_buildings.osgt   # roads, random cars and buildings
 
-# Run history: every successful command is recorded under a hash of its inputs
+# Run folders: every successful command in out/<hash>/ with its outputs and run.yaml
 python -m cli history                                # list runs (hash, note, command)
-python -m cli 0bafbe99d5d4                           # replay one: the coastal terrain map example
-python -m cli --note "my run" pipeline ...           # describe a run; --no-history skips recording
+python -m cli HASH                                   # run it again (or: python -m cli run out/HASH/run.yaml)
+python -m cli --note "my run" pipeline ...           # describe a run; --no-history: no folder, -o is a path
 
 # Scalability benchmark
 python -m cli bench configs/bench_smoke.yaml         # ~1 minute
 python -m cli bench configs/bench_scalability.yaml   # full, resumable sweep
 ```
 
-Generated files go in `out/`, which git ignores. Every command is documented
-in the [CLI reference](docs/cli-reference.md).
+Generated files go in `out/<hash>/`, one folder per run, which git ignores.
+`out/<hash>/run.yaml` shows the run's command and every parameter that
+differs from the defaults. Every command is documented in the
+[CLI reference](docs/cli-reference.md).
 
 ### Default parameters
 
@@ -153,8 +156,10 @@ it with `--config` before the command; any command-line flag still wins:
 python -m cli --config my_defaults.yaml pipeline manhattan --avenues 4 --streets 4
 ```
 
-Precedence, lowest first: `defaults.yaml` < `--config` file < `--preset` <
-`--params` file < flags and `--set`.
+Precedence, lowest first: `defaults.yaml` < preset < `--config` file <
+`--params` file < flags and `--set`. All of it is stored, as the difference
+from `defaults.yaml`, in the run's `run.yaml`
+([CLI reference → history](docs/cli-reference.md#history)).
 
 ## Documentation
 
@@ -170,7 +175,7 @@ Precedence, lowest first: `defaults.yaml` < `--config` file < `--preset` <
 | [Scenarios & simulation](docs/scenarios-and-simulation.md) | `.xosc` generation, esmini runner, 3D buildings |
 | [Scalability benchmark](docs/benchmarking.md) | Sweep config, results CSV, plots |
 | [CLI reference](docs/cli-reference.md) | All commands and flags |
-| [Example runs](runs/README.md) | Recorded examples for every phase, from input maps to the esmini GUI, replayable by hash |
+| [Example runs](runs/README.md) | Examples for every phase, from input maps to the esmini GUI, replayable by hash |
 | [Docker environment](docs/docker.md) | Container setup, Linux/macOS GUI |
 | [Development guide](docs/development.md) | Tests, coding rules, project phases, known issues |
 
@@ -190,9 +195,9 @@ roadgen/
   sim/          esmini runner and RoadManager drive-check
   scene/        3D buildings and ground (.osgt)
   bench/        scalability benchmark and plots
-  history.py    run history: hashes of successful commands, replay
+  history.py    run folders out/<hash>/: hashes of successful commands, replay
 configs/        benchmark configs
-runs/           run history (history.json), example runs and their inputs
+runs/           example runs (examples.sh, README) and their inputs
 tests/          pytest suite and RoadGraph fixtures
 docs/           documentation
 ```

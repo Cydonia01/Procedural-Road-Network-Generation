@@ -1,13 +1,14 @@
 """Default parameters, loaded from roadgen/defaults.yaml.
 
 DEFAULTS holds the packaged defaults; the params dataclasses take their field
-defaults from it. load_config() layers a user YAML file on top, which the CLI
-uses for its ``--config`` option.
+defaults from it. load_config() layers a user YAML file on top (the CLI's
+``--config``), with_overrides() a mapping (a run's config).
 """
 
 from __future__ import annotations
 
 import copy
+import re
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -27,9 +28,15 @@ def merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# Params sections (a generator's, a map generator's): their keys are checked against
+# the params dataclass instead, since they may name a preset or a required field.
+PARAMS_SECTIONS = re.compile(r"generators\.[^.]+|maps\.(terrain|elevation|population)\.[^.]+")
+
+
 def _check_keys(base: Any, override: Any, where: str) -> None:
     """Reject keys the defaults don't have (typos would silently do nothing)."""
-    if not isinstance(base, dict) or not isinstance(override, dict) or where.endswith(".network"):
+    if (not isinstance(base, dict) or not isinstance(override, dict) or where.endswith(".network")
+            or PARAMS_SECTIONS.fullmatch(where)):
         return
     unknown = set(override) - set(base)
     if unknown:
@@ -47,12 +54,14 @@ def _read(path: Union[str, Path]) -> dict[str, Any]:
 
 def load_config(path: Optional[Union[str, Path]] = None) -> dict[str, Any]:
     """Packaged defaults, deep-merged with the YAML file at path (if given)."""
+    return with_overrides(_read(path)) if path else _read(DEFAULTS_PATH)
+
+
+def with_overrides(override: dict[str, Any]) -> dict[str, Any]:
+    """Packaged defaults, deep-merged with override (unknown keys are an error)."""
     config = _read(DEFAULTS_PATH)
-    if path:
-        override = _read(path)
-        _check_keys(config, override, "")
-        config = merge(config, override)
-    return config
+    _check_keys(config, override, "")
+    return merge(config, override)
 
 
 def tuplify(value: Any) -> Any:
@@ -63,10 +72,11 @@ def tuplify(value: Any) -> Any:
 
 
 def section(config: dict[str, Any], *keys: str) -> dict[str, Any]:
-    """A nested mapping of config, with lists turned into tuples."""
+    """A nested mapping of config, with lists turned into tuples (and without the
+    preset a params section may name)."""
     for key in keys:
         config = config[key]
-    return {k: tuplify(v) for k, v in config.items()}
+    return {k: tuplify(v) for k, v in config.items() if k != "preset"}
 
 
 DEFAULTS = load_config()
