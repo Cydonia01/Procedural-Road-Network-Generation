@@ -151,3 +151,36 @@ like curve-warning signs at real 90° bends.
 
 `node_trims` builds the arms at a node from the graph and calls
 `junction_trims`; see [OpenDRIVE builder → Trimming](opendrive.md#trimming-where-roads-stop).
+
+## Grade separation
+
+`roadgen/geometry/grade_separation.py` (stage C8; CLI `separate`, run by
+`generate` and `pipeline` after the drape whenever the graph has crossings).
+A RoadGraph is planar except where a generator lets two roads cross without
+a shared node (lsystem's freeways). For each such crossing:
+
+- **Which road goes over:** the higher class (highway > avenue > street), the
+  lower edge id on a tie. Crossings are the pairs whose straight edges
+  cross, placed where the *fitted* roads cross (a curve can move a crossing
+  tens of metres).
+- **How high:** enough for `grade_separation.clearance` (6 m: 5 m clearance
+  plus a 1 m deck) above the lower road, from the heights already in the
+  graph.
+- **The bump:** a flat top over the lower road (its half width / sin of the
+  crossing angle, plus `flat_margin`), then smoothstep ramps no steeper
+  than `max_grade` (5 %), along the upper road through its straightest
+  continuation at each node. The flat top is a bridge span (`Edge.bridges`,
+  so the ground is not levelled under it).
+- **Side roads:** roads joining the raised stretch ramp down from the
+  height they meet it at, at the same grade, so no junction gets a step.
+  The lower road is never raised; a node that ends a lower road and lies on
+  a raised stretch stays down (logged), which can leave a step there.
+
+The crossings are listed in `metadata["overpasses"]`. The [clearance
+validator](validation.md#clearance) checks the result in the `.xodr`.
+
+**Corner clearance (fixed in stage C8).** A fitted corner may no longer
+cross another road's centre line that its straight corner polyline doesn't
+cross. Before, a polyline passing close by a road (within its buffer) let
+the curve cut across it: 2 of 10 `city` networks on maps had two roads
+crossing at one height, found by the new clearance validator.

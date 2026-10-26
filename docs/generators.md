@@ -351,8 +351,39 @@ Roundabouts are listed in `metadata["roundabouts"]` (centre, radius,
 lanes, entry and ring nodes). `organic_town` (0.1), `suburb` (0.15) and
 `mixed_city` (0.08) use them.
 
-### Input maps
+### Freeways and tunnels
 
+Stage C8, with input maps (highways need a population map).
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `highway_crossings` | `at_grade` | `at_grade`: streets meet highways at junctions; `separated`: highways are freeways |
+| `highway_max_grade` | 0 | Steepest highway (over 25 m); 0 = `max_grade` |
+| `tunnels` | false | Highways may tunnel through hills too steep to climb |
+| `tunnel_min_cover`, `max_tunnel_length` | 8, 800 | Ground over a tunnel somewhere [m]; longest stretch under ground [m] |
+
+- **Freeways** (`separated`). Streets ignore highways in the intersect,
+  snap and crossing checks, so they pass under them without a junction,
+  at least 30° from parallel and never ending within a highway's corridor
+  (its half width plus `snap_radius`); highways spawn no streets. Streets
+  reach the highways only at the seed point (and at interchanges, below).
+  The crossings are raised into overpasses after the drape
+  ([grade separation](geometry.md#grade-separation)).
+- **Tunnels** (Parish & Müller sec. 3.3). A highway segment too steep on the
+  terrain is still allowed where a straight tunnel through the hill keeps
+  the highway grade end to end, has `tunnel_min_cover` of ground over it
+  somewhere and at most `max_tunnel_length` under ground; like a bridge, the
+  segment is stretched to the far side of the hill. Tunnel edges are listed
+  in `metadata["tunnels"]`; the drape runs them at a constant grade and
+  stores the stretches at least `drape.tunnel_cover` (5 m) under the
+  terrain as `Edge.tunnels`, which the builder writes as `<tunnel>` objects
+  and the 3D ground leaves unlevelled.
+
+```bash
+python -m cli pipeline lsystem --preset city --maps --seed 1 --set highway_crossings=separated --allow-traps
+python -m cli pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 \
+    --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --allow-traps --ground
+```
 
 ### Input maps
 

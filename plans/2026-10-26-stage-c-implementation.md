@@ -514,6 +514,45 @@ As planned, with these changes:
 - **Risk:** esmini position lookup on overlapping roads. Mitigated with a
   drive-check test of a single overpass before C9 builds on it.
 
+#### C8 result (done 2026-10-27)
+
+As planned, with these changes and findings:
+
+- **Freeways, no access.** In `separated` mode highways spawn no streets:
+  a street attached at a highway node that also passes under the highway
+  elsewhere left that node both raised and protected, with a 5.7 m drop in
+  the last 10 m (and only 2.9 m clearance in the `.xodr`). Streets now reach
+  highways only at the seed point until C9. Streets may not run along a
+  highway (under 30°) within its corridor or end in it: with highways on
+  the grid axes, streets were laid on top of them.
+- **Crossings on the fitted roads.** The builder's curves moved one crossing
+  35 m from the straight edges' crossing, onto the ramp. Pairs come from the
+  straight edges (the graph's crossings); their position from the fitted
+  roads. (Searching the fitted curves for pairs found phantom crossings.)
+  The flat top widens with the skew of the crossing.
+- **Underpasses** (the plan's fallback when the upper road can't rise) were
+  not needed: the bump always raises the upper road.
+- **Tunnels** stretch through to the far side of the hill like bridges (a
+  100 m segment ends on top of a 180 m wide ridge); new
+  `highway_max_grade`, since `max_grade` limits streets too.
+- **Clearance validator** on the `.xodr` (`validate/clearance.py`). It found a
+  **stage A defect**: fitted corners could cut across another road whose
+  centre line their polyline passed close by (2 of 10 `city` networks on
+  maps, two roads crossing at one height). Fixed in the alignment's
+  clearance check; afterwards 0 of 20 `city`, 0 of 6 `mixed_city`,
+  `organic_town` and `suburb`. Contacts within 1 m of a road end (a dead end
+  next to a street that grew past it, a generator layout case) are not
+  crossings.
+- **Identity guard redefined for maps.** The geometry fix changes align
+  and drape (heights, radius caps) of networks on maps. The fingerprints of
+  the two maps cases now leave out heights and the height steps' metadata,
+  re-recorded **with the code before stage C** (41b8363) in a temporary
+  worktree; the generated networks themselves are unchanged (all nodes and
+  edges compared). The four cases without maps keep their original values.
+- Results: `city` on maps with `separated`, seeds 1–3: 23, 228 and 41
+  overpasses, every validator and esmini's drive-check pass. With tunnels on
+  hilly maps (150 m, ridged), seed 3 has a tunnel.
+
 ### C9 · Interchanges, merges, lane drops and adds
 
 - **Shared base:**

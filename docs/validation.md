@@ -100,6 +100,16 @@ The ASAM XSD can't be bundled because of its license. Download it from ASAM
 and set `OPENDRIVE_XSD=/path/to/opendrive_16_core.xsd` or pass `--xsd`.
 Without it, the check is skipped with a warning.
 
+## Clearance
+
+`validate/clearance.py`, stage C8. Two normal roads (not connecting roads)
+whose reference lines cross in plan meet nowhere, so one must be an
+overpass: at every such crossing their reference heights must differ by at
+least `grade_separation.clearance` minus the 1 m deck (5 m). Contacts within
+1 m of a road's end are not crossings: a dead end reaching another road is
+the generator's layout (a few lsystem networks have a dead end stopping
+right next to a street that grew past it later).
+
 ## Drive-check (esmini RoadManager)
 
 Where an incoming lane splits into several lanes of one road (a lane split),

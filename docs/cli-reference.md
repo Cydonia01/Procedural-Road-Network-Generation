@@ -189,6 +189,17 @@ python -m cli drape NET.json --map-file elevation=E.npz [--map-file terrain=T.np
 Gives a RoadGraph heights from an elevation map (and bridges from a terrain
 map). Default output: `NET.draped.json`. Parameters: `drape:` in the config.
 
+## separate
+
+```bash
+python -m cli separate NET.json [-o OUT.json]
+```
+
+Raises roads that cross without a junction over each other (overpasses with
+ramps and bridge spans; see [geometry](geometry.md#grade-separation)).
+Default output: `NET.separated.json`. `generate` and `pipeline` do this
+automatically after the drape. Parameters: `grade_separation:` in the config.
+
 ## ground
 
 ```bash
