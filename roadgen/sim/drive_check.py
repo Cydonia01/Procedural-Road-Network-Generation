@@ -40,7 +40,7 @@ END_OF_ROAD = -2  # esmini Position::ReturnCode::ERROR_END_OF_ROAD
 
 # esmini's junctionSelectorAngle, measured counter-clockwise from straight
 # ahead (verified empirically against esmini 3.9).
-SELECTOR_ANGLE = {"straight": 0.0, "left": math.pi / 2, "right": 3 * math.pi / 2}
+SELECTOR_ANGLE = {"straight": 0.0, "left": math.pi / 2, "right": 3 * math.pi / 2, "uturn": math.pi}
 
 
 class _PositionData(ctypes.Structure):

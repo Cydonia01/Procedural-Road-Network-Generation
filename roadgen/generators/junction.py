@@ -14,7 +14,8 @@ junction trims (roadgen.geometry.junction_space) and every leg longer than
 its trim plus a road; otherwise it is drawn again on the next random
 sub-stream (up to max_tries), so the result is deterministic for a seed.
 Leg ends get cul-de-sac bulbs where they are two-way (culdesacs), so traffic
-can turn around and scenarios have no traps.
+can turn around and scenarios have no traps. With roundabout the junction
+becomes a roundabout (roadgen.generators.transforms.roundabout), where it fits.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
 from roadgen.generators.repair import MIN_ROAD_LENGTH
 from roadgen.generators.transforms.culdesac import add_culdesacs
+from roadgen.generators.transforms.roundabout import add_roundabouts
 from roadgen.geometry.junction_space import node_trims
 from roadgen.graph.model import Edge, Node, RoadGraph
 
@@ -59,6 +61,10 @@ class JunctionLayoutParams:
     culdesac_radius: float = _D["culdesac_radius"]  # [m]
     culdesac_speed: float = _D["culdesac_speed"]  # [m/s]
     max_tries: int = _D["max_tries"]
+    roundabout: bool = _D["roundabout"]  # build the junction as a roundabout, where it fits
+    roundabout_radius: float = _D["roundabout_radius"]  # [m] single-lane ring
+    roundabout_radius_avenue: float = _D["roundabout_radius_avenue"]  # [m] two-lane ring
+    roundabout_speed: float = _D["roundabout_speed"]  # [m/s]
 
     def __post_init__(self) -> None:
         if self.legs and self.legs not in LEG_COUNTS:
@@ -91,6 +97,8 @@ PRESETS: dict[str, dict[str, Any]] = {
     "five_way": {"legs": 5, "skew_deg": 8.0},
     "six_way": {"legs": 6, "skew_deg": 5.0},
     "offset_t": {"pair": True, "skew_deg": 10.0},
+    "roundabout": {"legs": 4, "skew_deg": 10.0, "min_angle_deg": 55.0, "roundabout": True},
+    "roundabout_5": {"legs": 5, "skew_deg": 5.0, "min_angle_deg": 55.0, "roundabout": True},
     "random": {},
 }
 JunctionLayoutParams.PRESETS = PRESETS  # type: ignore[attr-defined]
@@ -115,6 +123,9 @@ class JunctionGenerator(RoadNetworkGenerator[JunctionLayoutParams]):
             "name": f"junction_{len(graph.incident_edges(1)) if not p.pair else 'pair'}_s{seed}",
             "generator": self.name, "seed": seed, "params": asdict(p), "attempts": attempt + 1,
         }
+        if p.roundabout:
+            add_roundabouts(graph, np.random.default_rng(seed), lambda node: 1.0, p.roundabout_radius,
+                            p.roundabout_radius_avenue, p.roundabout_speed)
         if p.culdesacs:
             ends = {n for n in graph.nodes if graph.degree(n) == 1}
 

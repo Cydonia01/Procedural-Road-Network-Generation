@@ -467,6 +467,30 @@ to at least the street's half width + 12 m.
   - the connectivity validator allows them there.
 - Tests: rings with 3, 4 and 5 arms, one- and two-lane; esmini drive-check; a U-turn exists only on wide roads.
 
+#### C7 result (done 2026-10-26)
+
+As planned, with these changes:
+
+- **Radii 25 m (single-lane) and 32 m (two-lane)**, not 15–20 / 25–30 m.
+  With bend nodes every 45° and 20 m, the builder fitted 4.5–12 m curves
+  next to the entries (the trim eats the room, and the stage A speed
+  model subtracts a lane half-width on the turn's inside even when a one-way
+  ring has its lanes outside), so ring bends became junctions. Now a
+  bend node at most every **60°**, and the transform checks the new
+  pieces with the builder's own alignment: no ring bend may become a
+  junction, else the radius is tried 25 % larger once, else no roundabout.
+- Room checks (5 m of road after trims on every arm and ring arc, no other
+  road within the ring plus its lanes and 3 m) are made before the graph is
+  touched, on a small graph of the new pieces.
+- **U-turns** as planned (`opendrive.u_turns`, `u_turn_radius` 5 m): only roads
+  with three or more lanes each way get one. The connectivity validator was
+  left unchanged (it ignores U-turns, which only makes it stricter).
+- Rings with 3–5 arms, one and two lanes, build, validate and drive in
+  esmini; with bulbs at the leg ends there are no traps. Presets:
+  `organic_town` 0.1, `suburb` 0.15, `mixed_city` 0.08; junction presets
+  `roundabout`, `roundabout_5` (`min_angle_deg` 55°, so the ring nearly
+  always fits).
+
 ### C8 · Grade separation: overpasses and tunnels
 
 - **Overpasses:**

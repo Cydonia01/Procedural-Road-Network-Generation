@@ -119,7 +119,13 @@ far from the node its road must stop:
 ### Movements: which lane connects to which
 
 `plan_movements` creates **one single-lane connecting road per lane
-movement**. U-turns are never created.
+movement**. U-turns are only created with `opendrive.u_turns: true`, at
+junctions of three or more roads, from the innermost incoming lane into the
+first outgoing lane of the same road whose centre is at least
+2 · `u_turn_radius` (5 m) away: with 3.5 m lanes, only roads with three or
+more lanes each way. Elsewhere roundabouts and cul-de-sac bulbs turn traffic
+around. U-turns are fitted as clothoids like the other turns, get their
+speed from their curvature, and esmini drives them (selector angle π).
 
 1. Each exit of an incoming road is classified by its turn angle. **At most
    one exit is `straight`**: the one with the smallest turn, if under 45°.

@@ -321,6 +321,39 @@ above and three more knobs:
 a node; `mixed_city` also uses stagger 0.15 and connectors (`detour_ratio`
 2.5).
 
+### Roundabouts
+
+Stage C7 (`roadgen/generators/transforms/roundabout.py`).
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `roundabout_prob` | 0 | Chance a junction of 3–5 roads becomes a roundabout (where it fits) |
+| `roundabout_radius` | 25 | Single-lane ring, centre line [m] |
+| `roundabout_radius_avenue` | 32 | Two-lane ring, when an avenue or a 4-lane road meets the junction [m] |
+| `roundabout_speed` | 8.3 | On the ring [m/s] |
+
+The junction node is replaced by a one-way ring driven counter-clockwise,
+each road cut back to an entry node on it, with a bend node at most every
+60° between entries (radii after the FHWA roundabout guide). Entries are
+3-way junctions, so traffic turns right onto the ring and right off it; a
+U-turn is a lap. Candidates need their roads at least 50° apart and no
+highway. A roundabout is only built where all of it fits:
+
+- every road keeps 5 m after the entry's trim and its far end's;
+- every ring arc keeps 5 m between its two entries' trims;
+- the ring is smooth: fitted with the builder's own alignment, none of its
+  bends would become a junction (inner lane tighter than `min_lane_radius`).
+  Otherwise the radius is tried 25 % larger once;
+- the ring (plus its lanes and 3 m) touches no other road, stays inside the
+  area and on legal ground.
+
+Roundabouts are listed in `metadata["roundabouts"]` (centre, radius,
+lanes, entry and ring nodes). `organic_town` (0.1), `suburb` (0.15) and
+`mixed_city` (0.08) use them.
+
+### Input maps
+
+
 ### Input maps
 
 Given a `MapSet` (`pipeline lsystem --maps`, or `--map-file`), growth follows
@@ -412,6 +445,7 @@ its legs.
 | `lane_width`, `street_speed`, `avenue_speed` | 3.5, 11.1, 13.9 | Legs with 4 or more lanes are avenues |
 | `pair`, `pair_offset` | false, 35 | Two T junctions on a through road, stems on opposite sides [m] |
 | `culdesacs`, `culdesac_radius`, `culdesac_speed` | true, 15, 8.3 | Turn-around bulbs at two-way leg ends |
+| `roundabout`, `roundabout_radius`, `roundabout_radius_avenue`, `roundabout_speed` | false, 25, 32, 8.3 | Build the junction as a roundabout, where it fits |
 | `max_tries` | 50 | Draws until a buildable junction |
 
 A drawn junction must be buildable: arms at least `min_angle_deg` apart and
@@ -424,7 +458,7 @@ Bulbs at the leg ends remove the dead ends, so scenarios have no traps
 
 Presets: `t`, `y` (three legs at 120°), `skewed_cross` (60° / 120°), `k` (a
 through road with two diagonals on one side), `five_way`, `six_way`,
-`offset_t` (`pair`), `random`. Over seeds 0–199, `random` gives every leg
+`offset_t` (`pair`), `roundabout`, `roundabout_5`, `random`. Over seeds 0–199, `random` gives every leg
 count from 3 to 7.
 
 ```bash
@@ -471,6 +505,7 @@ one on leaves the rest of the network as it was).
 | `drop.py` | `drop_edges`: drop segments of given classes, keeping every travel direction possible | C1 |
 | `culdesac.py` | `add_culdesacs`: turn-around bulbs at street dead ends | C4 |
 | `stagger.py` | `stagger_crossings`: 4-way crossings into offset T pairs | C5 |
+| `roundabout.py` | `add_roundabouts`: junctions into one-way rings | C7 |
 
 ## Adding a generator
 

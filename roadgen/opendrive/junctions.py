@@ -15,6 +15,13 @@ so every outgoing lane is fed: the outermost incoming lane by default
 (JunctionParams.lane_split "outer"), or the innermost ("inner"), with the
 other lanes shifted outward so that no two connecting roads of one approach
 cross. "none" leaves the extra lanes to the turns from other approaches.
+
+U-turns (stage C7, JunctionParams.u_turns, off by default): at a junction of
+three or more roads, the innermost incoming lane of a road may turn back
+into the first outgoing lane of the same road whose centre is at least
+2 * u_turn_radius away, so only wide roads get one (with 3.5 m lanes, three
+or more lanes each way). Elsewhere roundabouts and cul-de-sac bulbs turn
+traffic around.
 """
 
 from __future__ import annotations
@@ -42,7 +49,7 @@ from roadgen.geometry.primitives import Piece
 from roadgen.geometry.vertical import JunctionPlane, path_profiles
 
 Contact = Literal["start", "end"]
-MovementKind = Literal["straight", "left", "right"]
+MovementKind = Literal["straight", "left", "right", "uturn"]
 PathKind = Literal["line", "clothoid", "poly3"]
 LaneSplit = Literal["outer", "inner", "none"]
 LANE_SPLITS = ("outer", "inner", "none")
@@ -53,10 +60,14 @@ _D = {k: v for k, v in section(DEFAULTS, "opendrive").items() if k != "junction_
 @dataclass(frozen=True)
 class JunctionParams:
     lane_split: LaneSplit = _D["lane_split"]  # which incoming lane feeds a straight exit's extra lanes
+    u_turns: bool = _D["u_turns"]  # U-turn movements where the road is wide enough
+    u_turn_radius: float = _D["u_turn_radius"]  # [m] tightest U-turn: lane centres 2x this apart
 
     def __post_init__(self) -> None:
         if self.lane_split not in LANE_SPLITS:
             raise ValueError(f"unknown lane_split {self.lane_split!r}; available: {LANE_SPLITS}")
+        if self.u_turn_radius <= 0:
+            raise ValueError("u_turn_radius must be positive")
 
 # |heading change| below this counts as straight.
 STRAIGHT_THRESHOLD = math.pi / 4
@@ -209,6 +220,19 @@ def fill_pair(
     return None
 
 
+def u_turn_lane(a: RoadEnd, radius: float) -> Optional[tuple[int, int]]:
+    """(in lane, out lane) of a U-turn back onto road a, or None if it is too narrow:
+    from the innermost incoming lane into the first outgoing lane whose centre is
+    at least 2 * radius away."""
+    if not a.in_lanes or not a.out_lanes:
+        return None
+    lane = a.in_lanes[0]
+    for out in a.out_lanes:
+        if (abs(lane) - 0.5 + abs(out) - 0.5) * a.lane_width >= 2 * radius - 1e-9:
+            return lane, out
+    return None
+
+
 def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
                    params: JunctionParams = JunctionParams()) -> list[Movement]:
     """All lane movements through a junction, excluding U-turns, with road ids assigned.
@@ -253,6 +277,10 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
                 kind, out_lane = fill
                 pairs[option_end[kind]].append((lane, out_lane))
 
+        uturn = u_turn_lane(a, params.u_turn_radius) if params.u_turns and not continuation else None
+        if uturn is not None:
+            pairs[ends.index(a)] = [uturn]
+            kinds[ends.index(a)], turns[ends.index(a)] = "uturn", math.pi
         for idx, b in enumerate(ends):
             for in_lane, out_lane in sorted(set(pairs.get(idx, [])), key=lambda p: (abs(p[0]), abs(p[1]))):
                 movements.append(

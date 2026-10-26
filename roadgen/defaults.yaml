@@ -87,6 +87,11 @@ generators:
     stagger_prob: 0.0          # chance a 4-way crossing becomes two offset T junctions
     stagger_offset: 35.0       # distance between the two T junctions [m]
     max_degree: 5              # most roads the repair may join when it merges two nodes
+    # Roundabouts
+    roundabout_prob: 0.0       # chance a 3-5-way junction becomes a roundabout (where it fits)
+    roundabout_radius: 25.0    # single-lane ring, centre line [m]
+    roundabout_radius_avenue: 32.0  # two-lane ring (an avenue or a 4-lane road at the junction) [m]
+    roundabout_speed: 8.3      # on the ring [m/s] (30 km/h)
 
   junction:                    # one junction per seed (stage C6), JunctionArt-style
     legs: 0                    # number of legs; 0 = drawn by leg_weights
@@ -105,6 +110,10 @@ generators:
     culdesac_radius: 15.0      # [m]
     culdesac_speed: 8.3        # [m/s]
     max_tries: 50              # draws until a buildable junction
+    roundabout: false          # build the junction as a roundabout (where it fits)
+    roundabout_radius: 25.0    # single-lane ring [m]
+    roundabout_radius_avenue: 32.0  # two-lane ring [m]
+    roundabout_speed: 8.3      # [m/s]
 
 maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and pipeline --maps
   grid:
@@ -209,6 +218,8 @@ ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]
   lane_split: outer     # a straight exit with more lanes than its entry: outer | inner | none (which lane feeds them)
+  u_turns: false        # U-turn movements at junctions where the road is wide enough
+  u_turn_radius: 5.0    # tightest U-turn [m]: in and out lane centres at least 2x this apart
 
 design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AASHTO, MUTCD)
   e_max_street: 0.04        # max superelevation of street curves, rise / run
