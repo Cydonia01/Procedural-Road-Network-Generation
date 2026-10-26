@@ -47,6 +47,7 @@ from roadgen.geometry.vertical import (
 )
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.junctions import (
+    JunctionParams,
     Movement,
     RoadEnd,
     build_junction,
@@ -76,11 +77,12 @@ def sidecar_path(xodr_path: PathLike) -> Path:
 class OpenDriveBuilder:
     def __init__(
         self, name: str = "roadgen", junction_margin: float = DEFAULT_JUNCTION_MARGIN,
-        design: DesignParams = DesignParams(),
+        design: DesignParams = DesignParams(), junctions: JunctionParams = JunctionParams(),
     ) -> None:
         self.name = name
         self.junction_margin = junction_margin
         self.design = design
+        self.junction_params = junctions
         self.odr: Optional[xodr.OpenDrive] = None
         self.alignment: Optional[NetworkAlignment] = None
         self.edge_to_road: dict[int, int] = {}
@@ -121,7 +123,8 @@ class OpenDriveBuilder:
         for node_id in na.junctions:
             junction_id = next_id
             plane = planes[node_id] if planes is not None else None
-            junction, roads, moves = build_junction(junction_id, ends[node_id], junction_id + 1, plane)
+            junction, roads, moves = build_junction(junction_id, ends[node_id], junction_id + 1, plane,
+                                                    self.junction_params)
             for end in ends[node_id]:
                 road = odr.roads[str(end.road_id)]
                 link = road.add_successor if end.contact == "end" else road.add_predecessor

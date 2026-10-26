@@ -22,6 +22,8 @@ is on the path, and matplotlib/pyparsing deprecation noise is filtered.
 | `test_style.py` | Style maps (zones, image) and blending them in the field goal |
 | `test_culdesac.py` | Connectivity knob (detour ratio) and cul-de-sac bulbs |
 | `test_network_metrics.py` | Network metrics: legs, skew, offset T, CNR, orientation, blocks |
+| `test_junction_variety.py` | 5-7-leg stars, Y, K, skewed crossings, lane splits, staggered crossings; built, validated and driven |
+| `test_junction_generator.py` | The `junction` generator: presets, leg-count coverage, bulbs, determinism |
 | `test_opendrive.py` | Builder output, id scheme, sidecar, topology and continuity |
 | `test_junctions.py` | Trims, movement planning, lane filling, connecting-road geometry on every fixture |
 | `test_scenario.py` | Spawning, gaps, routes, `.xosc` structure, determinism, esmini log parsing |

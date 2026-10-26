@@ -83,6 +83,28 @@ generators:
     suburb_culdesac_prob: 0.7  # ... in suburbs (field goal, suburb pattern)
     culdesac_radius: 15.0      # radius of the bulb's loop (centre line) [m]
     culdesac_speed: 8.3        # speed on the loop [m/s] (30 km/h)
+    # Junction variety
+    stagger_prob: 0.0          # chance a 4-way crossing becomes two offset T junctions
+    stagger_offset: 35.0       # distance between the two T junctions [m]
+    max_degree: 5              # most roads the repair may join when it merges two nodes
+
+  junction:                    # one junction per seed (stage C6), JunctionArt-style
+    legs: 0                    # number of legs; 0 = drawn by leg_weights
+    leg_weights: [0.3, 0.3, 0.2, 0.1, 0.1]  # P(3, 4, 5, 6, 7 legs)
+    angles_deg: []             # leg headings [deg]; empty = evenly spread from a random start
+    skew_deg: 20.0             # std dev of each leg's turn from its heading [deg]
+    min_angle_deg: 30.0        # least angle between neighbouring legs [deg]
+    leg_length: 150.0          # [m]
+    lane_probs: [0.15, 0.6, 0.2, 0.05]  # P(0, 1, 2, 3 lanes) on each side of a leg (JunctionArt)
+    lane_width: 3.5            # [m]
+    street_speed: 11.1         # [m/s]
+    avenue_speed: 13.9         # [m/s], legs with 4 or more lanes
+    pair: false                # two T junctions on a through road, stems on opposite sides
+    pair_offset: 35.0          # distance between the two T junctions [m]
+    culdesacs: true            # turn-around bulbs at two-way leg ends (no traps)
+    culdesac_radius: 15.0      # [m]
+    culdesac_speed: 8.3        # [m/s]
+    max_tries: 50              # draws until a buildable junction
 
 maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and pipeline --maps
   grid:
@@ -186,6 +208,7 @@ ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground
 
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]
+  lane_split: outer     # a straight exit with more lanes than its entry: outer | inner | none (which lane feeds them)
 
 design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AASHTO, MUTCD)
   e_max_street: 0.04        # max superelevation of street curves, rise / run

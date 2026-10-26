@@ -72,6 +72,13 @@ def check_traffic(graph: RoadGraph, allow_traps: bool) -> list[str]:
     return [] if allow_traps else [f"traffic: {m}" for m in problems]
 
 
+def junction_params(cfg: dict):
+    """JunctionParams from the config's opendrive section (junction_margin is separate)."""
+    from roadgen.opendrive.junctions import JunctionParams
+
+    return JunctionParams(**{k: v for k, v in section(cfg, "opendrive").items() if k != "junction_margin"})
+
+
 def build_and_validate(
     graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str],
     cfg: Optional[dict] = None,
@@ -80,6 +87,7 @@ def build_and_validate(
     builder = OpenDriveBuilder(
         name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
         design=DesignParams(**section(cfg or DEFAULTS, "design")),
+        junctions=junction_params(cfg or DEFAULTS),
     )
     with timed("build xodr"):
         try:

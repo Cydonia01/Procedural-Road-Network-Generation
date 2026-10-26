@@ -16,7 +16,7 @@ flowchart LR
     MP["Map generators<br/>(terrain, elevation,<br/>population)"] -->|MapSet| G
     MI[(".npz<br/>--map-file")] -->|MapSet| G
     MP --> MF[("PREFIX_kind<br/>.npz / .png")]
-    G["Generator<br/>(lsystem)"] -->|RoadGraph| DR["Drape<br/>(heights, bridges)"]
+    G["Generator<br/>(lsystem, junction)"] -->|RoadGraph| DR["Drape<br/>(heights, bridges)"]
     MP -.elevation, terrain.-> DR
     DR -->|RoadGraph| J[(".json")]
     G --> C{"traffic<br/>connectivity"}
@@ -143,8 +143,9 @@ roadgen/
     base.py                RoadNetworkGenerator ABC, registry, params/presets loading
     lsystem.py             Parish & Müller style growth (grids, highways, map constraints, field goal)
     patterns.py            street pattern fields: grid, radial, organic, contour, suburb (tensor blend)
+    junction.py            one junction per seed (3-7 legs, skew, offset pairs), JunctionArt-style
     repair.py              post-generation repair of edges too short for their junctions
-    transforms/            graph -> graph passes: drop.py (edge drop), culdesac.py (bulbs)
+    transforms/            graph -> graph passes: drop.py (edge drop), culdesac.py (bulbs), stagger.py
   maps/
     model.py               GridSpec, MapLayer (sampling, .npz I/O), MapSet, terrain classes
     base.py                MapGenerator ABC, per-kind registry, make_map

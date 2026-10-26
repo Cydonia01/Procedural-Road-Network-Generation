@@ -92,7 +92,8 @@ There are two:
 - `field` (stage C2): follow a blend of street patterns; see
   [Pattern fields](#pattern-fields-global_goal-field).
 
-lsystem is the only generator for cities: the old `manhattan` generator was
+lsystem is the only generator for cities (the [`junction`](#junction-one-junction-per-seed-junctionpy)
+generator makes single junctions): the old `manhattan` generator was
 removed in stage C, since lsystem grows the same grids
 ([Manhattan-style grids](#manhattan-style-grids)), as in the papers.
 
@@ -293,6 +294,33 @@ Stage C4. Two knobs between a well-connected grid and a tree of cul-de-sacs:
 **Preset `suburb`:** suburb pattern only, minimum angle 50°, 30 km/h
 streets, bulbs at 90 % of dead ends that have room.
 
+### Junction variety
+
+Stage C5. Junctions with more legs and other shapes come from the patterns
+above and three more knobs:
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `stagger_prob` | 0 | Chance a 4-way crossing becomes two offset T junctions |
+| `stagger_offset` | 35 | Distance between the two T junctions [m] |
+| `max_degree` | 5 | Most roads the repair may join when it merges two nodes |
+
+- **Stars.** Every radial centre in the area (radial weight ≥ 0.5) gets a
+  star of `radial_spokes` avenues, not only the seed point; with
+  `max_degree` 7 the repair keeps 6- and 7-leg junctions.
+- **Skew** from the skew field (`skew_deg`), and **5-leg junctions** where
+  connectors (`detour_ratio`) or snaps join an existing junction.
+- **Staggered crossings** (`roadgen/generators/transforms/stagger.py`): one
+  arm of a crossing road moves `stagger_offset` along the through road (the
+  pair with more lanes), which is split there. Undone where the moved arm
+  would cross a road, meet another closer than `min_angle_deg`, or where
+  less than 5 m of road would stay between the two T junctions after their
+  trims.
+
+`organic_town` uses stagger 0.3; `paris` and `mixed_city` allow 7 roads at
+a node; `mixed_city` also uses stagger 0.15 and connectors (`detour_ratio`
+2.5).
+
 ### Input maps
 
 Given a `MapSet` (`pipeline lsystem --maps`, or `--map-file`), growth follows
@@ -364,6 +392,47 @@ cell size as its step.
 | `prune_factor` | 0.4 | Share of a street that must remain after pruning |
 | `max_grade` | 0.15 | Max rise / run along any road; 0 disables |
 
+## `junction`: one junction per seed (`junction.py`)
+
+Stage C6, after Muktadir et al., *JunctionArt* (2023). Cities have almost
+only 3- and 4-leg junctions near 90°; this generator makes any shape on
+demand, for long-tail datasets, builder stress tests and short ego
+scenarios. It is not a city generator: one junction (or an offset pair) and
+its legs.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `legs` | 0 | Number of legs (3–7); 0 = drawn by `leg_weights` |
+| `leg_weights` | (0.3, 0.3, 0.2, 0.1, 0.1) | P(3, 4, 5, 6, 7 legs) |
+| `angles_deg` | () | Leg headings [deg]; empty = evenly spread from a random start |
+| `skew_deg` | 20 | Std dev of each leg's turn from its heading [deg] |
+| `min_angle_deg` | 30 | Least angle between neighbouring legs [deg] |
+| `leg_length` | 150 | [m] |
+| `lane_probs` | (0.15, 0.6, 0.2, 0.05) | P(0, 1, 2, 3 lanes) on each side of a leg (JunctionArt), never 0 on both |
+| `lane_width`, `street_speed`, `avenue_speed` | 3.5, 11.1, 13.9 | Legs with 4 or more lanes are avenues |
+| `pair`, `pair_offset` | false, 35 | Two T junctions on a through road, stems on opposite sides [m] |
+| `culdesacs`, `culdesac_radius`, `culdesac_speed` | true, 15, 8.3 | Turn-around bulbs at two-way leg ends |
+| `max_tries` | 50 | Draws until a buildable junction |
+
+A drawn junction must be buildable: arms at least `min_angle_deg` apart and
+every road longer than its junction trims plus 5 m (checked with the
+neutral junction-space code, never OpenDRIVE). Otherwise it is drawn again
+on the next random sub-stream, so the result depends only on the seed
+(`metadata.attempts` says how many draws it took; at most 4 over 200 seeds).
+Bulbs at the leg ends remove the dead ends, so scenarios have no traps
+(except behind one-way legs).
+
+Presets: `t`, `y` (three legs at 120°), `skewed_cross` (60° / 120°), `k` (a
+through road with two diagonals on one side), `five_way`, `six_way`,
+`offset_t` (`pair`), `random`. Over seeds 0–199, `random` gives every leg
+count from 3 to 7.
+
+```bash
+python -m cli pipeline junction --preset k --seed 3 --drive-check
+python -m cli pipeline junction --preset random --seed 17 --set skew_deg=30
+for s in $(seq 0 49); do python -m cli pipeline junction --preset random --seed $s; done
+```
+
 ## Repair: edges too short for their junctions (`repair.py`)
 
 A generator places nodes without knowing how much road each junction will
@@ -401,6 +470,7 @@ one on leaves the rest of the network as it was).
 |--------|----------|-------|
 | `drop.py` | `drop_edges`: drop segments of given classes, keeping every travel direction possible | C1 |
 | `culdesac.py` | `add_culdesacs`: turn-around bulbs at street dead ends | C4 |
+| `stagger.py` | `stagger_crossings`: 4-way crossings into offset T pairs | C5 |
 
 ## Adding a generator
 

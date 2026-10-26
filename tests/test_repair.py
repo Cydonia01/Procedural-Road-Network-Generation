@@ -77,7 +77,7 @@ def test_buildable_networks_are_unchanged(monkeypatch):
     # The repair only touches edges the builder would reject: a seed that built
     # before (seed 3) gives the same graph with the repair switched off.
     repaired = graph_to_dict(_sweep_graph(3))
-    monkeypatch.setattr("roadgen.generators.lsystem.repair_short_edges", lambda graph: 0)
+    monkeypatch.setattr("roadgen.generators.lsystem.repair_short_edges", lambda graph, **kw: 0)
     assert graph_to_dict(_sweep_graph(3)) == repaired
 
 

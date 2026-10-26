@@ -24,7 +24,9 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
     (San Francisco) and suburb patterns blended per district by a style
     map, with skewed junctions and a grid-to-organic knob;
   - a connectivity knob from grids to tree-like suburbs, with turn-around
-    bulbs at dead ends.
+    bulbs at dead ends, and staggered crossings and star junctions.
+- **Generator** `junction`: one JunctionArt-style junction per seed (3–7
+  legs, skew, offset T pairs, random lanes per side) for long-tail data.
 - **Input maps** (after Parish & Müller): pluggable generators, built as a
   linear pipeline so the maps agree: a water/land/vegetation map (lakes,
   coast, rivers, parks), then an elevation map on it (fBm, ridged

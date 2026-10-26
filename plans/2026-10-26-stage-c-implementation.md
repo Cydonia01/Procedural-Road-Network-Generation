@@ -394,6 +394,33 @@ are 1.3 % of `mixed_city`'s (target 2 %): C5's job.
   - a 1 → 2 lane split;
   - all pass topology, continuity, dynamics and drive-check.
 
+#### C5 result (done 2026-10-26)
+
+- **Lane splits** in `plan_movements` (`straight_pairs`), policy
+  `opendrive.lane_split` (outer, the default; inner; none) in a new frozen
+  `JunctionParams` (`OpenDriveBuilder(junctions=...)`), as planned. The
+  drive-check accepts any branch of a lane split: esmini's selector only
+  knows the turn angle and can't pick between two connecting roads from one
+  lane into one road (it failed the `mixed_5way` fixture before).
+- **Staggered crossings** as a graph transform
+  (`transforms/stagger.py`, `stagger_prob`, `stagger_offset`), not a growth
+  rule: it works on any generator's graph. Undone where the moved arm would
+  cross a road or the two T junctions would keep less than 5 m between
+  their trims.
+- **Stars** at every radial centre in the area, not only the seed point;
+  `max_degree` (the repair's limit, default 5 = unchanged) is 7 in `paris`
+  and `mixed_city`. Per-pattern `min_angle_deg` was **not** added: the
+  global one sufficed for every shape tested (skewed crossings at 30°).
+- Builder robustness: 5-, 6- and 7-leg stars, a 30° Y, a K and skewed
+  crossings build, validate (topology, continuity, curvature, dynamics) and
+  drive in esmini with no changes to the trims or turn fitting
+  (`tests/test_junction_variety.py`).
+- Presets: `organic_town` stagger 0.3; `mixed_city` stagger 0.15, connectors
+  (`detour_ratio` 2.5), `max_degree` 7; `paris` `max_degree` 7.
+- Exit criteria met: 5+-leg junctions are 2.8 %, 5.1 % and 2.8 % of
+  `mixed_city`'s (seeds 1–3, target 2 %); `organic_town` 14 % skewed
+  (target 10 %).
+
 ### C6 · `junction` generator
 
 - `roadgen/generators/junction.py`, `@register("junction")`. Params:
@@ -409,6 +436,18 @@ are 1.3 % of `mixed_city`'s (target 2 %): C5's job.
 - Sampling helpers shared with C5 in `roadgen/generators/sampling.py`.
 - CLI: `generate junction --preset k`, `pipeline junction ...`.
 - Tests: every preset builds and drives; over seeds 0–199, `random` fills every leg-count bin.
+
+#### C6 result (done 2026-10-26)
+
+As planned (`roadgen/generators/junction.py`, params class
+`JunctionLayoutParams` to keep it apart from the builder's
+`JunctionParams`). Validity is checked with the junction trims plus the
+5 m stub rule. Over seeds 0–199, `random` gives 3: 68, 4: 71, 5: 47, 6: 10,
+7: 4 legs, in at most 4 draws. The shared sampling helpers module was not
+needed: lsystem's junction variety comes from fields and transforms, not
+from sampling legs. Bulbs on wide legs failed to build (a 3 + 3-lane leg
+trims 12.5 m from a 15 m loop chord), so `add_culdesacs` now grows the loop
+to at least the street's half width + 12 m.
 
 ### C7 · Roundabouts and U-turns
 

@@ -96,7 +96,7 @@ python -m cli generators
 ## generate
 
 ```bash
-python -m cli generate lsystem [generator options] [-o out.json]
+python -m cli generate <lsystem|junction> [generator options] [-o out.json]
 ```
 
 Default output: `<name>[_<preset>]_s<seed>.json`.

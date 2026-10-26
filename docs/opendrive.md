@@ -126,7 +126,13 @@ movement**. U-turns are never created.
    The others are `left` or `right` by the sign of the turn. This keeps
    5-way and skewed junctions unambiguous.
 2. Standard lane rules:
-   - straight: lane-to-lane, from the center outward;
+   - straight: lane-to-lane, from the center outward. Where the exit has
+     more lanes than the entry, a **lane split** feeds the extra lanes
+     (stage C5, JunctionArt): with `opendrive.lane_split: outer` (default)
+     the outermost incoming lane fans out to them; `inner` makes the
+     innermost one split and shifts the others outward, so no two
+     connecting roads of one approach cross; `none` leaves them to the turns
+     of other approaches;
    - right turns: from the rightmost lane into the rightmost lane;
    - left turns: from the leftmost lane into the leftmost lane.
 3. **No lane may dead-end.** Any incoming lane still without a movement
@@ -136,6 +142,13 @@ movement**. U-turns are never created.
    lane when the target has fewer lanes.
 4. **Two-arm junctions** use `continuation_pairs`: every lane continues, and
    surplus lanes merge into the outermost outgoing lane.
+
+Junctions with up to 7 roads and arms down to the generators' minimum
+angle (30° by default) build, validate and drive (tests in
+`tests/test_junction_variety.py`: 5-, 6- and 7-leg stars, a 30° Y, a K,
+skewed crossings, lane splits, offset T pairs). Junction options live in
+`JunctionParams` (`opendrive:` in `defaults.yaml`), passed to
+`OpenDriveBuilder(junctions=...)`.
 
 ### Connecting-road geometry
 

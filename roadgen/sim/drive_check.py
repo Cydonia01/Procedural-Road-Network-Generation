@@ -8,6 +8,10 @@ through the connecting road and 20 m beyond.
 A movement passes when esmini routes it over the expected connecting road
 into the expected lane, the position never jumps, and esmini never reports
 an error. Reaching the end of a dead-end target road just ends the drive.
+Where one incoming lane splits into several lanes of the same road (a lane
+split, stage C5), esmini's selector, which only knows the turn angle, can't
+choose between them: any connecting road of that split, into its own lane,
+counts.
 
 This exercises the same lane-following logic odrviewer uses for its traffic.
 """
@@ -69,13 +73,16 @@ class DriveResult:
     final_lane: Optional[int]  # lane on entering the target road, None if never reached
     max_jump: float
     min_return_code: int
+    # (connecting road, to lane) of the movement and of the other branches of its lane split
+    accepted: tuple[tuple[int, int], ...] = ()
 
     @property
     def ok(self) -> bool:
         m = self.movement
+        accepted = self.accepted or ((m["connecting_road"], m["to_lane"]),)
         return (
-            self.route[:3] == [m["from_road"], m["connecting_road"], m["to_road"]]
-            and self.final_lane == m["to_lane"]
+            len(self.route) >= 3 and self.route[0] == m["from_road"] and self.route[2] == m["to_road"]
+            and (self.route[1], self.final_lane) in accepted
             and self.max_jump < JUMP_TOL
             and self.min_return_code >= 0
         )
@@ -98,11 +105,19 @@ def drive_movements(xodr_path: PathLike, lib_path: Optional[PathLike] = None) ->
     lib = _load_rm(lib_path)
     if lib.RM_Init(str(xodr_path).encode()) != 0:
         raise RuntimeError(f"esmini RoadManager failed to load {xodr_path}")
+    splits: dict[tuple[int, int, int], list[tuple[int, int]]] = {}
+    for m in movements:
+        splits.setdefault((m["from_road"], m["from_lane"], m["to_road"]), []).append(
+            (m["connecting_road"], m["to_lane"]))
     try:
-        return [_drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]],
+        results = []
+        for m in movements:
+            r = _drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]],
                        _full_width_run(roads[m["from_road"]], m["from_lane"]),
                        _full_width_run(roads[m["to_road"]], m["to_lane"], at_exit=False))
-                for m in movements]
+            r.accepted = tuple(splits[(m["from_road"], m["from_lane"], m["to_road"])])
+            results.append(r)
+        return results
     finally:
         lib.RM_Close()
 

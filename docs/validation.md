@@ -102,6 +102,11 @@ Without it, the check is skipped with a warning.
 
 ## Drive-check (esmini RoadManager)
 
+Where an incoming lane splits into several lanes of one road (a lane split),
+esmini's junction selector only knows the turn angle and picks one of them:
+any connecting road of that split, ending in its own lane, passes.
+
+
 ```bash
 python -m cli drive-check out/<hash>/single_4way.xodr
 ```

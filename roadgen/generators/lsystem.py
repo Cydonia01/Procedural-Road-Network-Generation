@@ -95,6 +95,7 @@ from roadgen.generators.patterns import PATTERNS, RADIAL, SUBURB, FieldParams, S
 from roadgen.generators.repair import repair_short_edges
 from roadgen.generators.transforms.culdesac import add_culdesacs
 from roadgen.generators.transforms.drop import drop_edges
+from roadgen.generators.transforms.stagger import stagger_crossings
 from roadgen.geometry import design
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.model import Edge, Node, RoadGraph
@@ -123,6 +124,7 @@ SALT_DROP = 0x6472  # random sub-stream of edge_drop_prob, independent of the gr
 SALT_FIELD = 0x6669  # random sub-stream of the pattern field's noise
 SALT_CONNECT = 0x636f  # random sub-stream of the connector pass
 SALT_CULDESAC = 0x6375  # random sub-stream of the cul-de-sac bulbs
+SALT_STAGGER = 0x7374  # random sub-stream of the staggered crossings
 CONNECT_CANDIDATES = 6  # nearest nodes a connector tries from each node
 CONTOUR_SLOPE = 0.08  # terrain grade at which contour streets follow the contour fully
 CONTOUR_MAX_DEG = 60.0  # contour streets turn at most this far from their grid axis
@@ -211,6 +213,10 @@ class LSystemParams:
     suburb_culdesac_prob: float = _D["suburb_culdesac_prob"]  # ... in suburbs (field goal)
     culdesac_radius: float = _D["culdesac_radius"]  # [m] of the bulb's loop (centre line)
     culdesac_speed: float = _D["culdesac_speed"]  # [m/s] on the loop
+    # --- junction variety (stage C5) -----------------------------------------------------
+    stagger_prob: float = _D["stagger_prob"]  # chance a 4-way crossing becomes two offset T junctions
+    stagger_offset: float = _D["stagger_offset"]  # [m] between the two T junctions
+    max_degree: int = _D["max_degree"]  # most roads the repair may join at one node
 
     def __post_init__(self) -> None:
         if self.global_goal not in GLOBAL_GOALS:
@@ -270,6 +276,8 @@ class LSystemParams:
             raise ValueError("culdesac_prob and suburb_culdesac_prob must be in [0, 1]")
         if self.culdesac_radius <= 0 or self.culdesac_speed <= 0:
             raise ValueError("culdesac_radius and culdesac_speed must be positive")
+        if not 0.0 <= self.stagger_prob <= 1.0 or self.stagger_offset <= 0 or not 3 <= self.max_degree <= 8:
+            raise ValueError("need stagger_prob in [0, 1], stagger_offset > 0, max_degree in [3, 8]")
         if self.global_goal == "field" and self.curve_mode != "none":
             raise ValueError("curve_mode is for the grid goal; the field goal bends streets with "
                              "organic, contour and suburb patterns")
@@ -360,6 +368,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "pattern_weights": (0.25, 1.0, 0.0, 0.0, 0.0),
         "radial_radius": 600.0,
         "radial_spokes": 6,
+        "max_degree": 7,
     },
     # Organic town (field goal): the grid bent by smooth noise, snapping only where nearly straight.
     "organic_town": {
@@ -373,6 +382,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "min_segment_length": 40.0,
         "min_angle_deg": 35.0,
         "organic": 0.8,
+        "stagger_prob": 0.3,
     },
     # Skewed grid (field goal): streets cross the avenues at 60-90 deg, in patches.
     "skewed_grid": {
@@ -427,6 +437,9 @@ PRESETS: dict[str, dict[str, Any]] = {
         "min_segment_length": 40.0,
         "min_angle_deg": 35.0,
         "pattern_weights": (0.5, 0.0, 0.3, 0.0, 0.2),  # without a style map
+        "stagger_prob": 0.15,
+        "detour_ratio": 2.5,
+        "max_degree": 7,
     },
 }
 LSystemParams.PRESETS = PRESETS  # type: ignore[attr-defined]
@@ -980,18 +993,30 @@ class _Growth:
 
     def seed_field(self, start: int) -> None:
         """Field goal: avenues and streets both ways from the seed point, or a star of
-        radial_spokes avenues where the seed point is a radial centre."""
+        radial_spokes avenues where the seed point is a radial centre. Every other
+        radial centre in the area (radial weight >= 0.5 there) gets a star too
+        (Paris's étoiles), which grows until it meets the rest of the network."""
         p, pt = self.p, self.pos[start]
-        weights = self.field.weights(pt)
-        centre = min(self.field.params.radial_centers, key=lambda c: math.dist(pt, c))
-        if weights[RADIAL] >= 0.5 and math.dist(pt, centre) <= p.snap_radius:
-            for k in range(p.radial_spokes):
-                self.propose(0, start, AVENUE_Y, 1, 2 * math.pi * k / p.radial_spokes, follow=True)
-            return
-        major = self.field.major_angle(pt) or math.pi / 2
-        for axis, base in ((AVENUE_Y, major), (STREET_X, major + math.pi / 2)):
-            for sign in (1, -1):
-                self.propose(0, start, axis, sign, base if sign > 0 else base + math.pi)
+        stars = [c for c in self.field.params.radial_centers
+                 if self.inside(c) and self.field.weights(c)[RADIAL] >= 0.5]
+        at_start = [c for c in stars if math.dist(pt, c) <= p.snap_radius]
+        if at_start:
+            self.star(start)
+        else:
+            major = self.field.major_angle(pt) or math.pi / 2
+            for axis, base in ((AVENUE_Y, major), (STREET_X, major + math.pi / 2)):
+                for sign in (1, -1):
+                    self.propose(0, start, axis, sign, base if sign > 0 else base + math.pi)
+        for c in stars:
+            if math.dist(pt, c) > max(p.block_size) and self.maps.legal_point(c):
+                self.star(self.add_node(c))
+
+    def star(self, node: int) -> None:
+        """radial_spokes avenues leaving node evenly (their headings followed, as the
+        field has no direction at a radial centre)."""
+        n = self.p.radial_spokes
+        for k in range(n):
+            self.propose(0, node, AVENUE_Y, 1, 2 * math.pi * k / n, follow=True)
 
     def loop(self) -> None:
         while self.queue and len(self.edges) < self.p.max_segments:
@@ -1233,6 +1258,15 @@ class _MapView:
             bad |= cls == VEGETATION
         return bad
 
+    def legal_point(self, pt: Point) -> bool:
+        """Whether a road may start at pt (not in water / vegetation, populated enough)."""
+        if self.terrain is not None and self._illegal_for_streets(np.array([pt[0]]), np.array([pt[1]]))[0]:
+            return False
+        if self.population is not None and self.p.street_min_density > 0:
+            return bool(self.sample(self.population, np.array([pt[0]]), np.array([pt[1]]))[0]
+                        >= self.p.street_min_density)
+        return True
+
     def legal_start(self, pt: Point) -> Point:
         """The seed point, or the nearest legal cell centre inside the area if it is illegal."""
         if self.terrain is None or not self._illegal_for_streets(np.array([pt[0]]), np.array([pt[1]]))[0]:
@@ -1377,7 +1411,11 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         if params.edge_drop_prob and drop_edges(graph, params.edge_drop_prob,
                                                 np.random.default_rng([seed, SALT_DROP])):
             assign_node_kinds(graph)
-        if repair_short_edges(graph):
+        if params.stagger_prob and stagger_crossings(graph, params.stagger_prob, params.stagger_offset,
+                                                     np.random.default_rng([seed, SALT_STAGGER]),
+                                                     params.min_angle_deg):
+            assign_node_kinds(graph)
+        if repair_short_edges(graph, max_degree=params.max_degree):
             assign_node_kinds(graph)
         if (params.culdesac_prob or (params.suburb_culdesac_prob and growth.field is not None)) \
                 and add_culdesacs(graph, np.random.default_rng([seed, SALT_CULDESAC]), growth.culdesac_prob,
