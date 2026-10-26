@@ -96,6 +96,10 @@ generators:
     highway_crossings: at_grade  # streets cross highways at_grade (junctions) | separated (under them)
     highway_max_grade: 0.0     # max rise / run of highways (over 25 m); 0 = max_grade
     tunnels: false             # highways may tunnel through hills too steep to climb
+    # Interchanges
+    interchanges: false        # diamond interchanges on freeways (needs highway_crossings: separated)
+    interchange_spacing: 1200.0  # least distance between interchanges [m]
+    highway_lane_change_prob: 0.0  # chance a highway stretch gets a lane more each way (lane add + drop)
     tunnel_min_cover: 8.0      # ground over a tunnel, somewhere along it [m]
     max_tunnel_length: 800.0   # longest stretch under ground [m]
 
@@ -120,6 +124,8 @@ generators:
     roundabout_radius: 25.0    # single-lane ring [m]
     roundabout_radius_avenue: 32.0  # two-lane ring [m]
     roundabout_speed: 8.3      # [m/s]
+    interchange: none          # none | diamond | cloverleaf: a highway interchange instead of a junction
+    interchange_length: 1500.0 # each road's length from the crossing [m] (interchange)
 
 maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and pipeline --maps
   grid:
@@ -210,6 +216,18 @@ maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and
     image:                     # `path` is required
       # RGB in [0, 1]; pixels take the nearest class
       colors: [[0.30, 0.47, 0.66], [0.89, 0.34, 0.34], [0.33, 0.64, 0.29], [0.70, 0.47, 0.64], [0.93, 0.79, 0.23]]
+
+interchange:  # highway interchange templates (stage C9; roadgen/generators/transforms/interchange.py)
+  ramp_off: 250.0          # diamond: exits this far before the crossing [m]
+  ramp_on: 200.0           # diamond: entries this far after it (beyond the overpass ramps) [m]
+  terminal_offset: 90.0    # diamond: ramp terminals on the crossing road, off the mainline [m]
+  aux_length: 100.0        # deceleration / acceleration lanes (AASHTO parallel type) [m]
+  loop_radius: 60.0        # cloverleaf loop ramps [m]
+  outer_radius: 150.0      # cloverleaf outer ramps [m]
+  ramp_angle_deg: 25.0     # cloverleaf ramps leave and join the highways at this angle [deg]
+  ramp_speed: 13.9         # [m/s] (50 km/h)
+  loop_speed: 11.1         # [m/s] (40 km/h)
+  cross_lanes: [2, 2]      # diamond: the crossing road gets at least these lanes
 
 grade_separation:  # roads crossing without a junction pass over each other (stage C8; `separate`)
   clearance: 6.0           # between the lower and the upper road surface: 5 m clearance + 1 m deck [m]

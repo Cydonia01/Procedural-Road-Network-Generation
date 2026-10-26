@@ -379,7 +379,57 @@ Stage C8, with input maps (highways need a population map).
   terrain as `Edge.tunnels`, which the builder writes as `<tunnel>` objects
   and the 3D ground leaves unlevelled.
 
+**Interchanges** (stage C9, `roadgen/generators/transforms/interchange.py`):
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `interchanges` | false | Diamond interchanges on freeways (needs `highway_crossings: separated`) |
+| `interchange_spacing` | 1200 | Least distance between interchanges [m] |
+| `highway_lane_change_prob` | 0 | Chance a highway stretch (between two-road nodes) gets a lane more each way: a lane add and a lane drop |
+
+After the highways grow and before the streets, slots are chosen along
+straight highway stretches (at most 20 m off a straight line over the
+interchange), `interchange_spacing` apart, inside the area, on legal ground,
+away from other highways and the seed point. Each slot gets a crossing
+avenue under the highway and a reserved zone streets may not enter; streets
+start from the avenue's ends, so the city reaches the freeway through the
+interchanges. After growth a **diamond** is built at each slot.
+
+The templates (also usable on any graph):
+
+- **Common base.** Around the crossing, the mainline and the crossing road are
+  rebuilt as straight chains with nodes where the template needs them.
+  Ramps are one-lane, one-way highway-class roads. The mainline nodes where
+  they leave or join get `Node.kind = "ramp"`: there the builder allows only
+  straight-through, right exits and right merges, with no left turns across
+  the centre line and no ramp to ramp; ramps join as right turns into the
+  outermost lane. Auxiliary lanes are lane-count changes on the mainline
+  (stage A tapers).
+- **Diamond** (highway × avenue / street): each direction exits `ramp_off`
+  (250 m) before the crossing after a `aux_length` (100 m) deceleration lane,
+  through an at-grade terminal `terminal_offset` (90 m) off the mainline, and
+  rejoins `ramp_on` (200 m) after it, beyond the overpass ramps, with an
+  acceleration lane. The crossing road gets at least 2 + 2 lanes.
+- **Cloverleaf** (highway × highway at 70–110°): in each quadrant a loop ramp
+  (a 240° right turn of `loop_radius`, 60 m, leaving and joining at
+  `ramp_angle_deg`, 25°) carries a left turn and an outer ramp the right
+  turn back; outer ramps move out in 25 m steps until they clear the loops.
+  Between a loop's entry and the next loop's exit both directions weave on
+  an auxiliary lane.
+- Nothing changes unless the whole interchange fits: the rebuilt roads may
+  have no other road joining them inside it, and no ramp may come within
+  8 m (plus lane widths) of another road. Interchanges are listed in
+  `metadata["interchanges"]`.
+
+lsystem builds only diamonds: its highways stop where they meet another
+highway, so they never cross; cloverleafs come from the `junction`
+generator's `cloverleaf` preset or the transform. Preset
+**`highway_corridor`**: straight freeways (6° turns), interchanges every
+1000 m, lane adds and drops.
+
 ```bash
+python -m cli pipeline lsystem --preset highway_corridor --maps --seed 1 --allow-traps
+python -m cli pipeline junction --preset cloverleaf --allow-traps
 python -m cli pipeline lsystem --preset city --maps --seed 1 --set highway_crossings=separated --allow-traps
 python -m cli pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 \
     --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --allow-traps --ground
@@ -477,6 +527,7 @@ its legs.
 | `pair`, `pair_offset` | false, 35 | Two T junctions on a through road, stems on opposite sides [m] |
 | `culdesacs`, `culdesac_radius`, `culdesac_speed` | true, 15, 8.3 | Turn-around bulbs at two-way leg ends |
 | `roundabout`, `roundabout_radius`, `roundabout_radius_avenue`, `roundabout_speed` | false, 25, 32, 8.3 | Build the junction as a roundabout, where it fits |
+| `interchange`, `interchange_length` | none, 1500 | `diamond` or `cloverleaf`: a highway interchange instead (each road this long from the crossing) [m] |
 | `max_tries` | 50 | Draws until a buildable junction |
 
 A drawn junction must be buildable: arms at least `min_angle_deg` apart and
@@ -489,7 +540,7 @@ Bulbs at the leg ends remove the dead ends, so scenarios have no traps
 
 Presets: `t`, `y` (three legs at 120°), `skewed_cross` (60° / 120°), `k` (a
 through road with two diagonals on one side), `five_way`, `six_way`,
-`offset_t` (`pair`), `roundabout`, `roundabout_5`, `random`. Over seeds 0–199, `random` gives every leg
+`offset_t` (`pair`), `roundabout`, `roundabout_5`, `diamond`, `cloverleaf`, `random`. Over seeds 0–199, `random` gives every leg
 count from 3 to 7.
 
 ```bash
@@ -537,6 +588,7 @@ one on leaves the rest of the network as it was).
 | `culdesac.py` | `add_culdesacs`: turn-around bulbs at street dead ends | C4 |
 | `stagger.py` | `stagger_crossings`: 4-way crossings into offset T pairs | C5 |
 | `roundabout.py` | `add_roundabouts`: junctions into one-way rings | C7 |
+| `interchange.py` | `add_diamond`, `add_cloverleaf`: highway interchanges at grade-separated crossings | C9 |
 
 ## Adding a generator
 

@@ -16,6 +16,12 @@ sub-stream (up to max_tries), so the result is deterministic for a seed.
 Leg ends get cul-de-sac bulbs where they are two-way (culdesacs), so traffic
 can turn around and scenarios have no traps. With roundabout the junction
 becomes a roundabout (roadgen.generators.transforms.roundabout), where it fits.
+
+With interchange "diamond" or "cloverleaf" the generator makes a highway
+interchange instead (stage C9): a highway crossing an avenue (diamond) or
+another highway (cloverleaf) at right angles, interchange_length each way,
+built with roadgen.generators.transforms.interchange; heights come from
+grade separation in the pipeline.
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
 from roadgen.generators.repair import MIN_ROAD_LENGTH
 from roadgen.generators.transforms.culdesac import add_culdesacs
+from roadgen.generators.transforms.interchange import add_cloverleaf, add_diamond
 from roadgen.generators.transforms.roundabout import add_roundabouts
 from roadgen.geometry.junction_space import node_trims
 from roadgen.graph.model import Edge, Node, RoadGraph
@@ -39,6 +46,8 @@ log = logging.getLogger(__name__)
 
 _D = section(DEFAULTS, "generators", "junction")
 LEG_COUNTS = (3, 4, 5, 6, 7)
+INTERCHANGES = ("none", "diamond", "cloverleaf")
+HIGHWAY_SPEED = 22.2  # [m/s] (80 km/h) of an interchange's highways
 AVENUE_LANES = 4  # legs with at least this many lanes in all are avenues
 SALT_CULDESAC = 0x6375
 
@@ -65,8 +74,14 @@ class JunctionLayoutParams:
     roundabout_radius: float = _D["roundabout_radius"]  # [m] single-lane ring
     roundabout_radius_avenue: float = _D["roundabout_radius_avenue"]  # [m] two-lane ring
     roundabout_speed: float = _D["roundabout_speed"]  # [m/s]
+    interchange: str = _D["interchange"]  # none | diamond | cloverleaf: a highway interchange instead
+    interchange_length: float = _D["interchange_length"]  # [m] of each road from the crossing
 
     def __post_init__(self) -> None:
+        if self.interchange not in INTERCHANGES:
+            raise ValueError(f"unknown interchange {self.interchange!r}; available: {INTERCHANGES}")
+        if self.interchange_length < 800.0:
+            raise ValueError("interchange_length must be at least 800 m (the templates' reach)")
         if self.legs and self.legs not in LEG_COUNTS:
             raise ValueError(f"legs must be 0 (drawn) or one of {LEG_COUNTS}")
         if len(self.leg_weights) != len(LEG_COUNTS) or min(self.leg_weights) < 0 or not sum(self.leg_weights):
@@ -99,6 +114,8 @@ PRESETS: dict[str, dict[str, Any]] = {
     "offset_t": {"pair": True, "skew_deg": 10.0},
     "roundabout": {"legs": 4, "skew_deg": 10.0, "min_angle_deg": 55.0, "roundabout": True},
     "roundabout_5": {"legs": 5, "skew_deg": 5.0, "min_angle_deg": 55.0, "roundabout": True},
+    "diamond": {"interchange": "diamond"},
+    "cloverleaf": {"interchange": "cloverleaf"},
     "random": {},
 }
 JunctionLayoutParams.PRESETS = PRESETS  # type: ignore[attr-defined]
@@ -111,6 +128,8 @@ class JunctionGenerator(RoadNetworkGenerator[JunctionLayoutParams]):
 
     def generate(self, params: JunctionLayoutParams, seed: int) -> RoadGraph:
         p = params
+        if p.interchange != "none":
+            return _interchange(p, seed)
         for attempt in range(p.max_tries):
             rng = np.random.default_rng([seed, attempt])
             graph = _pair(p, rng) if p.pair else _star(p, rng)
@@ -138,6 +157,26 @@ class JunctionGenerator(RoadNetworkGenerator[JunctionLayoutParams]):
         assign_node_kinds(graph)
         log.debug("junction: %s after %d tries", graph.metadata["name"], attempt + 1)
         return graph
+
+
+def _interchange(p: JunctionLayoutParams, seed: int) -> RoadGraph:
+    """A highway along x crossing an avenue (diamond) or a highway (cloverleaf) along y."""
+    graph = RoadGraph(metadata={"name": f"junction_{p.interchange}_s{seed}", "generator": "junction",
+                                "seed": seed, "params": asdict(p)})
+    n = p.interchange_length
+    for nid, (x, y) in {1: (-n, 0.0), 2: (-1.0, 0.0), 3: (n, 0.0), 4: (0.0, -n), 5: (0.0, 1.0), 6: (0.0, n)}.items():
+        graph.add_node(Node(nid, x, y))
+    graph.add_edge(Edge(1, 1, 2, "highway", 2, 2, lane_width=p.lane_width, speed_limit=HIGHWAY_SPEED))
+    graph.add_edge(Edge(2, 2, 3, "highway", 2, 2, lane_width=p.lane_width, speed_limit=HIGHWAY_SPEED))
+    cross = ("highway", HIGHWAY_SPEED) if p.interchange == "cloverleaf" else ("avenue", p.avenue_speed)
+    graph.add_edge(Edge(3, 4, 5, cross[0], 2, 2, lane_width=p.lane_width, speed_limit=cross[1]))
+    graph.add_edge(Edge(4, 5, 6, cross[0], 2, 2, lane_width=p.lane_width, speed_limit=cross[1]))
+    # Edges 2 and 3 cross at the origin without a node.
+    built = (add_diamond if p.interchange == "diamond" else add_cloverleaf)(graph, 2, 3, (0.0, 0.0))
+    if not built:
+        raise ValueError(f"the {p.interchange} template does not fit; lengthen interchange_length")
+    assign_node_kinds(graph)
+    return graph
 
 
 def _headings(p: JunctionLayoutParams, rng: np.random.Generator) -> list[float]:

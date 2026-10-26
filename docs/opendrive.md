@@ -149,6 +149,13 @@ speed from their curvature, and esmini drives them (selector angle π).
 4. **Two-arm junctions** use `continuation_pairs`: every lane continues, and
    surplus lanes merge into the outermost outgoing lane.
 
+**Ramp nodes** (`Node.kind = "ramp"`, stage C9): where interchange ramps
+leave or join a highway, a junction keeps only straight-through movements,
+right exits and right merges: no left turns across the centre line, no
+movement from one one-way road (ramp) to another, and no lane split. Only
+turns within 5° count as straight there, so a ramp joining at 15–25° merges
+into the outermost lane as a right turn.
+
 Junctions with up to 7 roads and arms down to the generators' minimum
 angle (30° by default) build, validate and drive (tests in
 `tests/test_junction_variety.py`: 5-, 6- and 7-leg stars, a 30° Y, a K,

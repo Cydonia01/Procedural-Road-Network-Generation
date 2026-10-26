@@ -578,6 +578,42 @@ As planned, with these changes and findings:
   - auxiliary lane tapers are present;
   - clearance passes.
 
+#### C9 result (done 2026-10-27)
+
+Templates as planned, with these changes:
+
+- **One node kind `ramp`** instead of `merge` / `diverge`: a cloverleaf's
+  ramp nodes host an exit on one side and an entry on the other. Rules at
+  ramp nodes: no left turns, no one-way to one-way (ramp to ramp), no lane
+  splits, straight only within 5° (so ramps merge into the outermost lane
+  as right turns).
+- **The base rebuilds the roads** around the crossing as straight chains
+  (at most 20 m off the line) with nodes at the template's stations, rather
+  than splitting the existing edges.
+- **Diamond** 250 / 200 m exits and entries with 100 m auxiliary lanes (the
+  first defaults, 350 / 250 / 150 m, made the 780 m long slots too rare on
+  lsystem highways); entries lie beyond the overpass bump (192 m).
+- **Cloverleaf** loops of 60 m leaving at 25°, 52 m from the crossing (from
+  the tangent-circle geometry, keeping the loop 18.5 m off both
+  highways); outer ramps of 150 m moved out until they clear the loops.
+- **Diamonds in lsystem are placed during growth.** Applied after growth,
+  the ramps always hit streets: slots with a crossing avenue and a reserved
+  zone are chosen right after the highway phase. lsystem highways never
+  cross each other (they stop at the first road they meet), so **lsystem
+  builds no cloverleafs**; the `junction` generator's `cloverleaf` preset
+  and the transform make them. The `highway_corridor` preset needs
+  straighter freeways (6° turns, fewer branches) for slots to fit; it gets
+  one diamond per city on seeds 1, 2 and 4 (none on 3).
+- **Mainline lane drops / adds** as `highway_lane_change_prob` (a lane more
+  each way on a stretch between two-road nodes).
+- Both templates pass topology, continuity, curvature, dynamics and
+  clearance. **esmini's drive-check of the interchange networks was stopped
+  (it ran for minutes) and is left to look at later** (prompt 4 below).
+
+**2026-10-27, prompt 4**
+
+> It took too much time. For now, just kill it and finish your implementations. We can investigate it later.
+
 ### C10 · Docs, examples, final measurement
 
 - Docs:

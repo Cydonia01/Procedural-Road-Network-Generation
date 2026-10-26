@@ -84,6 +84,14 @@ so they pass under them without a junction (roadgen.geometry.grade_separation
 raises the highway over them later), and highways spawn no streets. Streets
 reach the highways only at the seed point (and at interchanges, C9).
 
+Interchanges (stage C9): with freeways and interchanges on, slots along
+straight highway stretches (interchange_spacing apart) get a crossing avenue
+under the highway and a reserved zone streets may not enter, before the
+streets grow; streets start from the avenue's ends, so the city reaches the
+freeway through the interchanges. After growth a diamond is built at each
+slot (roadgen.generators.transforms.interchange). highway_lane_change_prob
+widens highway stretches by a lane each way (lane adds and drops).
+
 Everything is computed in the area's local frame (lower-left corner at 0,
 x along the grid's first axis) and rotated/translated to world coordinates
 at the end. Output is deterministic for a seed.
@@ -106,6 +114,7 @@ from roadgen.generators.patterns import PATTERNS, RADIAL, SUBURB, FieldParams, S
 from roadgen.generators.repair import repair_short_edges
 from roadgen.generators.transforms.culdesac import add_culdesacs
 from roadgen.generators.transforms.drop import drop_edges
+from roadgen.generators.transforms.interchange import STRAIGHT_TOL, InterchangeParams, add_diamond
 from roadgen.generators.transforms.roundabout import add_roundabouts
 from roadgen.generators.transforms.stagger import stagger_crossings
 from roadgen.geometry import design
@@ -140,6 +149,8 @@ SALT_CONNECT = 0x636f  # random sub-stream of the connector pass
 SALT_CULDESAC = 0x6375  # random sub-stream of the cul-de-sac bulbs
 SALT_STAGGER = 0x7374  # random sub-stream of the staggered crossings
 SALT_ROUNDABOUT = 0x726f  # random sub-stream of the roundabouts
+SALT_LANES = 0x6c61  # random sub-stream of the highway lane changes
+ZONE_MARGIN = 40.0  # [m] a reserved interchange zone reaches this far beyond its ramps
 CONNECT_CANDIDATES = 6  # nearest nodes a connector tries from each node
 UNDER_MIN_ANGLE_DEG = 30.0  # streets pass under highways at least this far from parallel
 CONTOUR_SLOPE = 0.08  # terrain grade at which contour streets follow the contour fully
@@ -244,6 +255,10 @@ class LSystemParams:
     tunnels: bool = _D["tunnels"]  # highways may tunnel through hills too steep to climb
     tunnel_min_cover: float = _D["tunnel_min_cover"]  # [m] of ground over a tunnel somewhere
     max_tunnel_length: float = _D["max_tunnel_length"]  # [m] under ground
+    # --- interchanges (stage C9) ---------------------------------------------------------
+    interchanges: bool = _D["interchanges"]  # diamonds on freeways (highway_crossings: separated)
+    interchange_spacing: float = _D["interchange_spacing"]  # [m] least distance between interchanges
+    highway_lane_change_prob: float = _D["highway_lane_change_prob"]  # chance a highway stretch gets a lane more each way
 
     def __post_init__(self) -> None:
         if self.global_goal not in GLOBAL_GOALS:
@@ -306,6 +321,10 @@ class LSystemParams:
         if self.tunnel_min_cover <= 0 or self.max_tunnel_length <= 0 or self.highway_max_grade < 0:
             raise ValueError("tunnel_min_cover and max_tunnel_length must be positive, "
                              "highway_max_grade >= 0")
+        if self.interchanges and self.highway_crossings != "separated":
+            raise ValueError("interchanges need highway_crossings: separated (freeways)")
+        if self.interchange_spacing <= 0 or not 0.0 <= self.highway_lane_change_prob <= 1.0:
+            raise ValueError("need interchange_spacing > 0 and highway_lane_change_prob in [0, 1]")
         if self.highway_crossings not in HIGHWAY_CROSSINGS:
             raise ValueError(f"unknown highway_crossings {self.highway_crossings!r}; "
                              f"available: {HIGHWAY_CROSSINGS}")
@@ -461,6 +480,26 @@ PRESETS: dict[str, dict[str, Any]] = {
         "minor_speed": 8.3,
         "roundabout_prob": 0.15,
     },
+    # Freeway corridor (input maps): grade-separated highways reached through diamond
+    # interchanges, with lane adds and drops; streets as in city.
+    "highway_corridor": {
+        "extent": (3000.0, 2400.0),
+        "start": (0.5, 0.5),
+        "block_size": (180.0, 100.0),
+        "branch_prob": 0.9,
+        "angle_jitter_deg": 3.0,
+        "length_jitter": 0.1,
+        "snap_radius": 20.0,
+        "min_segment_length": 40.0,
+        "min_angle_deg": 40.0,
+        "highway_crossings": "separated",
+        "interchanges": True,
+        "interchange_spacing": 1000.0,
+        "highway_lane_change_prob": 0.1,
+        "highway_max_turn_deg": 6.0,  # freeways run straight
+        "highway_rays": 5,
+        "highway_branch_prob": 0.04,
+    },
     # A mixed city for input maps (pipeline --maps, field goal): districts of grid, radial,
     # organic, contour and suburb streets from the style map, each grid at its own angle;
     # highways between population centres.
@@ -609,6 +648,9 @@ class _Growth:
         self.seed = seed
         self.field = self.make_field(seed) if p.global_goal == "field" else None
         self.under = False  # the segment being placed passes under highways (separated)
+        self.zones: list[Any] = []  # reserved interchange areas (shapely polygons, local frame)
+        self.slots: list[tuple[Point, int]] = []  # interchange crossing point, crossing avenue edge
+        self.fixed: set[int] = set()  # edges no later pass may change (crossing avenues)
 
     def make_field(self, seed: int) -> StreetField:
         p = self.p
@@ -752,7 +794,7 @@ class _Growth:
         rise = math.sqrt(p.curve_tortuosity ** 2 - 1.0)
         for eid in sorted(self.edges):
             a, b, axis = self.edges[eid]
-            if axis == HIGHWAY or eid in self.bridges or eid in self.tunnels:
+            if axis == HIGHWAY or eid in self.bridges or eid in self.tunnels or eid in self.fixed:
                 continue
             pa, pb = self.pos[a], self.pos[b]
             length = math.dist(pa, pb)
@@ -1004,7 +1046,78 @@ class _Growth:
             hit = _segment_hit(pa, end, self.pos[ea], self.pos[eb])
             if hit and EPS < hit[0] < 1 - EPS:
                 return False
+        if self.zones and self.in_zone(pa, end):
+            return False
         return not self.under or self.clear_of_highways(a, end)
+
+    def in_zone(self, a: Point, b: Point) -> bool:
+        from shapely.geometry import LineString
+
+        line = LineString([a, b])
+        return any(line.intersects(z) for z in self.zones)
+
+    def plan_interchanges(self) -> None:
+        """Slots for diamonds along the highways grown so far: on straight stretches,
+        interchange_spacing apart, inside the area, on legal ground, clear of other
+        highways and of the seed point. Each gets a crossing avenue under the highway
+        (one edge), a reserved zone, and streets proposed from the avenue's ends."""
+        from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
+
+        p, ip = self.p, InterchangeParams()
+        along = ip.diamond_reach + ZONE_MARGIN
+        across = ip.terminal_offset + ZONE_MARGIN
+        hw = sorted(eid for eid, (_, _, axis) in self.edges.items() if axis == HIGHWAY)
+        skipped: dict[str, int] = defaultdict(int)
+        lines = {eid: LineString([self.pos[self.edges[eid][0]], self.pos[self.edges[eid][1]]]) for eid in hw}
+        for eid in hw:
+            a, b, _ = self.edges[eid]
+            pa, pb = np.array(self.pos[a]), np.array(self.pos[b])
+            if eid in self.bridges or eid in self.tunnels or np.linalg.norm(pb - pa) < 2 * p.min_segment_length:
+                skipped["structure or short"] += 1
+                continue
+            centre = (pa + pb) / 2
+            u = (pb - pa) / np.linalg.norm(pb - pa)
+            v = np.array([-u[1], u[0]])
+            if any(math.dist(tuple(centre), s) < p.interchange_spacing for s, _ in self.slots):
+                skipped["spacing"] += 1
+                continue
+            corners = [centre + su * along * u + sv * across * v for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+            zone = Polygon([tuple(c) for c in corners])
+            if not all(self.inside(tuple(c)) for c in corners) or zone.contains(ShapelyPoint(self.start_pt)):
+                skipped["outside or seed"] += 1
+                continue
+            # Only this highway's straight line may pass through the zone.
+            near = [k for k in hw if lines[k].intersects(zone)]
+            def off(pt) -> float:  # distance of a point from the stretch's line
+                d = np.array(pt) - centre
+                return abs(float(u[0] * d[1] - u[1] * d[0]))
+
+            # Only the highway's part inside the zone counts.
+            inner = [lines[k].intersection(zone) for k in near]
+            if any(g.length > 1.0 and max(off(pt) for pt in g.coords) > STRAIGHT_TOL
+                   for g in inner if g.geom_type == "LineString"):
+                skipped["not straight or other highway"] += 1
+                continue
+            if self.maps.active and not all(self.maps.legal_point(tuple(c)) for c in corners):
+                skipped["illegal ground"] += 1
+                continue
+            ends = [tuple(centre + s * (across + 5.0) * v) for s in (-1.0, 1.0)]
+            if not all(self.inside(e) for e in ends):
+                continue
+            left, right = self.add_node(ends[0]), self.add_node(ends[1])
+            axis = STREET_X if abs(v[0]) >= abs(v[1]) else AVENUE_Y
+            cross = self.add_edge(left, right, AVENUE_Y if axis == AVENUE_Y else STREET_X)
+            self.fixed.add(cross)
+            self.zones.append(zone.buffer(-1.0))
+            self.slots.append((tuple(centre), cross))
+            for node, d in ((left, -v), (right, v)):
+                heading = math.atan2(d[1], d[0])
+                if self.field is not None:
+                    self.deferred.append((0, node, axis, 1, heading, self.line_index(node, axis)))
+                else:
+                    sign = 1 if (d[0] if axis == STREET_X else d[1]) > 0 else -1
+                    self.deferred.append((0, node, axis, sign, 0.0, self.line_index(node, axis)))
+        log.info("lsystem: %d interchange slots (skipped: %s)", len(self.slots), dict(skipped))
 
     def clear_of_highways(self, start: int, b: Point) -> bool:
         """A segment passing under highways crosses them at least UNDER_MIN_ANGLE_DEG
@@ -1053,6 +1166,8 @@ class _Growth:
             self.loop()
             self.highway_phase = False
             log.debug("lsystem: %d highway segments, %d bridges", len(self.edges), len(self.bridges))
+            if self.p.interchanges:
+                self.plan_interchanges()
         if self.field is not None:
             self.seed_field(start)
         else:
@@ -1522,6 +1637,10 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         growth = _Growth(params, rng, maps, seed)
         growth.run()
         graph = self._to_graph(growth, params, seed, maps)
+        if growth.slots:
+            self._interchanges(graph, growth)
+        if params.highway_lane_change_prob:
+            self._lane_changes(graph, np.random.default_rng([seed, SALT_LANES]), params.highway_lane_change_prob)
         if params.edge_drop_prob and drop_edges(graph, params.edge_drop_prob,
                                                 np.random.default_rng([seed, SALT_DROP])):
             assign_node_kinds(graph)
@@ -1546,6 +1665,35 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                         "too few people (street_min_density) block every direction",
                         params.max_grade)
         return graph
+
+    @staticmethod
+    def _interchanges(graph: RoadGraph, growth: _Growth) -> None:
+        """A diamond at each slot: where the slot's crossing avenue passes under the highway."""
+        from roadgen.geometry.grade_separation import find_crossings
+
+        new_id = {old: k for k, old in enumerate(sorted(growth.edges), 1)}
+        cross_ids = {new_id[e] for _, e in growth.slots if e in new_id}
+        built = 0
+        for c in find_crossings(graph):
+            if c.lower in cross_ids and c.upper in graph.edges and c.lower in graph.edges \
+                    and graph.edges[c.upper].road_class == "highway":
+                built += add_diamond(graph, c.upper, c.lower, (c.x, c.y))
+        assign_node_kinds(graph)
+        log.info("lsystem: %d of %d interchanges built", built, len(cross_ids))
+
+    @staticmethod
+    def _lane_changes(graph: RoadGraph, rng: np.random.Generator, prob: float) -> None:
+        """Highway stretches (two-way, between two-road nodes, away from interchanges)
+        get a lane more each way, with probability prob: a lane add and a lane drop."""
+        for eid in sorted(graph.edges):
+            e = graph.edges[eid]
+            r = rng.random()
+            if e.road_class != "highway" or e.is_one_way or r >= prob:
+                continue
+            if any(graph.nodes[n].kind == "ramp" or graph.degree(n) != 2 for n in (e.from_node, e.to_node)):
+                continue
+            e.lanes_forward += 1
+            e.lanes_backward += 1
 
     def map_kinds(self, params: LSystemParams) -> tuple[str, ...]:
         """The style map only matters to the field goal."""

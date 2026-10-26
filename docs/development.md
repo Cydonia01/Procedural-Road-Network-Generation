@@ -26,6 +26,7 @@ is on the path, and matplotlib/pyparsing deprecation noise is filtered.
 | `test_junction_generator.py` | The `junction` generator: presets, leg-count coverage, bulbs, determinism |
 | `test_roundabout.py` | Roundabouts (3-5 arms, one and two lanes; built, validated, driven) and U-turns |
 | `test_grade_separation.py` | Overpasses (ramps, side roads, skew, clearance), freeways, tunnels through a ridge |
+| `test_interchange.py` | Diamond and cloverleaf templates (validated, ramp-node rules, aux lanes), freeway corridor, lane changes |
 | `test_opendrive.py` | Builder output, id scheme, sidecar, topology and continuity |
 | `test_junctions.py` | Trims, movement planning, lane filling, connecting-road geometry on every fixture |
 | `test_scenario.py` | Spawning, gaps, routes, `.xosc` structure, determinism, esmini log parsing |

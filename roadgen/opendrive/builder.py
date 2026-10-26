@@ -129,7 +129,7 @@ class OpenDriveBuilder:
             junction_id = next_id
             plane = planes[node_id] if planes is not None else None
             junction, roads, moves = build_junction(junction_id, ends[node_id], junction_id + 1, plane,
-                                                    self.junction_params)
+                                                    self.junction_params, graph.nodes[node_id].kind == "ramp")
             for end in ends[node_id]:
                 road = odr.roads[str(end.road_id)]
                 link = road.add_successor if end.contact == "end" else road.add_predecessor

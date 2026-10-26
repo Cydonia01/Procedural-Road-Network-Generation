@@ -16,7 +16,9 @@ from typing import Any, Literal, Optional
 import networkx as nx
 import numpy as np
 
-NodeKind = Literal["junction", "dead_end", "auto"]
+# "ramp": a highway node where interchange ramps leave or join (stage C9): the
+# builder allows only straight-through, right exits and right merges there.
+NodeKind = Literal["junction", "dead_end", "auto", "ramp"]
 RoadClass = Literal["highway", "avenue", "street"]
 
 # Edges shorter than this are treated as zero-length.

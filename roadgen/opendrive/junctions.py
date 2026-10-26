@@ -16,6 +16,13 @@ so every outgoing lane is fed: the outermost incoming lane by default
 other lanes shifted outward so that no two connecting roads of one approach
 cross. "none" leaves the extra lanes to the turns from other approaches.
 
+Ramp nodes (stage C9, Node.kind "ramp"): where interchange ramps leave or
+join a highway, a junction keeps only straight-through movements, right
+exits and right merges: no left turn across the centre line, and no
+movement from one ramp (one-way road) to another. Only turns within
+RAMP_STRAIGHT of straight ahead count as straight there, so a ramp joining
+at 15-25 deg merges into the outermost lane as a right turn.
+
 U-turns (stage C7, JunctionParams.u_turns, off by default): at a junction of
 three or more roads, the innermost incoming lane of a road may turn back
 into the first outgoing lane of the same road whose centre is at least
@@ -71,6 +78,7 @@ class JunctionParams:
 
 # |heading change| below this counts as straight.
 STRAIGHT_THRESHOLD = math.pi / 4
+RAMP_STRAIGHT = math.radians(5.0)  # ... at ramp nodes
 ROAD_TYPE = xodr.RoadType.town
 
 _CONTACT = {"start": xodr.ContactPoint.start, "end": xodr.ContactPoint.end}
@@ -140,7 +148,7 @@ def classify(heading_in: float, heading_out: float) -> MovementKind:
     return "left" if diff > 0 else "right"
 
 
-def classify_exits(turns: dict[int, float]) -> dict[int, MovementKind]:
+def classify_exits(turns: dict[int, float], threshold: float = STRAIGHT_THRESHOLD) -> dict[int, MovementKind]:
     """Kinds for all exits of one incoming road, given their turn angles.
 
     At most one exit is "straight": the one with the smallest turn, if within
@@ -150,7 +158,7 @@ def classify_exits(turns: dict[int, float]) -> dict[int, MovementKind]:
     kinds: dict[int, MovementKind] = {k: ("left" if t > 0 else "right") for k, t in turns.items()}
     if turns:
         best = min(turns, key=lambda k: (abs(turns[k]), k))
-        if abs(turns[best]) < STRAIGHT_THRESHOLD:
+        if abs(turns[best]) < threshold:
             kinds[best] = "straight"
     return kinds
 
@@ -234,7 +242,7 @@ def u_turn_lane(a: RoadEnd, radius: float) -> Optional[tuple[int, int]]:
 
 
 def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
-                   params: JunctionParams = JunctionParams()) -> list[Movement]:
+                   params: JunctionParams = JunctionParams(), ramp: bool = False) -> list[Movement]:
     """All lane movements through a junction, excluding U-turns, with road ids assigned.
 
     With exactly two arms the junction is just a bend or a lane-count change,
@@ -255,7 +263,11 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
             for idx, b in enumerate(ends)
             if a.edge_id != b.edge_id and b.out_lanes
         }
-        exit_kinds = classify_exits(turns)
+        exit_kinds = classify_exits(turns, RAMP_STRAIGHT if ramp else STRAIGHT_THRESHOLD)
+        if ramp:  # no left turns, no ramp to ramp
+            one_way = a.right_lanes == 0 or a.left_lanes == 0
+            turns = {idx: t for idx, t in turns.items() if exit_kinds[idx] != "left"
+                     and not (one_way and (ends[idx].right_lanes == 0 or ends[idx].left_lanes == 0))}
         for idx, b in enumerate(ends):
             if idx not in turns:
                 continue
@@ -264,7 +276,8 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
             if continuation:
                 pairs[idx] = continuation_pairs(a.in_lanes, b.out_lanes)
             else:
-                pairs[idx] = lane_pairs(kind, a.in_lanes, b.out_lanes, params.lane_split)
+                # No lane split at a ramp node: the acceleration lane is the entry ramp's.
+                pairs[idx] = lane_pairs(kind, a.in_lanes, b.out_lanes, "none" if ramp else params.lane_split)
             if kind not in options:
                 options[kind], option_end[kind] = b.out_lanes, idx
 
@@ -302,14 +315,14 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
 
 def build_junction(
     junction_id: int, ends: list[RoadEnd], first_road_id: int, plane: Optional[JunctionPlane] = None,
-    params: JunctionParams = JunctionParams(),
+    params: JunctionParams = JunctionParams(), ramp: bool = False,
 ) -> tuple[xodr.Junction, list[xodr.Road], list[Movement]]:
     """Junction, connecting roads and movements; with plane, connecting roads lie on it
-    (height, grade and superelevation)."""
+    (height, grade and superelevation); ramp: an interchange ramp node."""
     by_edge = {e.edge_id: e for e in ends}
     junction = xodr.Junction(f"junction_{junction_id}", junction_id)
     roads: list[xodr.Road] = []
-    movements = plan_movements(junction_id, ends, first_road_id, params)
+    movements = plan_movements(junction_id, ends, first_road_id, params, ramp)
     built = []
     for m in movements:
         a, b = by_edge[m.from_edge], by_edge[m.to_edge]
