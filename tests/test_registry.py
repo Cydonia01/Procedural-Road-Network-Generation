@@ -15,15 +15,14 @@ from roadgen.generators.base import (
     register,
 )
 from roadgen.generators.lsystem import LSystemParams
-from roadgen.generators.manhattan import ManhattanParams
 from roadgen.graph.io import load_json
 from roadgen.graph.model import Node, RoadGraph
 
 
 def test_builtin_generators_are_registered():
-    assert {"manhattan", "lsystem"} <= set(generator_names())
+    assert "lsystem" in generator_names()
+    assert "manhattan" not in generator_names()  # removed in stage C: lsystem grows grids
     assert get_generator("lsystem").params_type is LSystemParams
-    assert get_generator("manhattan").params_type is ManhattanParams
 
 
 def test_unknown_generator():
@@ -55,14 +54,14 @@ def test_register_decorator(monkeypatch):
 
 def test_load_params_from_yaml(tmp_path):
     flat = tmp_path / "flat.yaml"
-    flat.write_text("n_avenues: 3\nn_streets: 4\navenue_lanes: [3, 0]\n")
-    p = load_params(ManhattanParams, flat)
-    assert (p.n_avenues, p.avenue_lanes) == (3, (3, 0))  # list -> tuple
+    flat.write_text("extent: [500, 240]\nmajor_lanes: [3, 0]\n")
+    p = load_params(LSystemParams, flat)
+    assert (p.extent, p.major_lanes) == ((500, 240), (3, 0))  # list -> tuple
 
     nested = tmp_path / "nested.yaml"
-    nested.write_text("preset: manhattan_like\nparams:\n  n_avenues: 4\n  n_streets: 5\n")
-    p = load_params(ManhattanParams, nested, overrides={"rotation_deg": 10.0})
-    assert (p.n_avenues, p.rotation_deg, p.boundary_mode) == (4, 10.0, "loop")
+    nested.write_text("preset: manhattan_like\nparams:\n  extent: [750, 400]\n")
+    p = load_params(LSystemParams, nested, overrides={"rotation_deg": 10.0})
+    assert (p.extent, p.rotation_deg, p.boundary) == ((750, 400), 10.0, "ring")
 
 
 def test_build_params_rejects_unknown_fields():
@@ -73,7 +72,7 @@ def test_build_params_rejects_unknown_fields():
 def test_cli_generators_lists_everything(capsys):
     assert main(["generators"]) == 0
     out = capsys.readouterr().out
-    assert "lsystem:" in out and "manhattan:" in out
+    assert "lsystem:" in out
     assert "grid_organic" in out and "manhattan_like" in out
     assert "snap_radius = 15.0" in out
 
@@ -88,13 +87,6 @@ def test_cli_generate_lsystem_with_yaml_and_set(tmp_path):
     assert len(g.nodes) == 3 * 3
     assert g.metadata["params"]["rotation_deg"] == 15
     assert g.metadata["seed"] == 3
-
-
-def test_cli_manhattan_flags_still_work(tmp_path):
-    out = tmp_path / "m.json"
-    assert main(["generate", "manhattan", "--avenues", "2", "--streets", "3",
-                 "--set", "jitter=1.5", "-o", str(out)]) == 0
-    assert load_json(out).metadata["params"]["jitter"] == 1.5
 
 
 def test_cli_bad_set_value(tmp_path):

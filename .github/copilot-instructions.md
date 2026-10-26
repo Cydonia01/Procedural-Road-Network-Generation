@@ -26,8 +26,8 @@ Tech stack:
 Repo layout:
   roadgen/
     graph/        model.py, io.py, plot.py
-    generators/   base.py, manhattan.py
-    maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, drape.py
+    generators/   base.py, lsystem.py, patterns.py, repair.py, transforms/
+    maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py, drape.py
     opendrive/    builder.py, lanes.py, junctions.py, geometry.py, elevation.py
     validate/     schema.py, topology.py, continuity.py
     scenario/     xosc_builder.py

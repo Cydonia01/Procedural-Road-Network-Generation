@@ -6,6 +6,7 @@ import argparse
 import dataclasses
 import logging
 import re
+import statistics
 import subprocess
 import sys
 import time
@@ -22,7 +23,6 @@ from roadgen.generators.base import (
     get_generator,
     presets_of,
 )
-from roadgen.generators.manhattan import BOUNDARY_MODES, ONEWAY_PATTERNS, PRESETS
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
@@ -122,29 +122,6 @@ def cmd_build_xodr(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
-# CLI flag -> ManhattanParams field, for flags that map one-to-one.
-MANHATTAN_FLAGS = {
-    "avenues": "n_avenues",
-    "streets": "n_streets",
-    "avenue_spacing": "avenue_spacing",
-    "street_spacing": "street_spacing",
-    "rotation": "rotation_deg",
-    "origin": "origin",
-    "avenue_lanes": "avenue_lanes",
-    "street_lanes": "street_lanes",
-    "lane_width": "lane_width",
-    "avenue_speed": "avenue_speed",
-    "street_speed": "street_speed",
-    "jitter": "jitter",
-    "edge_drop": "edge_drop_prob",
-    "avenue_oneway": "avenue_oneway_pattern",
-    "street_oneway": "street_oneway_pattern",
-    "boundary": "boundary_mode",
-    "ring_offset": "ring_offset",
-    "ring_lanes": "ring_lanes",
-}
-
-
 def parse_set(items: Optional[Sequence[str]]) -> dict:
     """--set key=value pairs; values are parsed as YAML (numbers, lists, ...)."""
     out = {}
@@ -172,8 +149,6 @@ def generator_params(args: argparse.Namespace):
         defaults = section(args.cfg, "generators", args.generator)
         return build_params(gen.params_type, values, preset, defaults)
     except TypeError as e:  # missing required fields
-        if args.generator == "manhattan":
-            raise SystemExit("error: --avenues and --streets are required without --preset") from e
         raise SystemExit(f"error: {e}") from e
     except ValueError as e:
         raise SystemExit(f"error: {e}") from e
@@ -205,7 +180,7 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
     """
     gen = get_generator(args.generator)
     params = generator_params(args)
-    chosen, files = map_requests(args)
+    chosen, files = map_requests(args, gen.map_kinds(params))
     layers: dict[str, MapLayer] = {}
     maps = None
     margin, cell = args.cfg["maps"]["grid"]["margin"], args.cfg["maps"]["grid"]["cell_size"]
@@ -248,10 +223,12 @@ def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> Roa
                      cfg["opendrive"]["junction_margin"])
 
 
-def map_requests(args: argparse.Namespace) -> tuple[dict[str, str], dict[str, str]]:
+def map_requests(args: argparse.Namespace, kinds: Optional[Sequence[str]] = None
+                 ) -> tuple[dict[str, str], dict[str, str]]:
     """(kind -> generator name) from --maps / --terrain / ..., (kind -> .npz) from --map-file.
 
-    A --map-file wins over a generator for the same kind.
+    A --map-file wins over a generator for the same kind. --maps builds only
+    kinds (the generator's map_kinds; None = all); a flag for a kind always builds it.
     """
     files: dict[str, str] = {}
     for item in getattr(args, "map_file", None) or []:
@@ -261,7 +238,8 @@ def map_requests(args: argparse.Namespace) -> tuple[dict[str, str], dict[str, st
         files[kind] = path
     use_defaults = getattr(args, "maps", False)
     chosen = {
-        kind: getattr(args, kind, None) or (args.cfg["maps"]["pipeline"][kind] if use_defaults else None)
+        kind: getattr(args, kind, None)
+        or (args.cfg["maps"]["pipeline"][kind] if use_defaults and (kinds is None or kind in kinds) else None)
         for kind in MAP_KINDS if kind not in files
     }
     return {k: v for k, v in chosen.items() if v}, files
@@ -577,9 +555,11 @@ def cmd_drive_check(args: argparse.Namespace) -> int:
 
 
 def cmd_metrics(args: argparse.Namespace) -> int:
-    """Geometry metrics of .xodr files and/or a build-failure sweep; optional JSON report."""
+    """Geometry metrics of .xodr files, network metrics of RoadGraph JSON files and/or a
+    build-failure sweep; optional JSON report."""
     import json
 
+    from roadgen.metrics import network
     from roadgen.metrics.geometry import (
         GeometryMetricsParams,
         geometry_metrics,
@@ -587,9 +567,10 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     )
     from roadgen.metrics.sweep import build_sweep
 
-    if not args.inputs and not args.sweep:
-        raise SystemExit("error: metrics needs .xodr files and/or --sweep N")
+    if not args.inputs and not args.graph and not args.sweep:
+        raise SystemExit("error: metrics needs .xodr files, --graph files and/or --sweep N")
     params = GeometryMetricsParams(**section(args.cfg, "metrics"))
+    net_params = network.NetworkMetricsParams(**section(args.cfg, "network_metrics"))
     report: dict = {"networks": []}
     for path in args.inputs:
         with timed(f"metrics {path}"):
@@ -597,6 +578,14 @@ def cmd_metrics(args: argparse.Namespace) -> int:
         for line in summary_lines(m):
             log.info("%s", line)
         report["networks"].append(m)
+    if args.graph:
+        report["graphs"] = []
+    for path in args.graph or []:
+        with timed(f"network metrics {path}"):
+            m = {"graph": Path(path).name, **network.network_metrics(load_json(path), net_params)}
+        for line in network.summary_lines(m):
+            log.info("%s", line)
+        report["graphs"].append(m)
     if args.sweep:
         seeds = range(args.first_seed, args.first_seed + args.sweep)
         with timed("build sweep"):
@@ -604,6 +593,11 @@ def cmd_metrics(args: argparse.Namespace) -> int:
         failed = [r for r in results if not r.ok]
         log.info("build sweep (%s, preset %s): %d of %d networks failed to build",
                  args.generator, args.preset, len(failed), len(results))
+        for key in ("cnr", "skewed_share", "orientation_entropy"):
+            values = [r.network[key] for r in results if r.network]
+            if values:
+                log.info("build sweep: %s median %.3f (min %.3f, max %.3f)", key,
+                         statistics.median(values), min(values), max(values))
         report["sweep"] = {
             "generator": args.generator, "preset": args.preset, "seeds": list(seeds),
             "failed": len(failed),
@@ -929,8 +923,12 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_drive_check)
 
     p = sub.add_parser("metrics", help="geometry metrics of .xodr files (curvature, lateral "
-                                       "acceleration, two-road junctions) and a build-failure sweep")
+                                       "acceleration, two-road junctions), network metrics of "
+                                       "graphs and a build-failure sweep")
     p.add_argument("inputs", nargs="*", help=".xodr files to measure")
+    p.add_argument("--graph", action="append", metavar="JSON",
+                   help="RoadGraph JSON whose network metrics (junction legs, skew, CNR, "
+                        "orientation entropy, blocks) to report, repeatable")
     p.add_argument("--json", metavar="OUT", help="write the full report as JSON")
     p.add_argument("--sweep", type=int, metavar="N",
                    help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
@@ -945,7 +943,7 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
 
 
 def _add_generator_args(p: argparse.ArgumentParser, name: str, cfg: dict) -> None:
-    """Flags shared by every generator, plus Manhattan's dedicated flags."""
+    """Flags shared by every generator."""
     gen = get_generator(name)
     p.add_argument("--seed", type=int, default=cfg["seed"], help="(default %(default)s)")
     p.add_argument("--params", help="YAML with parameter values (or preset: + params:)")
@@ -956,19 +954,16 @@ def _add_generator_args(p: argparse.ArgumentParser, name: str, cfg: dict) -> Non
                         "e.g. --map-file terrain=out/coast.npz")
     p.add_argument("--flat", action="store_true",
                    help="keep the roads flat even with an elevation map (no heights in the graph)")
-    if name == "manhattan":
-        _add_manhattan_args(p, section(cfg, "generators", "manhattan"))
-    else:
-        presets = presets_of(gen.params_type)
-        p.add_argument("--preset", choices=presets or None, help="start from a named parameter set")
+    presets = presets_of(gen.params_type)
+    p.add_argument("--preset", choices=presets or None, help="start from a named parameter set")
 
 
 def _add_pipeline_map_args(p: argparse.ArgumentParser, cfg: dict) -> None:
     defaults = cfg["maps"]["pipeline"]
     p.add_argument("--maps", action="store_true",
-                   help="generate terrain, elevation (on the terrain) and population (on both) "
-                        "maps first and grow the network "
-                        "on them (lsystem); other generators get them for reference only "
+                   help="generate terrain, elevation (on the terrain), population (on both) and, "
+                        "for lsystem's field goal, style (on all three) maps first and grow the "
+                        "network on them (lsystem); other generators get them for reference only "
                         f"({', '.join(f'{k}: {v}' for k, v in defaults.items())})")
     for kind in MAP_KINDS:
         p.add_argument(f"--{kind}", choices=map_generator_names(kind), metavar="NAME",
@@ -978,48 +973,20 @@ def _add_pipeline_map_args(p: argparse.ArgumentParser, cfg: dict) -> None:
                    help="override one map parameter (repeatable), e.g. --map-set terrain.rivers=2")
 
 
-def _add_manhattan_args(p: argparse.ArgumentParser, d: dict) -> None:
-    """Flags default to None so a preset (or the configured default) applies.
-
-    d holds the configured defaults, only used to show them in --help.
-    """
-    p.add_argument("--preset", choices=sorted(PRESETS), help="start from a named parameter set")
-    p.add_argument("--avenues", type=int, help="number of avenues (along x)")
-    p.add_argument("--streets", type=int, help="number of streets (along y)")
-    p.add_argument("--avenue-spacing", type=float, help=f"[m] (default {d['avenue_spacing']})")
-    p.add_argument("--street-spacing", type=float, help=f"[m] (default {d['street_spacing']})")
-    p.add_argument("--rotation", type=float, help=f"[deg] (default {d['rotation_deg']})")
-    p.add_argument("--origin", type=float, nargs=2, metavar=("X", "Y"))
-    p.add_argument("--avenue-lanes", type=int, nargs=2, metavar=("FWD", "BWD"),
-                   help=f"(default {d['avenue_lanes']})")
-    p.add_argument("--street-lanes", type=int, nargs=2, metavar=("FWD", "BWD"),
-                   help=f"(default {d['street_lanes']})")
-    p.add_argument("--lane-width", type=float, help=f"[m] (default {d['lane_width']})")
-    p.add_argument("--avenue-speed", type=float, help=f"[m/s] (default {d['avenue_speed']})")
-    p.add_argument("--street-speed", type=float, help=f"[m/s] (default {d['street_speed']})")
-    p.add_argument("--jitter", type=float, help=f"node noise [m] (default {d['jitter']})")
-    p.add_argument("--edge-drop", type=float,
-                   help=f"probability of dropping each street segment (default {d['edge_drop_prob']})")
-    p.add_argument("--avenue-oneway", choices=ONEWAY_PATTERNS,
-                   help=f"(default {d['avenue_oneway_pattern']})")
-    p.add_argument("--street-oneway", choices=ONEWAY_PATTERNS,
-                   help=f"(default {d['street_oneway_pattern']})")
-    p.add_argument("--boundary", choices=BOUNDARY_MODES,
-                   help=f"(default {d['boundary_mode']})")
-    p.add_argument("--ring-offset", type=float, help=f"[m] (default {d['ring_offset']})")
-    p.add_argument("--ring-lanes", type=int, nargs=2, metavar=("FWD", "BWD"),
-                   help=f"(default {d['ring_lanes']})")
-
-
 # Commands that only report or run another run: never recorded themselves.
 NOT_RECORDED = frozenset({"generators", "maps", "history", "replay", "run"})
 # Generator / map parameters: folded into the run's config (generators.<name>,
 # maps.<kind>.<name>) instead of its args.
 PARAM_COMMANDS = ("generate", "pipeline", "map")
-PARAM_DESTS = frozenset({"preset", "params", "set", "map_set", *MANHATTAN_FLAGS})
+PARAM_DESTS = frozenset({"preset", "params", "set", "map_set"})
 GLOBAL_DESTS = frozenset({"cfg", "func", "config_file", "verbose", "note", "no_history"})
 HASH_ARG = re.compile(r"[0-9a-fA-F]{4,64}")
 GLOBAL_VALUE_FLAGS = ("--note",)  # global flags that take a value
+# Generators that no longer exist, for a clear message when an old run is replayed.
+REMOVED_GENERATORS = {
+    "manhattan": "the manhattan generator was removed in stage C; lsystem grows the same grids "
+                 "(--preset manhattan_like, or --set oneway_pattern=... boundary=ring)",
+}
 
 
 def store_of(cfg: dict) -> Optional[RunStore]:
@@ -1092,7 +1059,7 @@ def _command_parsers(parser: argparse.ArgumentParser, command: Sequence[str]
 
 
 def _fold_params(args: argparse.Namespace, config: dict) -> None:
-    """--preset, --params, --set, Manhattan's flags and --map-set into the run's config."""
+    """--preset, --params, --set and --map-set into the run's config."""
     if args.command == "map":
         keys = ("maps", args.kind, args.map_generator)
         params_type = get_map_generator(args.kind, args.map_generator).params_type
@@ -1113,9 +1080,6 @@ def _fold_params(args: argparse.Namespace, config: dict) -> None:
             data = data.get("params") or {}
         sec.update(plain(data))
     sec.update(plain(parse_set(args.set)))
-    if args.command != "map" and args.generator == "manhattan":
-        sec.update(plain({field: value for flag, field in MANHATTAN_FLAGS.items()
-                          if (value := getattr(args, flag, None)) is not None}))
     preset = args.preset or preset
     # Keep only what differs from defaults + preset: that is what this run changes.
     base = plain({**section(DEFAULTS, *keys), **getattr(params_type, "PRESETS", {}).get(preset, {})})
@@ -1215,6 +1179,9 @@ def execute(spec: dict, note: Optional[str] = None, record: bool = True,
             cli: Optional[str] = None) -> tuple[int, Optional[str]]:
     """Run a spec; (exit code, run hash). A recorded run writes into out/<hash>/,
     which only exists if the command succeeded."""
+    for name in [*spec["command"], *((spec.get("config") or {}).get("generators") or {})]:
+        if name in REMOVED_GENERATORS:
+            raise SystemExit(f"error: {name}: {REMOVED_GENERATORS[name]}")
     try:
         cfg = with_overrides(spec["config"])
     except ValueError as e:

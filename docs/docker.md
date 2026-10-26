@@ -46,8 +46,8 @@ in the docs works inside it unchanged.
 docker compose build                               # first time, or after dependency changes
 docker compose run --rm dev                        # interactive shell
 docker compose run --rm dev pytest                 # one-off command
-docker compose run --rm dev python -m cli pipeline manhattan --preset manhattan_like --simulate
-docker compose run --rm gui python -m cli view out/<hash>/manhattan_like_s1.xodr
+docker compose run --rm dev python -m cli pipeline lsystem --preset manhattan_like --simulate
+docker compose run --rm gui python -m cli view out/<hash>/lsystem_manhattan_like_s0.xodr
 ```
 
 | Service | Use for | Platforms |

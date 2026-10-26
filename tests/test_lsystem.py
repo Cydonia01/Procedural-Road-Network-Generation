@@ -9,7 +9,6 @@ from shapely.geometry import LineString
 from cli import main
 from roadgen.generators.base import build_params
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.generators.manhattan import ManhattanGenerator, ManhattanParams
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.validate.continuity import check_continuity
@@ -31,29 +30,41 @@ def grow(seed: int = 0, preset: str | None = None, **kw) -> RoadGraph:
     return LSystemGenerator().generate(params, seed)
 
 
-# --- grid goal reproduces a Manhattan grid ---------------------------------------------
+# --- grid goal grows an exact lattice ---------------------------------------------------
 
 
-def test_grid_preset_is_the_10x10_manhattan_grid():
+def lattice(a: int, s: int, dx: float, dy: float, rotation_deg: float = 0.0,
+            origin: tuple[float, float] = (0.0, 0.0)) -> set:
+    """road_set of an a x s lattice: avenues along y at x = i dx, streets along x at y = j dy."""
+    c, sn = math.cos(math.radians(rotation_deg)), math.sin(math.radians(rotation_deg))
+
+    def pt(i: int, j: int) -> tuple[float, float]:
+        x, y = i * dx, j * dy
+        return round(origin[0] + c * x - sn * y, 3), round(origin[1] + sn * x + c * y, 3)
+
+    out = {(min(pt(i, j), pt(i, j + 1)), max(pt(i, j), pt(i, j + 1)), "avenue")
+           for i in range(a) for j in range(s - 1)}
+    out |= {(min(pt(i, j), pt(i + 1, j)), max(pt(i, j), pt(i + 1, j)), "street")
+            for i in range(a - 1) for j in range(s)}
+    return out
+
+
+def test_grid_preset_is_a_10x10_lattice():
     g = grow(preset="grid")
-    m = ManhattanGenerator().generate(ManhattanParams(10, 10), 0)
-    assert road_set(g) == road_set(m)
+    assert road_set(g) == lattice(10, 10, 250.0, 80.0)
     assert g.validate() == []
 
 
 @pytest.mark.parametrize("start", [(0.0, 0.0), (0.5, 0.5), (1.0, 0.3)])
-def test_grid_goal_matches_manhattan_from_any_lattice_start(start):
+def test_grid_goal_grows_the_lattice_from_any_lattice_start(start):
     # 5 avenues x 7 streets, spacing 200 x 60, rotated 20 degrees; the start
-    # point is a lattice point so the grown lattice lines up with Manhattan's.
+    # point is a lattice point so the grown lattice lines up.
     a, s, dx, dy = 5, 7, 200.0, 60.0
     sx = round(start[0] * (a - 1)) / (a - 1)
     sy = round(start[1] * (s - 1)) / (s - 1)
     g = grow(extent=((a - 1) * dx, (s - 1) * dy), block_size=(dx, dy), start=(sx, sy),
              rotation_deg=20.0, origin=(100.0, -50.0))
-    m = ManhattanGenerator().generate(
-        ManhattanParams(a, s, avenue_spacing=dx, street_spacing=dy, rotation_deg=20.0,
-                        origin=(100.0, -50.0)), 0)
-    assert road_set(g) == road_set(m)
+    assert road_set(g) == lattice(a, s, dx, dy, 20.0, (100.0, -50.0))
 
 
 # --- local constraints hold on noisy growth -------------------------------------------------
@@ -122,7 +133,7 @@ def test_invalid_params(kw):
 
 def test_unknown_preset():
     with pytest.raises(ValueError, match="unknown preset"):
-        build_params(LSystemParams, preset="paris")
+        build_params(LSystemParams, preset="atlantis")
 
 
 # --- OpenDRIVE ------------------------------------------------------------------------------

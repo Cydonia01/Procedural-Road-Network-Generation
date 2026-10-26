@@ -10,7 +10,7 @@ import yaml
 from cli import main, run_argv
 from roadgen.history import ENV_VAR, RUN_FILE, RunStore
 
-GEN = ["generate", "manhattan", "--avenues", "3", "--streets", "2"]
+GEN = ["generate", "lsystem", "--preset", "grid", "--set", "extent=[500,80]"]  # 3 x 2 grid
 
 
 @pytest.fixture
@@ -25,24 +25,25 @@ def run_file(store: RunStore, h: str) -> dict:
 
 
 def test_run_folder_holds_outputs_and_only_non_default_parameters(store):
-    rc, h = run_argv([*GEN, "--seed", "0", "--jitter", "2", "-o", "grid.json"])
+    rc, h = run_argv([*GEN, "--seed", "0", "--set", "angle_jitter_deg=2", "-o", "grid.json"])
     assert rc == 0 and len(h) == 12
     assert sorted(p.name for p in (store.root / h).iterdir()) == ["grid.json", RUN_FILE]
     data = run_file(store, h)
-    assert data["command"] == ["generate", "manhattan"]
+    assert data["command"] == ["generate", "lsystem"]
     assert data["args"] == {"output": "grid.json"}  # --seed 0 is the default
-    assert data["config"] == {"generators": {"manhattan": {"n_avenues": 3, "n_streets": 2, "jitter": 2.0}}}
-    assert data["cli"].startswith("python -m cli generate manhattan")
+    assert data["config"] == {"generators": {"lsystem": {"preset": "grid", "extent": [500, 80],
+                                                         "angle_jitter_deg": 2}}}
+    assert data["cli"].startswith("python -m cli generate lsystem")
 
 
 def test_same_inputs_spelled_differently_share_a_hash(store, tmp_path):
     _, h = run_argv(GEN)
     cfg = tmp_path / "cfg.yaml"
-    cfg.write_text("generators:\n  manhattan:\n    n_avenues: 3\n")
+    cfg.write_text("generators:\n  lsystem:\n    extent: [500, 80]\n")
     for argv in (["-v", "--note", "same", *GEN, "--seed", "0"],
-                 [*GEN[:2], "--streets", "2", "--avenues", "3"],
-                 [*GEN[:2], "--set", "n_avenues=3", "--set", "n_streets=2", "--lane-width", "3.5"],
-                 ["--config", str(cfg), *GEN[:2], "--streets", "2"]):
+                 [*GEN[:2], "--set", "extent=[500, 80]", "--preset", "grid"],
+                 [*GEN, "--set", "lane_width=3.5", "--set", "block_size=[250, 80]"],
+                 ["--config", str(cfg), *GEN[:4]]):
         assert run_argv(argv)[1] == h
     (run,) = store.runs()
     assert run.note == "same"
@@ -62,9 +63,9 @@ def test_preset_values_are_kept_when_they_differ_from_the_preset(store):
 
 def test_failed_and_listing_commands_leave_no_folder(store, tmp_path):
     with pytest.raises(SystemExit):
-        main(["generate", "manhattan", "-o", "g.json"])  # needs --avenues/--streets
+        main(["generate", "lsystem", "--set", "extent=[0, 0]", "-o", "g.json"])  # invalid
     with pytest.raises(SystemExit):
-        main(["generate", "manhattan", "--bogus"])
+        main(["generate", "lsystem", "--bogus"])
     assert main(["drive-check", str(tmp_path / "missing.xodr")]) == 1  # returns an error
     main(["generators"])
     main(["maps"])
@@ -88,7 +89,7 @@ def test_no_history_flag_and_env_off(store, tmp_path, monkeypatch):
 
 
 def test_replay_by_hash_and_by_run_file(store):
-    _, h = run_argv([*GEN, "--seed", "4", "--jitter", "2", "-o", "g.json"])
+    _, h = run_argv([*GEN, "--seed", "4", "--set", "angle_jitter_deg=2", "-o", "g.json"])
     out = store.root / h / "g.json"
     first = out.read_text()
     out.unlink()
@@ -104,28 +105,28 @@ def test_run_file_written_by_hand(store, tmp_path):
     spec = tmp_path / "grid.yaml"
     spec.write_text(yaml.safe_dump({
         "note": "by hand",
-        "command": "generate manhattan",
+        "command": "generate lsystem",
         "args": {"seed": 2},
-        "config": {"generators": {"manhattan": {"preset": "manhattan_like", "n_avenues": 3}}},
+        "config": {"generators": {"lsystem": {"preset": "manhattan_like", "extent": [500, 240]}}},
     }))
     assert main(["run", str(spec)]) == 0
     (run,) = store.runs()
     assert run.note == "by hand"
-    graph = json.loads((run.path / "manhattan_manhattan_like_s2.json").read_text())
-    assert graph["metadata"]["params"]["n_avenues"] == 3
-    spec.write_text(yaml.safe_dump({"command": ["generate", "manhattan"], "args": {"bogus": 1}}))
+    graph = json.loads((run.path / "lsystem_manhattan_like_s2.json").read_text())
+    assert graph["metadata"]["params"]["extent"] == [500, 240]
+    spec.write_text(yaml.safe_dump({"command": ["generate", "lsystem"], "args": {"bogus": 1}}))
     with pytest.raises(SystemExit, match="bogus"):
         main(["run", str(spec)])
-    spec.write_text(yaml.safe_dump({"command": ["generate", "manhattan"], "args": {"preset": "x"}}))
+    spec.write_text(yaml.safe_dump({"command": ["generate", "lsystem"], "args": {"preset": "x"}}))
     with pytest.raises(SystemExit, match="under config"):
         main(["run", str(spec)])
 
 
 def test_replay_uses_the_recorded_config(store, tmp_path):
     cfg = tmp_path / "cfg.yaml"
-    cfg.write_text("generators:\n  manhattan:\n    lane_width: 4.25\n")
+    cfg.write_text("generators:\n  lsystem:\n    lane_width: 4.25\n")
     _, h = run_argv(["--config", str(cfg), *GEN, "-o", "g.json"])
-    assert run_file(store, h)["config"]["generators"]["manhattan"]["lane_width"] == 4.25
+    assert run_file(store, h)["config"]["generators"]["lsystem"]["lane_width"] == 4.25
     cfg.unlink()  # the config file is gone; run.yaml has its content
     assert main([h]) == 0
     edges = json.loads((store.root / h / "g.json").read_text())["edges"]
@@ -134,13 +135,13 @@ def test_replay_uses_the_recorded_config(store, tmp_path):
 
 def test_params_file_content_is_in_the_run(store, tmp_path):
     params = tmp_path / "p.yaml"
-    params.write_text("preset: manhattan_like\nparams:\n  n_avenues: 3\n")
-    _, h = run_argv(["generate", "manhattan", "--params", str(params)])
-    params.write_text("n_avenues: 9\n")
-    _, h2 = run_argv(["generate", "manhattan", "--params", str(params), "--streets", "2"])
+    params.write_text("preset: manhattan_like\nparams:\n  extent: [500, 240]\n")
+    _, h = run_argv(["generate", "lsystem", "--params", str(params)])
+    params.write_text("preset: manhattan_like\nparams:\n  extent: [750, 240]\n")
+    _, h2 = run_argv(["generate", "lsystem", "--params", str(params)])
     assert h != h2
-    sec = run_file(store, h)["config"]["generators"]["manhattan"]
-    assert sec["preset"] == "manhattan_like" and sec["n_avenues"] == 3
+    sec = run_file(store, h)["config"]["generators"]["lsystem"]
+    assert sec["preset"] == "manhattan_like" and sec["extent"] == [500, 240]
 
 
 def test_replay_errors(store):

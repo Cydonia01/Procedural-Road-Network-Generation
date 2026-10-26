@@ -16,7 +16,7 @@ flowchart LR
     MP["Map generators<br/>(terrain, elevation,<br/>population)"] -->|MapSet| G
     MI[(".npz<br/>--map-file")] -->|MapSet| G
     MP --> MF[("PREFIX_kind<br/>.npz / .png")]
-    G["Generator<br/>(manhattan, lsystem)"] -->|RoadGraph| DR["Drape<br/>(heights, bridges)"]
+    G["Generator<br/>(lsystem)"] -->|RoadGraph| DR["Drape<br/>(heights, bridges)"]
     MP -.elevation, terrain.-> DR
     DR -->|RoadGraph| J[(".json")]
     G --> C{"traffic<br/>connectivity"}
@@ -141,9 +141,10 @@ roadgen/
     plot.py                matplotlib top-down rendering
   generators/
     base.py                RoadNetworkGenerator ABC, registry, params/presets loading
-    manhattan.py           parametric grid (one-way patterns, ring road, jitter, drops)
-    lsystem.py             Parish & Müller style growth (highways, map constraints)
+    lsystem.py             Parish & Müller style growth (grids, highways, map constraints, field goal)
+    patterns.py            street pattern fields: grid, radial, organic, contour, suburb (tensor blend)
     repair.py              post-generation repair of edges too short for their junctions
+    transforms/            graph -> graph passes: drop.py (edge drop), culdesac.py (bulbs)
   maps/
     model.py               GridSpec, MapLayer (sampling, .npz I/O), MapSet, terrain classes
     base.py                MapGenerator ABC, per-kind registry, make_map
@@ -151,6 +152,7 @@ roadgen/
     terrain.py             water / land / vegetation (noise, image)
     elevation.py           heightmaps (fbm + thermal erosion, image)
     population.py          density (polycentric Clark model, image)
+    style.py               street pattern per district (zones, image)
     align.py               radius caps for bends whose fitted curve leaves legal ground
     drape.py               heights and bridges for a RoadGraph from the maps
     image.py               reading PNG / JPEG / .npy rasters onto a grid

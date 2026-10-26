@@ -26,10 +26,16 @@ live in the Copilot instructions and apply here too:
   their field defaults from it (`roadgen/config.py`); a test checks they match,
   so new params go in both places.
 - Road generators: `roadgen/generators/` (registry in `base.py`).
-- Input maps (terrain, elevation, population): `roadgen/maps/` — separate
-  per-kind registry, same params/preset pattern. `lsystem` reads them
-  (`uses_maps`, `map_bounds`, `generate(..., maps=MapSet)`); the CLI builds
-  them before generating. Without maps lsystem output must stay identical.
+- Input maps (terrain, elevation, population, style): `roadgen/maps/` —
+  separate per-kind registry, same params/preset pattern. `lsystem` reads
+  them (`uses_maps`, `map_bounds`, `map_kinds`, `generate(..., maps=MapSet)`);
+  the CLI builds them before generating. Without maps lsystem output must
+  stay identical, and new lsystem features must default to off:
+  `tests/test_lsystem_identity.py` checks the existing presets against
+  fingerprints recorded before stage C.
+- lsystem is the only city generator (the `manhattan` generator was removed
+  in stage C): grids, pattern fields (`patterns.py`) and graph transforms
+  (`roadgen/generators/transforms/`).
 - Docs: `docs/` (index in `docs/README.md`). Update the matching page, the
   CLI reference and the README when adding commands or modules.
 - Reference papers: `files/*.pdf` (`file1.pdf` is Parish & Müller 2001).

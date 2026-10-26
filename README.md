@@ -15,17 +15,23 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
 
 **Features**
 
-- **Generators:**
-  - `manhattan`: parametric grids with one-way patterns, multi-lane avenues,
-    a ring road, jitter, dropped streets, and a Midtown-like preset.
-  - `lsystem`: Parish & Müller style growth, optionally with curved streets
-    (drifting, contour-following, bowed) instead of a straight grid.
+- **Generator** `lsystem`: Parish & Müller style growth for every city
+  pattern:
+  - grids with alternating one-way avenues and streets, a ring road and
+    dropped streets (a Midtown-like preset);
+  - curved streets (drifting, contour-following, bowed);
+  - pattern fields (Chen et al.): grid, radial (Paris), organic, contour
+    (San Francisco) and suburb patterns blended per district by a style
+    map, with skewed junctions and a grid-to-organic knob;
+  - a connectivity knob from grids to tree-like suburbs, with turn-around
+    bulbs at dead ends.
 - **Input maps** (after Parish & Müller): pluggable generators, built as a
   linear pipeline so the maps agree: a water/land/vegetation map (lakes,
   coast, rivers, parks), then an elevation map on it (fBm, ridged
   multifractal, thermal erosion; water in the valleys), then a population
   density map on both (polycentric Clark model; nobody on water or steep
-  slopes). Real maps can be read from images.
+  slopes), then a style map of street-pattern districts. Real maps can be
+  read from images.
   `lsystem` grows on them: highways seek population peaks and bridge
   rivers, and streets stop at shores, parks, steep slopes and empty land.
 - **Road geometry** (design-speed rules after AASHTO): road bends are not
@@ -86,7 +92,7 @@ export OPENDRIVE_XSD=/path/to/opendrive_16_core.xsd   # optional
 
 ```bash
 pytest
-python -m cli pipeline manhattan --avenues 4 --streets 4 --seed 1 --drive-check --simulate -o first
+python -m cli pipeline lsystem --preset grid --set extent=[750,240] --seed 1 --drive-check --simulate -o first
 # logs "run <hash>: out/<hash>": the run's folder, with first.xodr and the rest of its outputs
 python -m cli view out/<hash>/first.xodr    # natively; in Docker see below
 ```
@@ -110,8 +116,10 @@ docker compose run --rm gui-mac python -m cli view out/<hash>/first.xodr
 python -m cli generators                                       # list generators, presets, parameters
 
 # Generate + build + validate (writes .json, .png, .xodr, .roadmap.json)
-python -m cli pipeline manhattan --avenues 10 --streets 10 --seed 1 -o grid10x10   # -> out/<G>/grid10x10.*
-python -m cli pipeline manhattan --preset manhattan_like --seed 1
+python -m cli pipeline lsystem --preset grid --seed 1 -o grid10x10              # -> out/<G>/grid10x10.*
+python -m cli pipeline lsystem --preset manhattan_like --seed 1
+python -m cli pipeline lsystem --preset paris --allow-traps        # radial star and rings, a grid outside
+python -m cli pipeline lsystem --preset mixed_city --maps --allow-traps   # districts from a style map
 python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
 python -m cli pipeline lsystem --preset city --allow-traps --maps   # grown on terrain/elevation/population maps
 
@@ -153,7 +161,7 @@ To change them, write a YAML file with only the keys you want to change and pass
 it with `--config` before the command; any command-line flag still wins:
 
 ```bash
-python -m cli --config my_defaults.yaml pipeline manhattan --avenues 4 --streets 4
+python -m cli --config my_defaults.yaml pipeline lsystem --preset grid
 ```
 
 Precedence, lowest first: `defaults.yaml` < preset < `--config` file <
@@ -168,7 +176,7 @@ from `defaults.yaml`, in the run's `run.yaml`
 | [Getting started](docs/getting-started.md) | Installation and first run |
 | [Architecture](docs/architecture.md) | Pipeline, design rules, module map, output files |
 | [RoadGraph](docs/road-graph.md) | Data model and JSON format |
-| [Generators](docs/generators.md) | `manhattan`, `lsystem`, presets, adding a generator |
+| [Generators](docs/generators.md) | `lsystem` (grids, pattern fields, cul-de-sacs), presets, transforms, adding a generator |
 | [Input maps](docs/maps.md) | Terrain, elevation and population maps; where to get real ones |
 | [OpenDRIVE builder](docs/opendrive.md) | Roads, lanes, junction geometry, id scheme, sidecar |
 | [Validation](docs/validation.md) | Connectivity, topology, continuity, schema, drive-check |
@@ -185,7 +193,7 @@ from `defaults.yaml`, in the run's `run.yaml`
 cli.py          command-line entry point (python -m cli ...)
 roadgen/
   graph/        RoadGraph model, JSON I/O, plotting
-  generators/   procedural network generators (registry, manhattan, lsystem)
+  generators/   procedural network generators (registry, lsystem, pattern fields, transforms)
   maps/         input maps: terrain, elevation, population (registry, noise, image loaders)
   geometry/     neutral road geometry: design-speed rules, curve pieces, junction trims
   opendrive/    RoadGraph -> OpenDRIVE builder (lanes, junctions, geometry)

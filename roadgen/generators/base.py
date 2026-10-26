@@ -44,6 +44,10 @@ class RoadNetworkGenerator(ABC, Generic[P]):
         """World (x0, y0, x1, y1) the network can occupy, if known before generating."""
         return None
 
+    def map_kinds(self, params: P) -> Optional[tuple[str, ...]]:
+        """Map kinds `pipeline --maps` builds for these params; None = all of them."""
+        return None
+
 
 # --- registry --------------------------------------------------------------------------
 
