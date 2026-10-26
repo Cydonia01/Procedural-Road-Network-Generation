@@ -11,6 +11,8 @@ led to them, and record decisions.
 | 2026-10-23 | [Stage A: geometry accuracy, implementation plan](2026-10-23-stage-a-geometry-implementation.md) | done (A0–A10) |
 | 2026-10-24 | [Stage A: summary for presentation](2026-10-24-stage-a-summary.md) | done |
 | 2026-10-25 | [One run config, hashed, and one folder per run (issue #8)](2026-10-25-run-spec-and-run-folders.md) | done |
+| 2026-10-26 | [Stage C: long-tail diversity, discussion and decisions](2026-10-26-stage-c-discussion.md) | decided |
+| 2026-10-26 | [Stage C: long-tail diversity, implementation plan](2026-10-26-stage-c-implementation.md) | C0–C4 done, C5–C10 planned |
 
 The review these come from is `Roadgen AV Readiness Review.pdf` in the repo
 root (written in an earlier chat; its prompts were not saved).
