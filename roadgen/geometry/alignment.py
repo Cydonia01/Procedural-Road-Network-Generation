@@ -278,24 +278,35 @@ def _clearance_check(graph: RoadGraph, trims: Mapping[int, Mapping[int, float]],
 
     The curve may not touch, within clearance, any other road (straight and
     trimmed at junctions) that the straight corner polyline did not touch
-    already: such contact is the generator's, not the fitting's.
+    already: such contact is the generator's, not the fitting's. Nor may it
+    cross another road's centre line that the straight polyline doesn't cross:
+    a polyline passing close by a road would otherwise let the curve cut
+    across it (two roads crossing at one height; found by the clearance
+    validator in stage C).
     """
-    ids, bodies = [], []
+    ids, bodies, lines = [], [], []
     for eid, e in sorted(graph.edges.items()):
         line = _trimmed_body(graph, e, trims)
         if line is not None:
             ids.append(eid)
             bodies.append(line.buffer(half_width(e)))
+            lines.append(line)
     tree = STRtree(bodies)
+    line_tree = STRtree(lines)
 
     def hits(geom: BaseGeometry, own: set[int]) -> set[int]:
         return {ids[i] for i in tree.query(geom, predicate="intersects")} - own
+
+    def crossed(geom: BaseGeometry, own: set[int]) -> set[int]:
+        return {ids[i] for i in line_tree.query(geom, predicate="intersects")} - own
 
     def check(c: Chain, pieces: list[Piece], straight: LineString, width: float) -> bool:
         own = set(c.edge_ids)
         pad = width + clearance
         curve = LineString(np.concatenate([np.column_stack(p.xy(np.linspace(
             0.0, p.length, max(2, math.ceil(p.length / SAMPLE_STEP) + 1)))) for p in pieces]))
+        if not crossed(curve, own) <= crossed(straight, own):
+            return False
         new = hits(curve.buffer(pad), own)
         return not new or new <= hits(straight.buffer(pad), own)
 

@@ -32,6 +32,7 @@ from roadgen.maps.base import get_map_generator, make_map, map_generator_names
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.sim.esmini import esmini_binary
+from roadgen.validate.clearance import check_clearance
 from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
@@ -42,6 +43,7 @@ log = logging.getLogger("roadgen.cli")
 
 MAX_LISTED_WARNINGS = 5
 DYNAMICS_CHECKS_JUNCTIONS = True  # junction turns get speeds from their curvature
+DECK = 1.0  # [m] of grade_separation.clearance taken by the upper road's deck
 
 
 def cmd_plot_graph(args: argparse.Namespace) -> int:
@@ -112,6 +114,7 @@ def build_and_validate(
         errors += curvature_errors
         a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
         errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
+        errors += check_clearance(xodr_path, section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
         errors += validate_schema(xodr_path, xsd) or []
     for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
         log.warning("%s", warning)
@@ -208,7 +211,18 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
         graph = align_graph(graph, layers, args.cfg)
     if "elevation" in layers and not args.flat:
         graph = drape_graph(graph, layers, args.cfg)
-    return graph, layers
+    return separate_graph(graph, args.cfg), layers
+
+
+def separate_graph(graph: RoadGraph, cfg: dict) -> RoadGraph:
+    """Roads crossing without a junction raised over each other (unchanged if none do)."""
+    from roadgen.geometry.grade_separation import GradeSeparationParams, find_crossings, separate
+
+    if not find_crossings(graph):
+        return graph
+    with timed("grade separation"):
+        return separate(graph, GradeSeparationParams(**section(cfg, "grade_separation")),
+                        DesignParams(**section(cfg, "design")), cfg["opendrive"]["junction_margin"])
 
 
 def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
@@ -398,6 +412,14 @@ def cmd_drape(args: argparse.Namespace) -> int:
     output = artifact(args, args.output, Path(args.input).with_suffix(".draped.json"))
     save_json(graph, output)
     log.info("wrote %s", output)
+    return 0
+
+
+def cmd_separate(args: argparse.Namespace) -> int:
+    graph = separate_graph(load_json(args.input), args.cfg)
+    output = artifact(args, args.output, Path(args.input).with_suffix(".separated.json"))
+    save_json(graph, output)
+    log.info("wrote %s (%d overpasses)", output, len(graph.metadata.get("overpasses", [])))
     return 0
 
 
@@ -813,6 +835,12 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                    help="elevation map (required) and terrain map (bridges), repeatable")
     p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.draped.json)")
     p.set_defaults(func=cmd_drape)
+
+    p = sub.add_parser("separate", help="raise roads that cross without a junction over each other "
+                                        "(overpasses with ramps and bridge spans)")
+    p.add_argument("input", help="RoadGraph JSON file")
+    p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.separated.json)")
+    p.set_defaults(func=cmd_separate)
 
     p = sub.add_parser("ground", help="3D ground mesh (.osgt) from maps, levelled under a network")
     p.add_argument("output", nargs="?", help="output .osgt (default: scene.osgt)")

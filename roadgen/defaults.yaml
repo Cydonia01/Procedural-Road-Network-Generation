@@ -92,6 +92,12 @@ generators:
     roundabout_radius: 25.0    # single-lane ring, centre line [m]
     roundabout_radius_avenue: 32.0  # two-lane ring (an avenue or a 4-lane road at the junction) [m]
     roundabout_speed: 8.3      # on the ring [m/s] (30 km/h)
+    # Grade separation
+    highway_crossings: at_grade  # streets cross highways at_grade (junctions) | separated (under them)
+    highway_max_grade: 0.0     # max rise / run of highways (over 25 m); 0 = max_grade
+    tunnels: false             # highways may tunnel through hills too steep to climb
+    tunnel_min_cover: 8.0      # ground over a tunnel, somewhere along it [m]
+    max_tunnel_length: 800.0   # longest stretch under ground [m]
 
   junction:                    # one junction per seed (stage C6), JunctionArt-style
     legs: 0                    # number of legs; 0 = drawn by leg_weights
@@ -205,10 +211,17 @@ maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and
       # RGB in [0, 1]; pixels take the nearest class
       colors: [[0.30, 0.47, 0.66], [0.89, 0.34, 0.34], [0.33, 0.64, 0.29], [0.70, 0.47, 0.64], [0.93, 0.79, 0.23]]
 
+grade_separation:  # roads crossing without a junction pass over each other (stage C8; `separate`)
+  clearance: 6.0           # between the lower and the upper road surface: 5 m clearance + 1 m deck [m]
+  max_grade: 0.05          # steepest ramp, rise / run
+  flat_margin: 5.0         # flat top beyond each edge of the lower road [m]
+  sample_spacing: 10.0     # most distance between profile points of raised roads [m]
+
 drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/maps.md)
   sample_spacing: 20.0     # max distance between profile points along a road [m]
   smoothing: 80.0          # roads follow the terrain averaged over this length [m]
   bridge_clearance: 2.0    # min bridge deck height above the water surface [m]
+  tunnel_cover: 5.0        # a road this far below the terrain is in a tunnel [m] (edges in metadata.tunnels)
 
 ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground`)
   cell_size: 20.0          # mesh resolution [m]

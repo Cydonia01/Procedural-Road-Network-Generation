@@ -13,7 +13,10 @@ OpenDRIVE builder (which never sees a map):
 3. stretches over water (from the terrain map, sampled at its own
    resolution) become bridges: the deck runs straight from shore to shore
    and stays at least ``bridge_clearance`` above the water surface. They
-   are stored as ``Edge.bridges``; a node on water is raised the same way.
+   are stored as ``Edge.bridges``; a node on water is raised the same way;
+4. edges a generator listed in ``metadata["tunnels"]`` run straight (a
+   constant grade) between their nodes, through the hill; the stretches at
+   least ``tunnel_cover`` under the terrain are stored as ``Edge.tunnels``.
 
 Deterministic, and the input graph is left unchanged.
 """
@@ -47,10 +50,12 @@ class DrapeParams:
     sample_spacing: float = _D["sample_spacing"]  # max distance between profile points [m]
     smoothing: float = _D["smoothing"]  # length the terrain is averaged over [m]
     bridge_clearance: float = _D["bridge_clearance"]  # min deck height above water [m]
+    tunnel_cover: float = _D["tunnel_cover"]  # a road this far under the terrain is in a tunnel [m]
 
     def __post_init__(self) -> None:
-        if self.sample_spacing <= 0 or self.smoothing < 0 or self.bridge_clearance < 0:
-            raise ValueError("need sample_spacing > 0, smoothing >= 0 and bridge_clearance >= 0")
+        if self.sample_spacing <= 0 or self.smoothing < 0 or self.bridge_clearance < 0 or self.tunnel_cover <= 0:
+            raise ValueError("need sample_spacing > 0, smoothing >= 0, bridge_clearance >= 0 and "
+                             "tunnel_cover > 0")
 
 
 def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = None,
@@ -78,23 +83,30 @@ def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = N
     for node in out.nodes.values():
         node.z = _node_height(*on_road.get(node.id, (node.x, node.y)), elevation, terrain, params)
     max_grade = 0.0
+    tunnel_edges = set(out.metadata.get("tunnels") or [])
     for eid, edge in sorted(out.edges.items()):
         a, b = out.nodes[edge.from_node], out.nodes[edge.to_node]
         length = out.edge_length(eid)
         n = max(0, math.ceil(length / params.sample_spacing) - 1)
         d = np.linspace(0.0, length, n + 2)
         pos = _positions(out, eid, na)
-        spans = _water_spans(pos, length, terrain)
-        z = _edge_heights(a, b, d, length, elevation, params, spans, pos)
-        edge.profile = [round(float(v), 3) for v in z[1:-1]]
-        rounded = ((round(s0, 2), min(round(s1, 2), length)) for s0, s1 in spans)
-        edge.bridges = [(s0, s1) for s0, s1 in rounded if s1 - s0 >= 0.01]
+        if eid in tunnel_edges:
+            z = a.z + (b.z - a.z) * d / length if length else np.full_like(d, a.z)
+            edge.profile = [round(float(v), 3) for v in z[1:-1]]
+            edge.bridges = []
+            edge.tunnels = _tunnel_spans(pos, length, a.z, b.z, elevation, params.tunnel_cover)
+        else:
+            spans = _water_spans(pos, length, terrain)
+            z = _edge_heights(a, b, d, length, elevation, params, spans, pos)
+            edge.profile = [round(float(v), 3) for v in z[1:-1]]
+            rounded = ((round(s0, 2), min(round(s1, 2), length)) for s0, s1 in spans)
+            edge.bridges = [(s0, s1) for s0, s1 in rounded if s1 - s0 >= 0.01]
         if length > 0:
             max_grade = max(max_grade, float(np.max(np.abs(np.diff(z)) / np.diff(d))))
     out.metadata["drape"] = asdict(params)
-    log.info("drape: %d nodes, %d edges, %d bridges, steepest grade %.1f %%",
+    log.info("drape: %d nodes, %d edges, %d bridges, %d tunnels, steepest grade %.1f %%",
              len(out.nodes), len(out.edges), sum(len(e.bridges) for e in out.edges.values()),
-             100 * max_grade)
+             sum(len(e.tunnels) for e in out.edges.values()), 100 * max_grade)
     return out
 
 
@@ -128,6 +140,30 @@ def _positions(graph: RoadGraph, edge_id: int, na: Optional[NetworkAlignment]) -
         return a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)
 
     return pos
+
+
+def _tunnel_spans(pos: Positions, length: float, z0: float, z1: float, elevation: MapLayer,
+                  cover: float) -> list[tuple[float, float]]:
+    """(start, end) distances where the straight road from z0 to z1 runs at least
+    cover under the terrain."""
+    if length == 0:
+        return []
+    step = elevation.grid.cell_size / 2
+    d = np.linspace(0.0, length, max(2, math.ceil(length / step) + 1))
+    deep = elevation.sample(*pos(d)) - (z0 + (z1 - z0) * d / length) >= cover
+    spans: list[tuple[float, float]] = []
+    k = 0
+    while k < len(d):
+        if not deep[k]:
+            k += 1
+            continue
+        j = k
+        while j + 1 < len(d) and deep[j + 1]:
+            j += 1
+        if d[j] - d[k] >= step:
+            spans.append((round(float(d[k]), 2), round(float(d[j]), 2)))
+        k = j + 1
+    return spans
 
 
 def _water_spans(pos: Positions, length: float,

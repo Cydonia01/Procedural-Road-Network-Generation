@@ -158,6 +158,7 @@ def _remove(graph: RoadGraph, eid: int) -> bool:
 
 
 def _drop_bridge_ref(graph: RoadGraph, eid: int) -> None:
-    bridges: Optional[list] = graph.metadata.get("bridges")
-    if bridges and eid in bridges:
-        graph.metadata["bridges"] = [b for b in bridges if b != eid]
+    for key in ("bridges", "tunnels"):
+        ids: Optional[list] = graph.metadata.get(key)
+        if ids and eid in ids:
+            graph.metadata[key] = [b for b in ids if b != eid]

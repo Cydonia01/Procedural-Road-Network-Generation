@@ -12,7 +12,8 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 SCHEMA_VERSION = 1
 
 PathLike = Union[str, Path]
-_OPTIONAL: dict[str, Any] = {"z": 0.0, "radius_cap": None, "profile": [], "bridges": []}  # field -> default
+_OPTIONAL: dict[str, Any] = {"z": 0.0, "radius_cap": None, "profile": [], "bridges": [],
+                             "tunnels": []}  # field -> default
 
 
 def graph_to_dict(graph: RoadGraph) -> dict[str, Any]:
@@ -41,6 +42,7 @@ def graph_from_dict(data: dict[str, Any]) -> RoadGraph:
     for e in data.get("edges", []):
         e = dict(e)
         e["bridges"] = [tuple(b) for b in e.get("bridges", [])]  # JSON has lists
+        e["tunnels"] = [tuple(t) for t in e.get("tunnels", [])]
         graph.add_edge(Edge(**e))
     return graph
 

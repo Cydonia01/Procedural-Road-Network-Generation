@@ -219,9 +219,19 @@ def height_samples(graph: RoadGraph, ca: ChainAlignment) -> tuple[np.ndarray, np
 
 def bridge_spans(graph: RoadGraph, ca: ChainAlignment) -> list[tuple[float, float]]:
     """Bridges as (s, length) on the chain road, clipped to it, touching spans merged."""
+    return structure_spans(graph, ca, "bridges")
+
+
+def tunnel_spans(graph: RoadGraph, ca: ChainAlignment) -> list[tuple[float, float]]:
+    """Tunnels as (s, length) on the chain road, clipped to it, touching spans merged."""
+    return structure_spans(graph, ca, "tunnels")
+
+
+def structure_spans(graph: RoadGraph, ca: ChainAlignment, kind: str) -> list[tuple[float, float]]:
+    """Edge.bridges or Edge.tunnels of the chain as (s, length), clipped, merged."""
     spans = []
     for eid in ca.chain.edge_ids:
-        for d0, d1 in graph.edges[eid].bridges:
+        for d0, d1 in getattr(graph.edges[eid], kind):
             a, b = sorted((ca.edge_station(eid, d0), ca.edge_station(eid, d1)))
             a, b = max(a, 0.0), min(b, ca.length)
             if b - a > 1e-3:

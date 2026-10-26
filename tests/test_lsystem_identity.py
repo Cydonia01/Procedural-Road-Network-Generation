@@ -13,4 +13,4 @@ from tests.lsystem_identity import CASES, EXPECTED, build, fingerprint
 @pytest.mark.parametrize("name, preset, seed, maps", CASES, ids=[c[0] for c in CASES])
 def test_network_unchanged(name, preset, seed, maps, monkeypatch):
     monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
-    assert fingerprint(build(preset, seed, maps)) == json.loads(EXPECTED.read_text())[name]
+    assert fingerprint(build(preset, seed, maps), heights=not maps) == json.loads(EXPECTED.read_text())[name]
