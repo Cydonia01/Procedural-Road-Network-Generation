@@ -24,9 +24,12 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
     (San Francisco) and suburb patterns blended per district by a style
     map, with skewed junctions and a grid-to-organic knob;
   - a connectivity knob from grids to tree-like suburbs, with turn-around
-    bulbs at dead ends, and staggered crossings and star junctions.
+    bulbs at dead ends, and staggered crossings and star junctions;
+  - roundabouts, freeways with overpasses, highway tunnels, diamond
+    interchanges and lane adds and drops.
 - **Generator** `junction`: one JunctionArt-style junction per seed (3–7
-  legs, skew, offset T pairs, random lanes per side) for long-tail data.
+  legs, skew, offset T pairs, random lanes per side, roundabouts) or a
+  diamond / cloverleaf interchange, for long-tail data.
 - **Input maps** (after Parish & Müller): pluggable generators, built as a
   linear pipeline so the maps agree: a water/land/vegetation map (lakes,
   coast, rivers, parks), then an elevation map on it (fBm, ridged
@@ -122,6 +125,8 @@ python -m cli pipeline lsystem --preset grid --seed 1 -o grid10x10              
 python -m cli pipeline lsystem --preset manhattan_like --seed 1
 python -m cli pipeline lsystem --preset paris --allow-traps        # radial star and rings, a grid outside
 python -m cli pipeline lsystem --preset mixed_city --maps --allow-traps   # districts from a style map
+python -m cli pipeline lsystem --preset highway_corridor --maps --allow-traps   # freeways and a diamond
+python -m cli pipeline junction --preset random --seed 17 --allow-traps   # one long-tail junction
 python -m cli pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings --simulate
 python -m cli pipeline lsystem --preset city --allow-traps --maps   # grown on terrain/elevation/population maps
 

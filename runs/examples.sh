@@ -231,9 +231,33 @@ MC=$RUN/mixed_city
 cli --note "9 diversity | map style zones, preset old_town, on the mixed city's maps" \
     map style zones --preset old_town --seed 1 --on terrain=${MC}_terrain.npz \
     --on elevation=${MC}_elevation.npz --on population=${MC}_population.npz -o old_town_style
+cli --note "9 diversity | pipeline: junction preset k (a through road and two diagonals), drive-check" \
+    pipeline junction --preset k --seed 3 --allow-traps --drive-check -o junction_k
+cli --note "9 diversity | pipeline: junction preset random, seed 17 (JunctionArt-style long tail)" \
+    pipeline junction --preset random --seed 17 --allow-traps -o junction_random
+JR=$RUN/junction_random
+cli --note "9 diversity | pipeline: junction preset roundabout, drive-check" \
+    pipeline junction --preset roundabout --seed 2 --allow-traps --drive-check -o roundabout
+RB=$RUN/roundabout
+cli --note "9 diversity | pipeline: junction preset diamond (highway interchange)" \
+    pipeline junction --preset diamond --allow-traps -o diamond
+DM=$RUN/diamond
+cli --note "9 diversity | pipeline: junction preset cloverleaf (highway x highway interchange)" \
+    pipeline junction --preset cloverleaf --allow-traps -o cloverleaf
+CL=$RUN/cloverleaf
+cli --note "9 diversity | pipeline: lsystem city on maps with freeways (overpasses), drive-check" \
+    pipeline lsystem --preset city --maps --seed 1 --set highway_crossings=separated --allow-traps \
+    --drive-check -o city_freeways
+cli --note "9 diversity | pipeline: lsystem highway_corridor on maps (freeways, a diamond, lane adds and drops)" \
+    pipeline lsystem --preset highway_corridor --maps --seed 1 --allow-traps --ground -o highway_corridor
+HC=$RUN/highway_corridor
+cli --note "9 diversity | pipeline: lsystem city on hilly maps with a highway tunnel, ground" \
+    pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 \
+    --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --allow-traps --ground -o tunnel_city
+TC=$RUN/tunnel_city
 cli --note "9 diversity | metrics --graph: network metrics of manhattan_like, the coastal city and the stage C presets" \
     metrics --graph $ML --graph $CC --graph $PA.json --graph $OT.json --graph $SG.json --graph $SB.json \
-    --graph $MC.json --json network_metrics.json
+    --graph $MC.json --graph $HC.json --graph $JR.json --json network_metrics.json
 
 [ -n "${NO_GUI:-}" ] && exit 0
 echo "== 7 esmini GUI (views stay open until you close the window)"
@@ -248,5 +272,10 @@ gui --note "7 gui | odrviewer: the one-command city (maps, ground, buildings) fr
 gui --note "7 gui | odrviewer: paris (radial star and rings), 2 cars / 100 m" view $PA.xodr --density 2
 gui --note "7 gui | odrviewer: suburb with cul-de-sac bulbs" view $SB.xodr
 gui --note "7 gui | odrviewer: mixed_city districts on generated maps" view $MC.xodr
+gui --note "7 gui | odrviewer: roundabout from the junction generator" view $RB.xodr
+gui --note "7 gui | odrviewer: diamond interchange" view $DM.xodr
+gui --note "7 gui | odrviewer: cloverleaf interchange" view $CL.xodr
+gui --note "7 gui | odrviewer: freeway corridor with its diamond, on its ground" view $HC.xodr --scenegraph ${HC}_scene.osgt
+gui --note "7 gui | odrviewer: hilly city with a highway tunnel, on its ground" view $TC.xodr --scenegraph ${TC}_scene.osgt
 gui --note "7 gui | esmini: manhattan_like with buildings, top camera" simulate $S4 --gui
 gui --note "7 gui | esmini: coastal city on its ground + buildings" simulate $S5 --gui

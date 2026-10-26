@@ -556,7 +556,13 @@ recorded as a run.
   python -m cli view out/50712981312c/hill_town.xodr --scenegraph out/50712981312c/hill_town_scene.osgt   # look at it
   ```
 
-## 9. Long-tail diversity (stage C): pattern fields, style maps, cul-de-sacs, network metrics
+## 9. Long-tail diversity (stage C): pattern fields, style maps, cul-de-sacs, junction variety, roundabouts, overpasses, tunnels, interchanges, network metrics
+
+- `acdf5813b00c` metrics --graph: network metrics of manhattan_like, the coastal city and the stage C presets
+
+  ```bash
+  python -m cli metrics --graph out/3a4b5ef07762/manhattan_like.json --graph out/917a6d6b33dc/coast_city.json --graph out/5ff781b88a35/paris.json --graph out/9adc5a4a4810/organic_town.json --graph out/25102d21d7bf/skewed_grid.json --graph out/6afb7e051c73/suburb.json --graph out/b0c06fe41f40/mixed_city.json --json network_metrics.json
+  ```
 
 - `5ff781b88a35` pipeline: lsystem paris (a star of avenues and rings, a grid outside), drive-check
 
@@ -613,8 +619,64 @@ recorded as a run.
   python -m cli map style zones --preset old_town --seed 1 --on terrain=out/b0c06fe41f40/mixed_city_terrain.npz --on elevation=out/b0c06fe41f40/mixed_city_elevation.npz --on population=out/b0c06fe41f40/mixed_city_population.npz -o old_town_style
   ```
 
-- `acdf5813b00c` metrics --graph: network metrics of manhattan_like, the coastal city and the stage C presets
+- `9f985375afc1` pipeline: junction preset k (a through road and two diagonals), drive-check
 
   ```bash
-  python -m cli metrics --graph out/3a4b5ef07762/manhattan_like.json --graph out/917a6d6b33dc/coast_city.json --graph out/5ff781b88a35/paris.json --graph out/9adc5a4a4810/organic_town.json --graph out/25102d21d7bf/skewed_grid.json --graph out/6afb7e051c73/suburb.json --graph out/b0c06fe41f40/mixed_city.json --json network_metrics.json
+  python -m cli pipeline junction --preset k --seed 3 --allow-traps --drive-check -o junction_k
+  python -m cli view out/9f985375afc1/junction_k.xodr   # look at it
+  ```
+
+- `679e822f5060` pipeline: junction preset random, seed 17 (JunctionArt-style long tail)
+
+  ```bash
+  python -m cli pipeline junction --preset random --seed 17 --allow-traps -o junction_random
+  python -m cli view out/679e822f5060/junction_random.xodr   # look at it
+  ```
+
+- `8dce8d1f6536` pipeline: junction preset roundabout, drive-check
+
+  ```bash
+  python -m cli pipeline junction --preset roundabout --seed 2 --allow-traps --drive-check -o roundabout
+  python -m cli view out/8dce8d1f6536/roundabout.xodr   # look at it
+  ```
+
+- `f59489f24621` pipeline: junction preset diamond (highway interchange)
+
+  ```bash
+  python -m cli pipeline junction --preset diamond --allow-traps -o diamond
+  python -m cli view out/f59489f24621/diamond.xodr   # look at it
+  ```
+
+- `5bc976595436` pipeline: junction preset cloverleaf (highway x highway interchange)
+
+  ```bash
+  python -m cli pipeline junction --preset cloverleaf --allow-traps -o cloverleaf
+  python -m cli view out/5bc976595436/cloverleaf.xodr   # look at it
+  ```
+
+- `52322eca64c7` pipeline: lsystem city on maps with freeways (overpasses), drive-check
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 1 --set highway_crossings=separated --allow-traps --drive-check -o city_freeways
+  python -m cli view out/52322eca64c7/city_freeways.xodr   # look at it
+  ```
+
+- `83e16ac16e35` pipeline: lsystem highway_corridor on maps (freeways, a diamond, lane adds and drops)
+
+  ```bash
+  python -m cli pipeline lsystem --preset highway_corridor --maps --seed 1 --allow-traps --ground -o highway_corridor
+  python -m cli view out/83e16ac16e35/highway_corridor.xodr --scenegraph out/83e16ac16e35/highway_corridor_scene.osgt   # look at it
+  ```
+
+- `c1caa4c9a929` pipeline: lsystem city on hilly maps with a highway tunnel, ground
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --allow-traps --ground -o tunnel_city
+  python -m cli view out/c1caa4c9a929/tunnel_city.xodr --scenegraph out/c1caa4c9a929/tunnel_city_scene.osgt   # look at it
+  ```
+
+- `23d68c6e276b` metrics --graph: network metrics of manhattan_like, the coastal city and the stage C presets
+
+  ```bash
+  python -m cli metrics --graph out/3a4b5ef07762/manhattan_like.json --graph out/917a6d6b33dc/coast_city.json --graph out/5ff781b88a35/paris.json --graph out/9adc5a4a4810/organic_town.json --graph out/25102d21d7bf/skewed_grid.json --graph out/6afb7e051c73/suburb.json --graph out/b0c06fe41f40/mixed_city.json --graph out/83e16ac16e35/highway_corridor.json --graph out/679e822f5060/junction_random.json --json network_metrics.json
   ```

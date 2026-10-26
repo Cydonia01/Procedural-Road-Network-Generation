@@ -25,7 +25,7 @@ Read these in pipeline order:
 | [Generators](generators.md) | `lsystem` (grids, pattern fields, connectivity, cul-de-sacs), presets, parameter files, graph transforms, writing a new generator |
 | [Road geometry](geometry.md) | Neutral geometry package: design-speed rules, line / arc / spiral pieces, clothoid transitions, junction trims |
 | [OpenDRIVE builder](opendrive.md) | RoadGraph → `.xodr`: roads, lanes, junctions, id scheme, `.roadmap.json` |
-| [Validation](validation.md) | Traffic connectivity, topology, continuity, XSD schema, esmini drive-check |
+| [Validation](validation.md) | Traffic connectivity, topology, continuity, clearance, XSD schema, esmini drive-check, geometry and network metrics |
 | [Scenarios & simulation](scenarios-and-simulation.md) | `.xosc` generation, running esmini, 3D buildings |
 | [Scalability benchmark](benchmarking.md) | Sweep config, results CSV, statuses, plots |
 

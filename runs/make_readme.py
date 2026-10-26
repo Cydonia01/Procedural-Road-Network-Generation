@@ -25,7 +25,8 @@ PHASES = {
     "6": "Simulation (headless esmini)",
     "7": "esmini GUI",
     "8": "Road geometry (stage A): fitted curves, metrics, align, curved streets",
-    "9": "Long-tail diversity (stage C): pattern fields, style maps, cul-de-sacs, network metrics",
+    "9": "Long-tail diversity (stage C): pattern fields, style maps, cul-de-sacs, junction variety, "
+         "roundabouts, overpasses, tunnels, interchanges, network metrics",
 }
 # From scratch to the GUI: the notes of each chain's runs, in order.
 CHAINS = {

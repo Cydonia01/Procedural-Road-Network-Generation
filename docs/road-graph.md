@@ -58,7 +58,10 @@ Generators fill `metadata` with `name`, `generator`, `seed` and the full
 `params`, so every graph records how it was made. A graph grown on input
 maps also has `maps` (per kind: `generator`, `file`, and `source` for a
 `--map-file`) and, from `lsystem`, `bridges`: the ids of highway edges that
-cross water. The builder uses
+cross water. Stage C adds lists of what transforms and generators built:
+`tunnels` (highway edge ids through hills), `culdesacs`, `roundabouts`,
+`interchanges` and, after grade separation, `overpasses`; the network metrics
+count them. The builder uses
 `metadata["name"]` as the OpenDRIVE header name.
 
 ## JSON format
