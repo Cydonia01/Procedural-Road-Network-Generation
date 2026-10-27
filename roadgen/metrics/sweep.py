@@ -16,6 +16,7 @@ from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import get_generator, load_params
 from roadgen.maps.base import make_map
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapSet
+from roadgen.metrics.network import network_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class SweepResult:
     nodes: int
     edges: int
     error: Optional[str] = None  # builder error; None = built
+    network: Optional[dict[str, Any]] = None  # headline network metrics of the graph
 
     @property
     def ok(self) -> bool:
@@ -44,7 +46,8 @@ def build_one(generator: str, preset: Optional[str], seed: int, cfg: dict = DEFA
         grid_cfg = cfg["maps"]["grid"]
         grid = GridSpec.from_bounds(gen.map_bounds(params), grid_cfg["margin"], grid_cfg["cell_size"])
         layers: dict[str, Any] = {}
-        for kind in MAP_KINDS:
+        kinds = gen.map_kinds(params) or MAP_KINDS
+        for kind in (k for k in MAP_KINDS if k in kinds):
             name = cfg["maps"]["pipeline"][kind]
             layers[kind] = make_map(kind, name, grid, seed, defaults=section(cfg, "maps", kind, name),
                                     upstream=MapSet(**layers))
@@ -56,7 +59,10 @@ def build_one(generator: str, preset: Optional[str], seed: int, cfg: dict = DEFA
         error = None
     except ValueError as e:
         error = str(e)
-    return SweepResult(seed, len(graph.nodes), len(graph.edges), error)
+    m = network_metrics(graph)
+    headline = {k: m[k] for k in ("cnr", "skewed_share", "offset_t_pairs", "orientation_entropy",
+                                  "orientation_order", "legs", "features")}
+    return SweepResult(seed, len(graph.nodes), len(graph.edges), error, headline)
 
 
 def build_sweep(generator: str, preset: Optional[str], seeds: Sequence[int],

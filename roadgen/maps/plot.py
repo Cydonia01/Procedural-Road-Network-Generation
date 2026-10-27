@@ -15,8 +15,11 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
 from roadgen.graph.model import RoadGraph
-from roadgen.maps.model import TERRAIN_CLASSES, UNITS, MapLayer
+from roadgen.maps.model import CLASSES, UNITS, MapLayer
+from roadgen.maps.style import STYLE_COLORS
 from roadgen.maps.terrain import TERRAIN_COLORS
+
+CLASS_COLORS = {"terrain": TERRAIN_COLORS, "style": STYLE_COLORS}
 
 # Greens to snow; the blue low end of "terrain" is left out because water
 # comes from the terrain map (elevation only lies flat there), not from low elevation.
@@ -37,14 +40,14 @@ def plot_map(
     x0, x1, y0, y1 = layer.grid.bounds
     extent = (x0, x1, y0, y1)
 
-    if layer.kind == "terrain":
-        classes = sorted(TERRAIN_CLASSES)
-        cmap = ListedColormap([TERRAIN_COLORS[k] for k in classes])
+    if layer.categorical:
+        names, colors = CLASSES[layer.kind], CLASS_COLORS[layer.kind]
+        classes = sorted(names)
+        cmap = ListedColormap([colors[k] for k in classes])
         ax.imshow(layer.data, origin="lower", extent=extent, cmap=cmap,
                   vmin=-0.5, vmax=len(classes) - 0.5, interpolation="nearest")
         shares = layer.fractions()
-        ax.legend(handles=[Patch(color=TERRAIN_COLORS[k],
-                                 label=f"{TERRAIN_CLASSES[k]} {shares[TERRAIN_CLASSES[k]]:.0%}")
+        ax.legend(handles=[Patch(color=colors[k], label=f"{names[k]} {shares[names[k]]:.0%}")
                            for k in classes], loc="upper right", fontsize=8)
     elif layer.kind == "elevation":
         z = layer.data.astype(float)

@@ -15,7 +15,7 @@ Global options must come **before** the command, e.g. `python -m cli -v pipeline
 ### Defaults and `--config`
 
 Every default value lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml):
-generator parameters (`generators.manhattan`, `generators.lsystem`), the seed,
+generator parameters (`generators.lsystem`), map parameters (`maps`), the seed,
 `opendrive.junction_margin`, `scenario`, `buildings`, `esmini` (timestep,
 window, camera, view density), `pipeline` (`--simulate` settings) and `bench`
 (keys a sweep config leaves out). A `--config` file uses the same nesting and
@@ -25,7 +25,7 @@ map generator section may also name a preset. For example:
 ```yaml
 seed: 42
 generators:
-  manhattan:
+  lsystem:
     preset: manhattan_like
     lane_width: 3.25
 scenario:
@@ -39,11 +39,15 @@ the defaults in effect, including those from `--config`.
 
 All of these end up in one **run config**: the `config` part of the run's
 `run.yaml` (see [history](#history)), which holds only what differs from
-`defaults.yaml`. `--preset`, `--params`, `--set`, Manhattan's flags and
+`defaults.yaml`. `--preset`, `--params`, `--set` and
 `--map-set` are written into the section they set
 (`generators.<name>`, `maps.<kind>.<name>`). Benchmark networks use
-`bench.network`, not `generators.manhattan`, so a sweep's config id only
+`bench.network`, not `generators.lsystem`, so a sweep's config id only
 depends on the sweep settings.
+
+The `manhattan` generator was removed in stage C (lsystem grows the same
+grids, `--preset manhattan_like`); replaying an old run of it, or a config
+with a `generators.manhattan` section, stops with a message saying so.
 
 Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 
@@ -92,7 +96,7 @@ python -m cli generators
 ## generate
 
 ```bash
-python -m cli generate <manhattan|lsystem> [generator options] [-o out.json]
+python -m cli generate <lsystem|junction> [generator options] [-o out.json]
 ```
 
 Default output: `<name>[_<preset>]_s<seed>.json`.
@@ -105,26 +109,12 @@ Default output: `<name>[_<preset>]_s<seed>.json`.
 | `--preset NAME` | Start from a named parameter set |
 | `--params FILE.yaml` | Parameter file (fields, or `preset:` + `params:`) |
 | `--set KEY=VALUE` | Override one parameter. Repeatable, and the value is parsed as YAML |
-| `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`), written by `map` or a pipeline run. Repeatable. Only `lsystem` reads maps ([details](maps.md)). With an elevation map the graph also gets heights ([drape](maps.md#heights-from-the-maps-to-esmini)) |
+| `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`, `style`), written by `map` or a pipeline run. Repeatable. Only `lsystem` reads maps ([details](maps.md)). With an elevation map the graph also gets heights ([drape](maps.md#heights-from-the-maps-to-esmini)) |
 | `--flat` | Keep the roads flat even with an elevation map |
 
-### Manhattan-only flags
-
-These map 1:1 onto [`ManhattanParams`](generators.md#manhattan-parametric-grid-manhattanpy):
-
-| Flag | Field |
-|------|-------|
-| `--avenues`, `--streets` | `n_avenues`, `n_streets` (required without `--preset`) |
-| `--avenue-spacing`, `--street-spacing` | spacing [m] |
-| `--rotation` | `rotation_deg` |
-| `--origin X Y` | `origin` |
-| `--avenue-lanes FWD BWD`, `--street-lanes FWD BWD` | lane tuples |
-| `--lane-width`, `--avenue-speed`, `--street-speed` | [m], [m/s] |
-| `--jitter` | node noise [m] |
-| `--edge-drop` | `edge_drop_prob` |
-| `--avenue-oneway`, `--street-oneway` | `none` / `alternating` |
-| `--boundary` | `dead_end` / `loop` |
-| `--ring-offset`, `--ring-lanes FWD BWD` | ring road |
+Generator parameters have no flags of their own: use `--set`, e.g.
+`generate lsystem --preset grid --set extent=[500,240] --set boundary=ring`
+(the [parameters](generators.md#lsystem-growth-after-parish--müller-lsystempy)).
 
 ## pipeline
 
@@ -147,8 +137,8 @@ validators and logs the time each stage took. Default prefix:
 | `--simulate` | Also write `PREFIX.xosc` and run it headless (only if there are no errors so far) |
 | `--sim-vehicles N` | Vehicles for `--simulate` (default 50) |
 | `--sim-duration S` | Simulated seconds for `--simulate` (default 30) |
-| `--maps` | Generate terrain, elevation (on the terrain) and population (on both) maps (generators from `maps.pipeline`) first, on a grid around the generator's area, and grow the network on them. Written to `PREFIX_<kind>.npz` / `.png`. Generators that don't read maps get them around the finished network, for reference |
-| `--terrain`, `--elevation`, `--population NAME` | Same for one kind, with generator `NAME` (overrides `--maps` for that kind) |
+| `--maps` | Generate terrain, elevation (on the terrain), population (on both) and style (on all three) maps (generators from `maps.pipeline`) first, on a grid around the generator's area, and grow the network on them. Only the kinds the generator reads are built: lsystem builds a style map only for `global_goal: field`. Written to `PREFIX_<kind>.npz` / `.png`. Generators that don't read maps get them around the finished network, for reference |
+| `--terrain`, `--elevation`, `--population`, `--style NAME` | Same for one kind, with generator `NAME` (overrides `--maps` for that kind, and always builds it) |
 | `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`, the same as `maps.terrain.<generator>.rivers` in the config. Repeatable |
 
 With an elevation map the network gets heights before it is written, unless
@@ -164,7 +154,7 @@ python -m cli maps
 ## map
 
 ```bash
-python -m cli map <terrain|elevation|population> <generator> [options] [-o PREFIX]
+python -m cli map <terrain|elevation|population|style> <generator> [options] [-o PREFIX]
 ```
 
 Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
@@ -177,7 +167,7 @@ Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
 | `--size W H` | Map size [m] (default `maps.grid.size`) |
 | `--cell-size M` | Cell size [m] (default `maps.grid.cell_size`) |
 | `--graph FILE.json` | Draw this RoadGraph on the preview |
-| `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population), e.g. `map elevation fbm --on terrain=out/<hash>/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
+| `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population → style), e.g. `map elevation fbm --on terrain=out/<hash>/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
 
 ## align
 
@@ -198,6 +188,17 @@ python -m cli drape NET.json --map-file elevation=E.npz [--map-file terrain=T.np
 
 Gives a RoadGraph heights from an elevation map (and bridges from a terrain
 map). Default output: `NET.draped.json`. Parameters: `drape:` in the config.
+
+## separate
+
+```bash
+python -m cli separate NET.json [-o OUT.json]
+```
+
+Raises roads that cross without a junction over each other (overpasses with
+ramps and bridge spans; see [geometry](geometry.md#grade-separation)).
+Default output: `NET.separated.json`. `generate` and `pipeline` do this
+automatically after the drape. Parameters: `grade_separation:` in the config.
 
 ## ground
 
@@ -241,7 +242,7 @@ python -m cli drive-check NETWORK.xodr      # needs NETWORK.roadmap.json
 ## metrics
 
 ```bash
-python -m cli metrics A.xodr [B.xodr ...] [--json OUT.json]
+python -m cli metrics A.xodr [B.xodr ...] [--graph A.json ...] [--json OUT.json]
 python -m cli metrics --sweep 20 [--first-seed 0] [--generator lsystem] [--preset city]
 ```
 
@@ -251,8 +252,12 @@ acceleration at the posted speed per road group, the share of junctions
 joining only two roads, and curvature jumps at road links and geometry
 joins. `--sweep N` also generates N networks (seeds `--first-seed` … , maps
 as `pipeline --maps`) and counts how many the OpenDRIVE builder rejects.
+`--graph NET.json` (repeatable) adds the [network metrics](validation.md#network-metrics)
+of a RoadGraph: junction legs, skew, offset T pairs, connected-node ratio,
+densities, orientation entropy, tortuosity, block areas and stage C
+features; the sweep logs their median per seed too.
 The report is informational: the command succeeds whatever the numbers are.
-Thresholds are in `defaults.yaml` under `metrics`.
+Thresholds are in `defaults.yaml` under `metrics` and `network_metrics`.
 
 ## view
 
@@ -363,7 +368,7 @@ config:                                        # parameters that differ from def
 
 The hash is a hash of `command`, `args` and `config`. Different ways of
 writing the same run therefore share one folder: an explicit default, flags
-in another order, `--avenues 3` or `--set n_avenues=3` or the same value in
+in another order, `--set rotation_deg=3` or the same value in
 a `--config` file, `-v` or another `--note`. Running the same inputs again
 replaces the folder and keeps its note. A parameter file's content
 (`--params`) goes into `config`, so the run doesn't depend on the file

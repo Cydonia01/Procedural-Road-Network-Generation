@@ -134,7 +134,7 @@ Formats:
 - **`.obj` + `.mtl`** (y-up by default). For Blender, MeshLab and similar tools.
 
 ```bash
-python -m cli pipeline manhattan --avenues 5 --streets 5 --buildings --simulate -o city
+python -m cli pipeline lsystem --preset grid --set extent=[1000,320] --buildings --simulate -o city
 python -m cli simulate out/<hash>/city.xosc --gui
 # Hilly city: roads follow the terrain, ground and buildings in the 3D view
 python -m cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings --simulate -o hills

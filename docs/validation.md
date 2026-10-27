@@ -38,7 +38,8 @@ Groups that differ only by direction of travel are logged but not reported.
 For example, on a pure loop, reversing would need a U-turn, which strands no
 vehicle.
 
-Typical fixes are `--boundary loop` for one-way Manhattan grids, or
+Typical fixes are `--set boundary=ring` for one-way Manhattan-style grids,
+`--set culdesac_prob=1` (turn-around bulbs at dead ends, where they fit), or
 `--allow-traps` when dead ends are intended (organic L-system networks).
 
 ## Topology
@@ -99,7 +100,22 @@ The ASAM XSD can't be bundled because of its license. Download it from ASAM
 and set `OPENDRIVE_XSD=/path/to/opendrive_16_core.xsd` or pass `--xsd`.
 Without it, the check is skipped with a warning.
 
+## Clearance
+
+`validate/clearance.py`, stage C8. Two normal roads (not connecting roads)
+whose reference lines cross in plan meet nowhere, so one must be an
+overpass: at every such crossing their reference heights must differ by at
+least `grade_separation.clearance` minus the 1 m deck (5 m). Contacts within
+1 m of a road's end are not crossings: a dead end reaching another road is
+the generator's layout (a few lsystem networks have a dead end stopping
+right next to a street that grew past it later).
+
 ## Drive-check (esmini RoadManager)
+
+Where an incoming lane splits into several lanes of one road (a lane split),
+esmini's junction selector only knows the turn angle and picks one of them:
+any connecting road of that split, ending in its own lane, passes.
+
 
 ```bash
 python -m cli drive-check out/<hash>/single_4way.xodr
@@ -162,3 +178,42 @@ Not a pass/fail check but a measurement of how realistic the geometry is
 - **Build-failure sweep** (`--sweep N`): generates N networks as
   `pipeline --maps` would and runs the builder on each, reporting the ones
   it rejects (typically an edge shorter than the junction trims at its ends).
+
+## Network metrics
+
+```bash
+python -m cli metrics --graph out/<hash>/net.json --json net_network.json
+```
+
+Also a measurement, not a check (`metrics/network.py`, stage C0): how varied
+a network's layout and junctions are, from the RoadGraph alone, to track the
+stage C work (`plans/2026-10-26-stage-c-implementation.md`) and, later,
+to compare with real-city statistics. Parameters: `network_metrics` in
+`defaults.yaml`.
+
+- **Junction legs:** nodes with 1 (dead ends), 3, 4, 5, 6 and 7+ roads.
+  Nodes with two roads are bends or lane-count changes, counted apart.
+- **Skew:** per junction, the largest angle between two neighbouring arms
+  away from 90° or 180° (0 for T and + shapes, 30° for a Y with three equal
+  angles, 18° for a regular five-way star), and the share of junctions
+  skewed by `skew_threshold_deg` (15°) or more. Also the smallest angle
+  between two arms.
+- **Offset T pairs:** two T junctions joined by an edge of at most
+  `offset_t_distance` (50 m) with their stems on opposite sides of it:
+  staggered crossroads.
+- **Connected-node ratio** CNR = intersections / (intersections + dead
+  ends) (Dill; Teng & Bidarra sec. 4.2: 0.6–1 in real cities),
+  **intersections and dead ends per km²** and **street density** [km/km²]
+  over the convex hull of the nodes (Yang et al. sec. 7).
+- **Orientation entropy** of the length-weighted street bearings in
+  `orientation_bins` (36) bins, both directions counted, and Boeing's
+  **orientation order** φ = 1 − ((H − H_grid) / (H_max − H_grid))²: 1 for a
+  perfect grid, 0 for evenly spread bearings (Boeing 2019; TownSim sec. 4.2).
+- **Tortuosity** (length / chord) of every road through its bends, and the
+  share of road length on roads at least `straight_tortuosity` (1.01).
+- **Block areas:** the bounded faces of the street lines.
+- **Features:** counts of `metadata` lists (`roundabouts`, `culdesacs`,
+  `overpasses`, `tunnels`, `interchanges`, `bridges`).
+
+The stage C baseline of the example networks is in
+`plans/baselines/2026-10-26-stage-c-before-network.json`.

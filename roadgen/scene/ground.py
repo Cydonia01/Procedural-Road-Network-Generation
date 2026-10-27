@@ -25,7 +25,7 @@ from roadgen.config import DEFAULTS, section
 from roadgen.geometry.alignment import ChainAlignment, half_width, network_alignment
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN as DEFAULT_JUNCTION_MARGIN
-from roadgen.geometry.profiles import bridge_spans
+from roadgen.geometry.profiles import bridge_spans, tunnel_spans
 from roadgen.geometry.vertical import (
     chain_elevation,
     chain_superelevation,
@@ -96,7 +96,7 @@ def _level_chain(graph: RoadGraph, ca: ChainAlignment, planes, design: DesignPar
                  x: np.ndarray, y: np.ndarray, target: np.ndarray, params: GroundParams,
                  reach_extra: float) -> None:
     """Lower target under one chain road: below its surface (elevation and banking)
-    out to its widest half width plus reach_extra, except under bridges."""
+    out to its widest half width plus reach_extra, except under bridges and over tunnels."""
     smp = ca.alignment.sample(params.cell_size / 2)
     reach = max(half_width(graph.edges[eid]) for eid in ca.chain.edge_ids) + reach_extra
     idx = _near(x, y, (smp.x.min() - reach, smp.x.max() + reach), (smp.y.min() - reach, smp.y.max() + reach))
@@ -111,7 +111,7 @@ def _level_chain(graph: RoadGraph, ca: ChainAlignment, planes, design: DesignPar
     jj = j[hit]
     s = smp.s[jj]
     keep = np.ones(len(s), bool)
-    for s0, length in bridge_spans(graph, ca):
+    for s0, length in bridge_spans(graph, ca) + tunnel_spans(graph, ca):
         keep &= (s < s0) | (s > s0 + length)
     k, jj, s = k[keep], jj[keep], s[keep]
     # Signed lateral offset (left positive) from the nearest centre-line sample.

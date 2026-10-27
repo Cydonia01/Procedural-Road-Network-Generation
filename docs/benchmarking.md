@@ -13,7 +13,7 @@ python -m cli bench-plot out/bench/results.csv        # re-plot without re-runni
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `grid_sizes` | required | List of `[n_avenues, n_streets]` |
+| `grid_sizes` | required | List of `[n_avenues, n_streets]`: an lsystem grid of that many roads, grown from a corner (`grid_extent`) |
 | `vehicle_counts` | required | Run in ascending order per network |
 | `seeds` | required | Network *and* scenario seed |
 | `sim_duration` | 60 | Simulated seconds per run |
@@ -23,7 +23,7 @@ python -m cli bench-plot out/bench/results.csv        # re-plot without re-runni
 | `speed_range` | [8.0, 13.9] | [m/s] |
 | `timeout_s` | 900 | Per esmini run |
 | `memory_cap_mb` | 8192 | Per esmini run |
-| `network` | `{}` | `ManhattanParams` overrides, optionally `preset:` (e.g. `{preset: manhattan_like}`) |
+| `network` | `{}` | `LSystemParams` overrides, optionally `preset:` (e.g. `{preset: manhattan_like}`); `extent`, `start` and `branch_prob` come from the grid size |
 | `out_dir` | `out/bench` | Overridable with `--out-dir` |
 
 Unknown keys are rejected, and network and scenario parameters are checked

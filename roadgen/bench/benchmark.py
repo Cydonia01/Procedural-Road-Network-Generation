@@ -1,5 +1,10 @@
 """Scalability sweep: grid size x vehicle count x seed, one CSV row per run.
 
+A grid size (n_avenues, n_streets) is an lsystem grid of n_avenues roads along
+local y and n_streets along local x, grown from a corner with branch_prob 1
+(grid_extent), on top of the `network` overrides (LSystemParams fields or a
+preset).
+
 For every (grid, seed) the network is generated and built once and cached
 under <out_dir>/networks together with its metrics. For every vehicle count
 a scenario is written and esmini runs it once.
@@ -44,8 +49,9 @@ from typing import Any, Iterator, Optional, Union
 import yaml
 from lxml import etree
 
-from roadgen.config import DEFAULTS, merge
-from roadgen.generators.manhattan import ManhattanGenerator, ManhattanParams
+from roadgen.config import DEFAULTS, merge, section
+from roadgen.generators.base import coerce_tuples
+from roadgen.generators.lsystem import LSystemGenerator, LSystemParams, grid_extent
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.scenario.xosc_builder import END_MARGIN, ScenarioBuilder, ScenarioParams
 from roadgen.sim.runner import run_esmini
@@ -85,7 +91,7 @@ class BenchConfig:
     speed_range: tuple[float, float] = tuple(_D["speed_range"])
     timeout_s: float = _D["timeout_s"]  # per esmini run
     memory_cap_mb: float = _D["memory_cap_mb"]  # per esmini run
-    # ManhattanParams overrides / preset
+    # LSystemParams overrides / preset
     network: dict[str, Any] = field(default_factory=lambda: dict(_D["network"]))
     out_dir: str = _D["out_dir"]
 
@@ -105,14 +111,13 @@ class BenchConfig:
         ScenarioParams(1, 0, cfg.sim_duration, cfg.spawn_mode, cfg.speed_range, cfg.min_spawn_gap)
         return cfg
 
-    def network_params(self, n_avenues: int, n_streets: int) -> ManhattanParams:
-        net = dict(self.network)
+    def network_params(self, n_avenues: int, n_streets: int) -> LSystemParams:
+        net = coerce_tuples(LSystemParams, dict(self.network))
         preset = net.pop("preset", None)
-        for key in ("avenue_lanes", "street_lanes", "ring_lanes", "origin"):
-            if key in net:
-                net[key] = tuple(net[key])
-        net.update(n_avenues=n_avenues, n_streets=n_streets)
-        return ManhattanParams.preset(preset, **net) if preset else ManhattanParams(**net)
+        block = net.get("block_size") or LSystemParams.PRESETS.get(preset, {}).get("block_size") \
+            or section(DEFAULTS, "generators", "lsystem")["block_size"]
+        net.update(extent=grid_extent(n_avenues, n_streets, block), start=(0.0, 0.0), branch_prob=1.0)
+        return LSystemParams.preset(preset, **net) if preset else LSystemParams(**net)
 
     @property
     def config_id(self) -> str:
@@ -198,7 +203,7 @@ def ensure_network(cfg: BenchConfig, grid: tuple[int, int], seed: int, out: Path
 
     params = cfg.network_params(a, s)
     t0 = time.perf_counter()
-    graph = ManhattanGenerator().generate(params, seed)
+    graph = LSystemGenerator().generate(params, seed)
     t1 = time.perf_counter()
     builder = OpenDriveBuilder(name=graph.metadata["name"])
     builder.build(graph)

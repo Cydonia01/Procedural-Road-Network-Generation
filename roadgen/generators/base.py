@@ -44,6 +44,10 @@ class RoadNetworkGenerator(ABC, Generic[P]):
         """World (x0, y0, x1, y1) the network can occupy, if known before generating."""
         return None
 
+    def map_kinds(self, params: P) -> Optional[tuple[str, ...]]:
+        """Map kinds `pipeline --maps` builds for these params; None = all of them."""
+        return None
+
 
 # --- registry --------------------------------------------------------------------------
 
@@ -150,9 +154,12 @@ def kind_from_degree(degree: int) -> NodeKind:
 
 
 def assign_node_kinds(graph: RoadGraph) -> None:
+    """Kinds from the node degrees; interchange ramp nodes (3+ roads) stay "ramp"."""
     degrees = {n: 0 for n in graph.nodes}
     for e in graph.edges.values():
         degrees[e.from_node] += 1
         degrees[e.to_node] += 1
     for node_id, node in graph.nodes.items():
+        if node.kind == "ramp" and degrees[node_id] >= 3:
+            continue
         node.kind = kind_from_degree(degrees[node_id])

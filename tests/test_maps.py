@@ -45,6 +45,7 @@ from roadgen.maps.noise import (
 from roadgen.maps.plot import plot_map
 from roadgen.maps.population import CentersPopulationParams, ImagePopulationParams
 from roadgen.maps.terrain import ImageTerrainParams, NoiseTerrainParams
+from tests.grids import ON_MAPS, grid_cli
 
 GRID = GridSpec((0.0, 0.0), (2000.0, 1500.0), 20.0)
 BUILTIN = [("terrain", "noise"), ("elevation", "fbm"), ("population", "centers")]
@@ -475,7 +476,7 @@ def test_cli_image_map_needs_a_path():
 
 def test_cli_pipeline_maps(tmp_path):
     prefix = tmp_path / "net"
-    argv = ["pipeline", "manhattan", "--avenues", "3", "--streets", "3", "--maps",
+    argv = ["pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps",
             "--population", "centers", "--map-set", "terrain.rivers=0", "-o", str(prefix)]
     assert main(argv) == 0
     graph = load_json(prefix.with_suffix(".json"))
@@ -490,7 +491,7 @@ def test_cli_pipeline_maps(tmp_path):
 
 def test_cli_pipeline_without_maps_writes_none(tmp_path):
     prefix = tmp_path / "net"
-    assert main(["pipeline", "manhattan", "--avenues", "2", "--streets", "2",
+    assert main(["pipeline", "lsystem", *grid_cli(2, 2), *ON_MAPS,
                  "--elevation", "fbm", "-o", str(prefix)]) == 0
     assert (tmp_path / "net_elevation.npz").is_file()
     assert not (tmp_path / "net_terrain.npz").exists()
@@ -511,7 +512,7 @@ def test_cli_map_on_earlier_maps(tmp_path):
 
 def test_cli_pipeline_maps_are_consistent(tmp_path):
     prefix = tmp_path / "net"
-    assert main(["pipeline", "manhattan", "--avenues", "3", "--streets", "3", "--maps",
+    assert main(["pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps",
                  "--map-set", "terrain.water_fraction=0.3", "-o", str(prefix)]) == 0
     t, e, p = (load_npz(tmp_path / f"net_{k}.npz") for k in ("terrain", "elevation", "population"))
     water = t.data == WATER
@@ -520,5 +521,5 @@ def test_cli_pipeline_maps_are_consistent(tmp_path):
 
 def test_cli_map_set_needs_a_kind(tmp_path):
     with pytest.raises(SystemExit, match="map-set"):
-        main(["pipeline", "manhattan", "--avenues", "2", "--streets", "2", "--maps",
+        main(["pipeline", "lsystem", *grid_cli(2, 2), *ON_MAPS, "--maps",
               "--map-set", "rivers=2", "-o", str(tmp_path / "n")])

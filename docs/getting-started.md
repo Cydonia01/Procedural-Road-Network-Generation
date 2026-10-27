@@ -52,7 +52,7 @@ python -m cli generators
 
 # 3. Full pipeline on a small grid: graph → PNG → .xodr → validation
 #    → drive-check → short simulation
-python -m cli pipeline manhattan --avenues 4 --streets 4 --seed 1 \
+python -m cli pipeline lsystem --preset grid --set extent=[750,240] --seed 1 \
     --drive-check --simulate -o first
 
 # 4. Look at the result

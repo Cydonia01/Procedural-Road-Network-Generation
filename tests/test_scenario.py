@@ -7,17 +7,17 @@ import pytest
 from lxml import etree
 
 from cli import main
-from roadgen.generators.manhattan import ManhattanGenerator, ManhattanParams
 from roadgen.graph.io import save_json
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.scenario.xosc_builder import END_MARGIN, ScenarioBuilder, ScenarioParams
 from roadgen.sim.runner import parse_log
+from tests.grids import small_grid
 
 
 @pytest.fixture
 def grid(tmp_path) -> Path:
     """A 3x4 two-way grid written as .json/.xodr/.roadmap.json; returns the .xodr."""
-    g = ManhattanGenerator().generate(ManhattanParams(3, 4), 0)
+    g = small_grid(3, 4)
     save_json(g, tmp_path / "grid.json")
     b = OpenDriveBuilder()
     b.build(g)
@@ -198,7 +198,7 @@ def _esmini_available() -> bool:
 def test_tiny_scenario_runs_in_esmini(tmp_path, monkeypatch, mode):
     from roadgen.sim.runner import run_esmini
 
-    g = ManhattanGenerator().generate(ManhattanParams(2, 2), 0)
+    g = small_grid(2, 2)
     b = OpenDriveBuilder()
     b.build(g)
     b.write(tmp_path / "net" / "tiny.xodr")

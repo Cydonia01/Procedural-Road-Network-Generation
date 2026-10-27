@@ -6,7 +6,6 @@ import pytest
 from lxml import etree
 from shapely.geometry import LineString
 
-from roadgen.generators.manhattan import ManhattanGenerator, ManhattanParams
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
@@ -18,10 +17,11 @@ from roadgen.scene.buildings import (
     footprints,
     road_half_extent,
 )
+from tests.grids import small_grid
 
 
 def grid(a: int = 4, s: int = 5) -> RoadGraph:
-    return ManhattanGenerator().generate(ManhattanParams(a, s), 0)
+    return small_grid(a, s)
 
 
 def test_one_block_per_grid_cell():

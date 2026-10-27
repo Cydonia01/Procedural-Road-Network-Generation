@@ -163,9 +163,9 @@ cli generate lsystem --preset city $M --flat -o out/net_flat.json    # same netw
 ```
 
 `--map-file KIND=FILE.npz` can be repeated. With an elevation map the graph is
-draped automatically unless you pass `--flat`. Manhattan accepts maps too, but
-only gets heights from them: one hilly run reached a 47.7 % grade, which
-`docs/maps.md` lists as a known limitation.
+draped automatically unless you pass `--flat`. (The `manhattan` generator,
+removed in stage C, accepted maps too but only got heights from them: one
+hilly run reached a 47.7 % grade.)
 
 **New lsystem parameters, each tried with `--set` on top of `$M`:**
 
@@ -263,7 +263,7 @@ cli pipeline lsystem --preset city --allow-traps --maps --buildings        # wri
 cli pipeline lsystem --preset city --allow-traps --maps --ground           # writes pl_scene.osgt
 cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings --simulate --sim-vehicles 20 --sim-duration 10
 cli pipeline lsystem --preset city --allow-traps --maps --drive-check     # 4209/4209 movements drive through
-cli pipeline manhattan --avenues 4 --streets 4 --maps --ground             # maps used for heights only
+cli pipeline lsystem --preset grid --set extent=[750,240] --maps --ground --allow-traps   # a small grid on maps
 ```
 
 | Flag | Meaning |
@@ -318,5 +318,5 @@ Both were found by the first run of these commands and are covered by tests now.
    The only street "bridges" left in the outputs are by design:
    - a 2.5 m stretch where a street ends on a highway bridge node next to the
      shore;
-   - manhattan networks, which don't read maps while growing, so their roads
-     cross water as bridges.
+   - networks of the `manhattan` generator (removed in stage C), which didn't
+     read maps while growing, so their roads crossed water as bridges.

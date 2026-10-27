@@ -105,8 +105,9 @@ def test_params_validation():
 
 
 def test_build_one_reports_success():
-    r = build_one("manhattan", "manhattan_like", 0)
+    r = build_one("lsystem", "grid", 0)
     assert r.ok and r.edges > 0
+    assert r.network["legs"]["4"] > 0 and 0 < r.network["cnr"] <= 1
 
 
 def test_cli_metrics_writes_json(tmp_path):

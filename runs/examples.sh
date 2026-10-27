@@ -79,15 +79,15 @@ IP=$RUN/image_population.npz
 echo "== 2 road network"
 COAST=(--map-file terrain=$CT --map-file elevation=$CE --map-file population=$CP)
 RIVER=(--map-file terrain=$RT --map-file elevation=$RE --map-file population=$RP)
-cli --note "2 network | manhattan, preset manhattan_like (one-way avenues, rotated 29 deg)" \
-    generate manhattan --preset manhattan_like --seed 1 -o manhattan_like.json
+cli --note "2 network | lsystem, preset manhattan_like (alternating one-way avenues and streets, ring road, rotated 29 deg)" \
+    generate lsystem --preset manhattan_like --seed 1 -o manhattan_like.json
 ML=$RUN/manhattan_like.json
-cli --note "2 network | manhattan, bare parameters: 6 x 12 grid, ring road, jitter, dropped streets" \
-    generate manhattan --avenues 6 --streets 12 --avenue-spacing 220 --street-spacing 90 --rotation 15 \
-    --jitter 3 --edge-drop 0.05 --boundary loop --seed 2 -o manhattan_ring.json
-MR=$RUN/manhattan_ring.json
-cli --note "2 network | manhattan with --config runs/inputs/wide_lanes.yaml (3.75 m lanes)" \
-    --config runs/inputs/wide_lanes.yaml generate manhattan --avenues 5 --streets 8 -o manhattan_wide.json
+cli --note "2 network | lsystem grid, bare parameters: 6 x 12 grid, ring road, heading noise, dropped streets" \
+    generate lsystem --preset grid --set "extent=[1100,990]" --set "block_size=[220,90]" --set rotation_deg=15 \
+    --set angle_jitter_deg=1.5 --set edge_drop_prob=0.05 --set boundary=ring --seed 2 -o grid_ring.json
+GR=$RUN/grid_ring.json
+cli --note "2 network | lsystem grid with --config runs/inputs/wide_lanes.yaml (3.75 m lanes)" \
+    --config runs/inputs/wide_lanes.yaml generate lsystem --preset grid --set "extent=[1000,560]" -o grid_wide.json
 cli --note "2 network | lsystem, preset grid (a 10 x 10 grid grown from a corner)" \
     generate lsystem --preset grid -o lsystem_grid.json
 cli --note "2 network | lsystem, preset grid_organic (wobbly, some branches missing)" \
@@ -112,21 +112,21 @@ cli --note "2 network | lsystem city on the image maps, no highways, max grade 8
 cli --note "2 network | drape the flat coastal city with the coastal elevation + terrain" \
     drape $CF --map-file elevation=$CE --map-file terrain=$CT -o coast_city_draped.json
 cli --note "2 network | plot the coastal city graph" plot-graph $CC coast_city.png
-cli --note "2 network | plot the manhattan ring with node ids" plot-graph $MR manhattan_ring.png --node-ids
+cli --note "2 network | plot the ring-road grid with node ids" plot-graph $GR grid_ring.png --node-ids
 cli --note "2 network | the coastal population map with the coastal city on top" \
     plot-map $CP coast_city_on_population.png --graph $CC
 
 echo "== 3 OpenDRIVE"
 cli --note "3 xodr | build-xodr: manhattan_like" build-xodr $ML manhattan_like.xodr
 MLX=$RUN/manhattan_like.xodr
-cli --note "3 xodr | build-xodr: manhattan ring" build-xodr $MR manhattan_ring.xodr
+cli --note "3 xodr | build-xodr: ring-road grid" build-xodr $GR grid_ring.xodr
 cli --note "3 xodr | build-xodr: lsystem grid_organic, junction margin 3 m" \
     build-xodr $OG organic.xodr --junction-margin 3
 cli --note "3 xodr | build-xodr: coastal city with elevation profiles" build-xodr $CC coast_city.xodr
 CCX=$RUN/coast_city.xodr
 cli --note "3 xodr | drive-check: every junction movement of the coastal city in esmini" drive-check $CCX
 cli --note "3 xodr | pipeline: manhattan_like -> json, png, xodr, all validators" \
-    pipeline manhattan --preset manhattan_like --seed 1 -o manhattan_like
+    pipeline lsystem --preset manhattan_like --seed 1 -o manhattan_like
 PML=$RUN/manhattan_like
 cli --note "3 xodr | pipeline: lsystem grid + drive-check" pipeline lsystem --preset grid --drive-check -o grid
 cli --note "3 xodr | pipeline: lsystem city on generated maps (--maps), seed 7" \
@@ -143,7 +143,7 @@ cli --note "4 scene | pipeline: lsystem grid_organic + buildings (.osgt)" \
     pipeline lsystem --preset grid_organic --seed 2 --allow-traps --buildings -o organic_buildings
 POB=$RUN/organic_buildings
 cli --note "4 scene | pipeline: manhattan_like + buildings" \
-    pipeline manhattan --preset manhattan_like --seed 1 --buildings -o manhattan_buildings
+    pipeline lsystem --preset manhattan_like --seed 1 --buildings -o manhattan_buildings
 PMB=$RUN/manhattan_buildings
 cli --note "4 scene | pipeline: lsystem city on generated maps + ground mesh + buildings" \
     pipeline lsystem --preset city --allow-traps --maps --seed 7 --ground --buildings -o city_scene
@@ -187,7 +187,7 @@ cli --note "6 simulate | whole chain in one pipeline: maps, city, ground, buildi
     --sim-vehicles 60 --sim-duration 20 -o city_full
 PCF=$RUN/city_full
 cli --note "6 simulate | whole chain in one pipeline: manhattan_like with buildings, esmini run" \
-    pipeline manhattan --preset manhattan_like --seed 1 --buildings --simulate --sim-vehicles 100 \
+    pipeline lsystem --preset manhattan_like --seed 1 --buildings --simulate --sim-vehicles 100 \
     -o manhattan_full
 
 echo "== 8 road geometry (stage A)"
@@ -208,6 +208,57 @@ cli --note "8 geometry | pipeline: lsystem hill_town on maps (contour streets), 
     pipeline lsystem --preset hill_town --seed 1 --maps --allow-traps --ground --buildings --drive-check \
     -o hill_town
 
+echo "== 9 long-tail diversity (stage C)"
+cli --note "9 diversity | pipeline: lsystem paris (a star of avenues and rings, a grid outside), drive-check" \
+    pipeline lsystem --preset paris --allow-traps --drive-check -o paris
+PA=$RUN/paris
+cli --note "9 diversity | pipeline: lsystem organic_town (grid-to-organic knob 0.8)" \
+    pipeline lsystem --preset organic_town --seed 1 --allow-traps -o organic_town
+OT=$RUN/organic_town
+cli --note "9 diversity | pipeline: lsystem organic_town with the grid-to-organic knob at 0.3" \
+    pipeline lsystem --preset organic_town --seed 1 --set organic=0.3 --allow-traps -o organic_town_03
+cli --note "9 diversity | pipeline: lsystem skewed_grid (streets at 60-90 deg to the avenues)" \
+    pipeline lsystem --preset skewed_grid --allow-traps -o skewed_grid
+SG=$RUN/skewed_grid
+cli --note "9 diversity | pipeline: lsystem suburb (cul-de-sac bulbs at dead ends), drive-check" \
+    pipeline lsystem --preset suburb --seed 1 --allow-traps --drive-check -o suburb
+SB=$RUN/suburb
+cli --note "9 diversity | pipeline: lsystem suburb with connectors (detour ratio 1.5)" \
+    pipeline lsystem --preset suburb --seed 1 --set detour_ratio=1.5 --allow-traps -o suburb_connected
+cli --note "9 diversity | pipeline: lsystem mixed_city on generated maps (style map districts), drive-check" \
+    pipeline lsystem --preset mixed_city --maps --seed 1 --allow-traps --drive-check -o mixed_city
+MC=$RUN/mixed_city
+cli --note "9 diversity | map style zones, preset old_town, on the mixed city's maps" \
+    map style zones --preset old_town --seed 1 --on terrain=${MC}_terrain.npz \
+    --on elevation=${MC}_elevation.npz --on population=${MC}_population.npz -o old_town_style
+cli --note "9 diversity | pipeline: junction preset k (a through road and two diagonals), drive-check" \
+    pipeline junction --preset k --seed 3 --allow-traps --drive-check -o junction_k
+cli --note "9 diversity | pipeline: junction preset random, seed 17 (JunctionArt-style long tail)" \
+    pipeline junction --preset random --seed 17 --allow-traps -o junction_random
+JR=$RUN/junction_random
+cli --note "9 diversity | pipeline: junction preset roundabout, drive-check" \
+    pipeline junction --preset roundabout --seed 2 --allow-traps --drive-check -o roundabout
+RB=$RUN/roundabout
+cli --note "9 diversity | pipeline: junction preset diamond (highway interchange)" \
+    pipeline junction --preset diamond --allow-traps -o diamond
+DM=$RUN/diamond
+cli --note "9 diversity | pipeline: junction preset cloverleaf (highway x highway interchange)" \
+    pipeline junction --preset cloverleaf --allow-traps -o cloverleaf
+CL=$RUN/cloverleaf
+cli --note "9 diversity | pipeline: lsystem city on maps with freeways (overpasses), drive-check" \
+    pipeline lsystem --preset city --maps --seed 1 --set highway_crossings=separated --allow-traps \
+    --drive-check -o city_freeways
+cli --note "9 diversity | pipeline: lsystem highway_corridor on maps (freeways, a diamond, lane adds and drops)" \
+    pipeline lsystem --preset highway_corridor --maps --seed 1 --allow-traps --ground -o highway_corridor
+HC=$RUN/highway_corridor
+cli --note "9 diversity | pipeline: lsystem city on hilly maps with a highway tunnel, ground" \
+    pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 \
+    --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --allow-traps --ground -o tunnel_city
+TC=$RUN/tunnel_city
+cli --note "9 diversity | metrics --graph: network metrics of manhattan_like, the coastal city and the stage C presets" \
+    metrics --graph $ML --graph $CC --graph $PA.json --graph $OT.json --graph $SG.json --graph $SB.json \
+    --graph $MC.json --graph $HC.json --graph $JR.json --json network_metrics.json
+
 [ -n "${NO_GUI:-}" ] && exit 0
 echo "== 7 esmini GUI (views stay open until you close the window)"
 gui --note "7 gui | odrviewer: manhattan_like with buildings, random cars" \
@@ -218,5 +269,13 @@ gui --note "7 gui | odrviewer: coastal city with heights, on its ground + buildi
     view $CCX --scenegraph $CCS
 gui --note "7 gui | odrviewer: the one-command city (maps, ground, buildings) from phase 6" \
     view $PCF.xodr --scenegraph ${PCF}_scene.osgt
+gui --note "7 gui | odrviewer: paris (radial star and rings), 2 cars / 100 m" view $PA.xodr --density 2
+gui --note "7 gui | odrviewer: suburb with cul-de-sac bulbs" view $SB.xodr
+gui --note "7 gui | odrviewer: mixed_city districts on generated maps" view $MC.xodr
+gui --note "7 gui | odrviewer: roundabout from the junction generator" view $RB.xodr
+gui --note "7 gui | odrviewer: diamond interchange" view $DM.xodr
+gui --note "7 gui | odrviewer: cloverleaf interchange" view $CL.xodr
+gui --note "7 gui | odrviewer: freeway corridor with its diamond, on its ground" view $HC.xodr --scenegraph ${HC}_scene.osgt
+gui --note "7 gui | odrviewer: hilly city with a highway tunnel, on its ground" view $TC.xodr --scenegraph ${TC}_scene.osgt
 gui --note "7 gui | esmini: manhattan_like with buildings, top camera" simulate $S4 --gui
 gui --note "7 gui | esmini: coastal city on its ground + buildings" simulate $S5 --gui

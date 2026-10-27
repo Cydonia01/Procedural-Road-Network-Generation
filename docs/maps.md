@@ -19,10 +19,11 @@ the maps enter the pipeline.
 
 ## Design
 
-- **A linear pipeline: terrain → elevation → population.** Each kind has
+- **A linear pipeline: terrain → elevation → population → style.** Each kind has
   its own registry, and the kinds are built in this order. A generator gets
   the maps of the earlier kinds as `upstream` (a `MapSet`, any layer may be
-  missing): elevation reads the terrain, population reads both. So the
+  missing): elevation reads the terrain, population reads both, style
+  reads all three. So the
   stack is consistent: water lies flat in the valleys, and nobody lives on
   water, in parks or on steep slopes. A generator never reads a later kind
   or a RoadGraph. Without upstream maps it gives exactly its standalone
@@ -44,14 +45,15 @@ the maps enter the pipeline.
   kind, grid, generator, seed, params) with a `.png` preview next to it.
   Row 0 of the array is the **south** edge (`imshow(origin="lower")`).
   `MapLayer.sample(x, y)` reads values at world points (nearest cell for
-  terrain, bilinear otherwise). A road generator receives the layers as
-  one `MapSet(terrain=…, elevation=…, population=…)`; each may be `None`.
+  terrain and style, bilinear otherwise). A road generator receives the layers as
+  one `MapSet(terrain=…, elevation=…, population=…, style=…)`; each may be `None`.
 
 | Kind | Values | dtype | Generators |
 |------|--------|-------|-----------|
 | `terrain` | `0` water, `1` land, `2` vegetation (park / forest) | `uint8` | `noise`, `image` |
 | `elevation` | height [m] | `float32` | `fbm`, `image` |
 | `population` | density [people/km²] | `float32` | `centers`, `image` |
+| `style` | `0` grid, `1` radial, `2` organic, `3` contour, `4` suburb | `uint8` | `zones`, `image` |
 
 ## `terrain noise`: lakes, coast, rivers, vegetation (`terrain.py`)
 
@@ -125,6 +127,49 @@ for reference. A layer built on upstream maps lists them in
 `metadata.upstream`. Presets: `monocentric`,
 `polycentric`, `sprawl`.
 
+## `style zones`: street patterns per district (`style.py`)
+
+Stage C3. Parish & Müller (2001, sec. 3.2.2) drive their pattern rules with
+grey-scale control maps; a style map holds one street pattern class per
+cell, and lsystem's [field goal](generators.md#pattern-fields-global_goal-field)
+blends the patterns by it. Only the field goal reads it: `pipeline --maps`
+builds it only for the field goal, and the `grid` goal ignores one passed in.
+
+`zones` splits the grid into **districts**: one site per `zone_size` square
+(at a random spot in it), cells to the nearest site after a domain warp of
+`warp` · `zone_size`, so borders are irregular. Each district gets a class:
+
+- **on a population map**, by its mean density on land: a district holding
+  the main population centre (or with its site within `radial_radius` of
+  it) is **radial**; at least `core_density` is a **grid**; down to
+  `suburb_density` a grid, or **organic** with `organic_share`; below,
+  **suburb**;
+- **on an elevation map**, a district with a mean grade of at least
+  `contour_grade` follows the **contours** (checked before the density bands);
+- **without upstream maps**, by `shares` (grid, radial, organic, contour, suburb).
+
+Every district also draws its own **grid angle**, a common base angle plus a
+normal spread of `angle_spread_deg`, so neighbouring districts meet at an
+angle as in real cities. The metadata holds the `sites` (`[x, y, class,
+angle_deg]`) and the `radial_centers`, which lsystem reads: its grid
+follows the nearest site's angle, and its radial pattern centres on them.
+lsystem blends neighbouring districts over `style_blend_width` (each
+class's share of the cells within it).
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `zone_size` | 800 | Typical district size [m] |
+| `warp` | 0.25 | Domain warp of the borders, in units of `zone_size` |
+| `shares` | (0.5, 0, 0.3, 0, 0.2) | Class shares without a population map |
+| `core_density`, `suburb_density` | 6000, 1500 | Density bands [people/km²] |
+| `organic_share` | 0.35 | Share of the middle districts that are organic |
+| `radial_radius` | 600 | Districts this close to the main centre are radial [m]; 0 = none |
+| `contour_grade` | 0.10 | Districts at least this steep (mean rise / run) follow the contours |
+| `angle_spread_deg` | 25 | Spread of the districts' grid angles [deg] |
+
+Presets: `planned` (one grid angle, few organic districts, no radial core)
+and `old_town` (a wide radial core, mostly organic, many angles).
+
 ## `image`: real or hand-drawn maps
 
 Every kind has an `image` generator that stretches a PNG / JPEG (or `.npy`)
@@ -137,6 +182,7 @@ required. Image maps are used as given; they don't adapt to upstream maps
 | `terrain` | Color image: nearest of `water_color` / `land_color` / `vegetation_color`. Grayscale image (also gray saved as RGB): a water mask, water where darker than `gray_threshold` (`water_is_dark: false` flips this) |
 | `elevation` | Grayscale 0..1 → `min_elevation`..`max_elevation`. `stretch: true` maps the raster's own min..max instead (use this for 16-bit or `.npy` data in arbitrary units) |
 | `population` | Grayscale 0..1 → `min_density`..`max_density` |
+| `style` | Color image: nearest of the five `colors` (grid, radial, organic, contour, suburb); radial centres are the centroid of the radial pixels |
 
 GeoTIFFs are not read directly (that would add a GDAL/rasterio dependency).
 Convert them first:
@@ -197,12 +243,15 @@ python -m cli pipeline lsystem --preset city --allow-traps --maps --elevation im
 python -m cli generate lsystem --preset city --map-file terrain=out/<hash>/coast.npz \
     --map-file population=out/<hash>/lsystem_city_s0_population.npz -o net.json
 
-# Generators without map support get the maps around the network, for reference
-python -m cli pipeline manhattan --preset manhattan_like --maps
+# Street patterns from a style map: districts of grid, radial, organic, contour, suburb
+python -m cli pipeline lsystem --preset mixed_city --allow-traps --maps
+python -m cli map style zones --preset old_town --on population=out/<hash>/city_population.npz
 ```
 
 `pipeline --maps` uses the generators named in `maps.pipeline` of the
-config and builds terrain, then elevation on it, then population on both. `--terrain/--elevation/--population NAME` choose one kind
+config and builds terrain, then elevation on it, then population on both,
+then style on all three (only for generators that read it: lsystem's field
+goal). `--terrain/--elevation/--population/--style NAME` choose one kind
 explicitly, and `--map-file KIND=FILE.npz` loads one (it wins over a
 generator for that kind). `generate` takes `--map-file` too. A map file
 should cover the generator's area; a file made for another area logs a
@@ -335,12 +384,11 @@ same `.xodr` and `.json` as before.
 
 - **Grade limits after draping.** lsystem keeps grades under `max_grade`
   while growing, but drape does not enforce one (it logs the steepest
-  grade). manhattan networks on hilly maps can therefore get steep roads.
-- **Street patterns from maps.** The paper blends pattern rules (New York,
-  Paris, San Francisco) with a pattern control map. Streets here always use
-  the grid goal.
+  grade). Networks grown without the maps (or with `max_grade: 0`) can
+  therefore get steep roads on hilly maps.
 - **Vegetation from elevation.** In the linear pipeline, terrain can't see
   elevation, so forests don't prefer steep or high ground. That would need
   a post-step on the terrain after elevation.
-- **manhattan** ignores maps while growing (it only gets heights). It has no
-  growth step that a constraint could act on.
+- **Style from the terrain.** A style map could also put suburbs on the far
+  side of water and organic streets around parks; `zones` only reads
+  density and slope.

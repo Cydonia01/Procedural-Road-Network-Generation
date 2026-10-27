@@ -1,0 +1,574 @@
+{
+  "networks": [],
+  "graphs": [
+    {
+      "graph": "manhattan_like.json",
+      "name": "lsystem_grid_s1",
+      "params": {
+        "orientation_bins": 36,
+        "skew_threshold_deg": 15.0,
+        "offset_t_distance": 50.0,
+        "straight_tortuosity": 1.01
+      },
+      "counts": {
+        "nodes": 384,
+        "edges": 724,
+        "junctions": 380,
+        "dead_ends": 0,
+        "two_road_nodes": 4,
+        "length_km": 105.12,
+        "area_km2": 5.7828
+      },
+      "legs": {
+        "1": 0,
+        "3": 80,
+        "4": 300,
+        "5": 0,
+        "6": 0,
+        "7+": 0
+      },
+      "cnr": 1.0,
+      "intersections_per_km2": 65.712,
+      "dead_ends_per_km2": 0.0,
+      "street_density_km_per_km2": 18.178,
+      "skew_deg": {
+        "n": 380,
+        "p10": 0.0,
+        "p50": 0.0,
+        "p90": 0.0,
+        "mean": 0.0,
+        "max": 0.0
+      },
+      "skewed_share": 0.0,
+      "min_arm_angle_deg": {
+        "n": 380,
+        "p10": 90.0,
+        "p50": 90.0,
+        "p90": 90.0,
+        "mean": 90.0,
+        "max": 90.0
+      },
+      "offset_t_pairs": 0,
+      "orientation_entropy": 1.2847,
+      "orientation_order": 0.9979,
+      "tortuosity": {
+        "n": 720,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.0,
+        "mean": 1.0023,
+        "max": 1.4142
+      },
+      "curved_length_share": 0.0046,
+      "block_area_m2": {
+        "n": 341,
+        "p10": 4800.0,
+        "p50": 20000.0,
+        "p90": 20000.0,
+        "mean": 16958.3578,
+        "max": 20000.0
+      },
+      "one_way_length_share": 0.9085,
+      "class_length_share": {
+        "avenue": 0.3236,
+        "street": 0.6764
+      },
+      "features": {
+        "roundabouts": 0,
+        "culdesacs": 0,
+        "overpasses": 0,
+        "tunnels": 0,
+        "interchanges": 0,
+        "bridges": 0
+      }
+    },
+    {
+      "graph": "coast_city.json",
+      "name": "lsystem_grid_s4",
+      "params": {
+        "orientation_bins": 36,
+        "skew_threshold_deg": 15.0,
+        "offset_t_distance": 50.0,
+        "straight_tortuosity": 1.01
+      },
+      "counts": {
+        "nodes": 604,
+        "edges": 811,
+        "junctions": 377,
+        "dead_ends": 97,
+        "two_road_nodes": 130,
+        "length_km": 84.64,
+        "area_km2": 6.1224
+      },
+      "legs": {
+        "1": 97,
+        "3": 243,
+        "4": 134,
+        "5": 0,
+        "6": 0,
+        "7+": 0
+      },
+      "cnr": 0.7954,
+      "intersections_per_km2": 61.577,
+      "dead_ends_per_km2": 15.843,
+      "street_density_km_per_km2": 13.825,
+      "skew_deg": {
+        "n": 377,
+        "p10": 1.9598,
+        "p50": 5.6297,
+        "p90": 13.9738,
+        "mean": 7.0336,
+        "max": 31.2011
+      },
+      "skewed_share": 0.0796,
+      "min_arm_angle_deg": {
+        "n": 377,
+        "p10": 78.672,
+        "p50": 85.6297,
+        "p90": 89.594,
+        "mean": 84.5646,
+        "max": 97.5422
+      },
+      "offset_t_pairs": 12,
+      "orientation_entropy": 2.006,
+      "orientation_order": 0.9205,
+      "tortuosity": {
+        "n": 681,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.3083,
+        "mean": 1.0835,
+        "max": 6.3301
+      },
+      "curved_length_share": 0.2388,
+      "block_area_m2": {
+        "n": 208,
+        "p10": 5470.6921,
+        "p50": 13522.3618,
+        "p90": 36968.9547,
+        "mean": 20825.0796,
+        "max": 282448.9304
+      },
+      "one_way_length_share": 0.0,
+      "class_length_share": {
+        "avenue": 0.4071,
+        "highway": 0.0319,
+        "street": 0.561
+      },
+      "features": {
+        "roundabouts": 0,
+        "culdesacs": 0,
+        "overpasses": 0,
+        "tunnels": 0,
+        "interchanges": 0,
+        "bridges": 0
+      }
+    },
+    {
+      "graph": "paris.json",
+      "name": "lsystem_field_s0",
+      "params": {
+        "orientation_bins": 36,
+        "skew_threshold_deg": 15.0,
+        "offset_t_distance": 50.0,
+        "straight_tortuosity": 1.01
+      },
+      "counts": {
+        "nodes": 312,
+        "edges": 452,
+        "junctions": 222,
+        "dead_ends": 26,
+        "two_road_nodes": 64,
+        "length_km": 50.881,
+        "area_km2": 3.0291
+      },
+      "legs": {
+        "1": 26,
+        "3": 141,
+        "4": 79,
+        "5": 1,
+        "6": 1,
+        "7+": 0
+      },
+      "cnr": 0.8952,
+      "intersections_per_km2": 73.288,
+      "dead_ends_per_km2": 8.583,
+      "street_density_km_per_km2": 16.797,
+      "skew_deg": {
+        "n": 222,
+        "p10": 1.8535,
+        "p50": 8.3583,
+        "p90": 28.2594,
+        "mean": 12.2419,
+        "max": 58.1857
+      },
+      "skewed_share": 0.2973,
+      "min_arm_angle_deg": {
+        "n": 222,
+        "p10": 64.2947,
+        "p50": 83.3512,
+        "p90": 89.1116,
+        "mean": 79.7307,
+        "max": 99.8045
+      },
+      "offset_t_pairs": 2,
+      "orientation_entropy": 3.4717,
+      "orientation_order": 0.0992,
+      "tortuosity": {
+        "n": 388,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.0029,
+        "mean": 1.0441,
+        "max": 4.1634
+      },
+      "curved_length_share": 0.1938,
+      "block_area_m2": {
+        "n": 141,
+        "p10": 4441.73,
+        "p50": 18311.7466,
+        "p90": 32685.2353,
+        "mean": 18142.7117,
+        "max": 70872.0458
+      },
+      "one_way_length_share": 0.0,
+      "class_length_share": {
+        "avenue": 0.4174,
+        "street": 0.5826
+      },
+      "features": {
+        "roundabouts": 0,
+        "culdesacs": 0,
+        "overpasses": 0,
+        "tunnels": 0,
+        "interchanges": 0,
+        "bridges": 0
+      }
+    },
+    {
+      "graph": "organic_town.json",
+      "name": "lsystem_field_s1",
+      "params": {
+        "orientation_bins": 36,
+        "skew_threshold_deg": 15.0,
+        "offset_t_distance": 50.0,
+        "straight_tortuosity": 1.01
+      },
+      "counts": {
+        "nodes": 145,
+        "edges": 201,
+        "junctions": 99,
+        "dead_ends": 15,
+        "two_road_nodes": 31,
+        "length_km": 22.877,
+        "area_km2": 1.5209
+      },
+      "legs": {
+        "1": 15,
+        "3": 71,
+        "4": 28,
+        "5": 0,
+        "6": 0,
+        "7+": 0
+      },
+      "cnr": 0.8684,
+      "intersections_per_km2": 65.093,
+      "dead_ends_per_km2": 9.863,
+      "street_density_km_per_km2": 15.042,
+      "skew_deg": {
+        "n": 99,
+        "p10": 0.7851,
+        "p50": 6.33,
+        "p90": 13.4385,
+        "mean": 6.9227,
+        "max": 25.3316
+      },
+      "skewed_share": 0.0606,
+      "min_arm_angle_deg": {
+        "n": 99,
+        "p10": 78.3686,
+        "p50": 85.7899,
+        "p90": 90.1839,
+        "mean": 85.1738,
+        "max": 96.5177
+      },
+      "offset_t_pairs": 4,
+      "orientation_entropy": 2.7144,
+      "orientation_order": 0.6347,
+      "tortuosity": {
+        "n": 170,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.0031,
+        "mean": 1.0305,
+        "max": 2.3158
+      },
+      "curved_length_share": 0.1498,
+      "block_area_m2": {
+        "n": 57,
+        "p10": 5091.1753,
+        "p50": 18943.1152,
+        "p90": 51047.3379,
+        "mean": 23542.2619,
+        "max": 65226.0022
+      },
+      "one_way_length_share": 0.0,
+      "class_length_share": {
+        "avenue": 0.4333,
+        "street": 0.5667
+      },
+      "features": {
+        "roundabouts": 0,
+        "culdesacs": 0,
+        "overpasses": 0,
+        "tunnels": 0,
+        "interchanges": 0,
+        "bridges": 0
+      }
+    },
+    {
+      "graph": "skewed_grid.json",
+      "name": "lsystem_field_s0",
+      "params": {
+        "orientation_bins": 36,
+        "skew_threshold_deg": 15.0,
+        "offset_t_distance": 50.0,
+        "straight_tortuosity": 1.01
+      },
+      "counts": {
+        "nodes": 89,
+        "edges": 152,
+        "junctions": 76,
+        "dead_ends": 1,
+        "two_road_nodes": 12,
+        "length_km": 22.766,
+        "area_km2": 1.4864
+      },
+      "legs": {
+        "1": 1,
+        "3": 25,
+        "4": 51,
+        "5": 0,
+        "6": 0,
+        "7+": 0
+      },
+      "cnr": 0.987,
+      "intersections_per_km2": 51.13,
+      "dead_ends_per_km2": 0.673,
+      "street_density_km_per_km2": 15.316,
+      "skew_deg": {
+        "n": 76,
+        "p10": 17.6015,
+        "p50": 20.0479,
+        "p90": 21.6401,
+        "mean": 19.9619,
+        "max": 25.591
+      },
+      "skewed_share": 1.0,
+      "min_arm_angle_deg": {
+        "n": 76,
+        "p10": 68.7854,
+        "p50": 70.1613,
+        "p90": 72.4948,
+        "mean": 70.2573,
+        "max": 73.4013
+      },
+      "offset_t_pairs": 2,
+      "orientation_entropy": 1.3563,
+      "orientation_order": 0.9998,
+      "tortuosity": {
+        "n": 140,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.0,
+        "mean": 1.0409,
+        "max": 1.6195
+      },
+      "curved_length_share": 0.1476,
+      "block_area_m2": {
+        "n": 64,
+        "p10": 20007.4838,
+        "p50": 20694.1585,
+        "p90": 21894.4237,
+        "mean": 21019.1824,
+        "max": 37602.1061
+      },
+      "one_way_length_share": 0.0,
+      "class_length_share": {
+        "avenue": 0.3782,
+        "street": 0.6218
+      },
+      "features": {
+        "roundabouts": 0,
+        "culdesacs": 0,
+        "overpasses": 0,
+        "tunnels": 0,
+        "interchanges": 0,
+        "bridges": 0
+      }
+    },
+    {
+      "graph": "suburb.json",
+      "name": "lsystem_field_s1",
+      "params": {
+        "orientation_bins": 36,
+        "skew_threshold_deg": 15.0,
+        "offset_t_distance": 50.0,
+        "straight_tortuosity": 1.01
+      },
+      "counts": {
+        "nodes": 412,
+        "edges": 541,
+        "junctions": 209,
+        "dead_ends": 30,
+        "two_road_nodes": 173,
+        "length_km": 37.171,
+        "area_km2": 1.7086
+      },
+      "legs": {
+        "1": 30,
+        "3": 130,
+        "4": 79,
+        "5": 0,
+        "6": 0,
+        "7+": 0
+      },
+      "cnr": 0.8745,
+      "intersections_per_km2": 122.324,
+      "dead_ends_per_km2": 17.558,
+      "street_density_km_per_km2": 21.755,
+      "skew_deg": {
+        "n": 209,
+        "p10": 5.9416,
+        "p50": 15.038,
+        "p90": 30.0,
+        "mean": 16.9187,
+        "max": 39.8381
+      },
+      "skewed_share": 0.5024,
+      "min_arm_angle_deg": {
+        "n": 209,
+        "p10": 67.4348,
+        "p50": 80.4365,
+        "p90": 92.6661,
+        "mean": 81.9211,
+        "max": 120.0
+      },
+      "offset_t_pairs": 1,
+      "orientation_entropy": 3.1937,
+      "orientation_order": 0.3233,
+      "tortuosity": {
+        "n": 384,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.5,
+        "mean": 1.1236,
+        "max": 5.1318
+      },
+      "curved_length_share": 0.3223,
+      "block_area_m2": {
+        "n": 130,
+        "p10": 584.5671,
+        "p50": 7047.4132,
+        "p90": 21435.8142,
+        "mean": 10055.0525,
+        "max": 74841.21
+      },
+      "one_way_length_share": 0.0363,
+      "class_length_share": {
+        "avenue": 0.3678,
+        "street": 0.6322
+      },
+      "features": {
+        "roundabouts": 0,
+        "culdesacs": 15,
+        "overpasses": 0,
+        "tunnels": 0,
+        "interchanges": 0,
+        "bridges": 0
+      }
+    },
+    {
+      "graph": "mixed_city.json",
+      "name": "lsystem_field_s1",
+      "params": {
+        "orientation_bins": 36,
+        "skew_threshold_deg": 15.0,
+        "offset_t_distance": 50.0,
+        "straight_tortuosity": 1.01
+      },
+      "counts": {
+        "nodes": 580,
+        "edges": 744,
+        "junctions": 319,
+        "dead_ends": 101,
+        "two_road_nodes": 160,
+        "length_km": 72.3,
+        "area_km2": 6.5958
+      },
+      "legs": {
+        "1": 101,
+        "3": 213,
+        "4": 102,
+        "5": 4,
+        "6": 0,
+        "7+": 0
+      },
+      "cnr": 0.7595,
+      "intersections_per_km2": 48.364,
+      "dead_ends_per_km2": 15.313,
+      "street_density_km_per_km2": 10.962,
+      "skew_deg": {
+        "n": 319,
+        "p10": 0.0191,
+        "p50": 10.6552,
+        "p90": 38.9986,
+        "mean": 15.3265,
+        "max": 62.1937
+      },
+      "skewed_share": 0.3918,
+      "min_arm_angle_deg": {
+        "n": 319,
+        "p10": 52.2649,
+        "p50": 82.064,
+        "p90": 90.0,
+        "mean": 76.7542,
+        "max": 120.0
+      },
+      "offset_t_pairs": 5,
+      "orientation_entropy": 3.484,
+      "orientation_order": 0.0885,
+      "tortuosity": {
+        "n": 587,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.3246,
+        "mean": 1.0769,
+        "max": 3.3117
+      },
+      "curved_length_share": 0.3045,
+      "block_area_m2": {
+        "n": 165,
+        "p10": 5378.8423,
+        "p50": 12218.7509,
+        "p90": 29609.9226,
+        "mean": 20449.8783,
+        "max": 771058.6506
+      },
+      "one_way_length_share": 0.0012,
+      "class_length_share": {
+        "avenue": 0.3804,
+        "highway": 0.0994,
+        "street": 0.5202
+      },
+      "features": {
+        "roundabouts": 0,
+        "culdesacs": 1,
+        "overpasses": 0,
+        "tunnels": 0,
+        "interchanges": 0,
+        "bridges": 5
+      }
+    }
+  ]
+}

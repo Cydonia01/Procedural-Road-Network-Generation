@@ -3,7 +3,7 @@
 #
 # To change defaults without editing this file, write a YAML file with only the
 # keys you want to change (same nesting) and pass it before the command:
-#   python -m cli --config my_defaults.yaml pipeline manhattan ...
+#   python -m cli --config my_defaults.yaml pipeline lsystem ...
 # A generator or map generator section may also name a preset (preset: city).
 # Precedence, lowest first: this file < preset < --config file < --params
 # < command-line flags and --set. All of it ends up in one run config: the
@@ -12,26 +12,8 @@
 seed: 0  # random seed for generate, pipeline, scenario and buildings
 
 generators:
-  manhattan:
-    # n_avenues and n_streets have no default (required without --preset).
-    avenue_spacing: 250.0      # [m]
-    street_spacing: 80.0       # [m]
-    rotation_deg: 0.0
-    origin: [0.0, 0.0]
-    avenue_lanes: [2, 2]       # (forward, backward)
-    street_lanes: [1, 1]
-    lane_width: 3.5            # [m]
-    avenue_speed: 13.9         # [m/s]
-    street_speed: 11.1         # [m/s]
-    jitter: 0.0                # max node displacement per axis [m], uniform
-    edge_drop_prob: 0.0        # chance to drop each street segment
-    avenue_oneway_pattern: none   # none | alternating
-    street_oneway_pattern: none
-    boundary_mode: dead_end    # dead_end | loop
-    ring_offset: 60.0          # distance from the outermost grid lines to the ring [m]
-    ring_lanes: [2, 2]
   lsystem:
-    global_goal: grid
+    global_goal: grid          # grid | field (pattern fields, stage C2)
     extent: [1000.0, 600.0]    # area width (local x), height (local y) [m]
     origin: [0.0, 0.0]         # world position of the area's lower-left corner
     rotation_deg: 0.0          # rotation of the local frame around origin
@@ -72,6 +54,78 @@ generators:
     curve_drift_deg: 6.0       # std dev of a street's heading change per segment [deg]
     curve_reversion: 0.3       # pull back towards the grid axis per segment, 0-1
     curve_tortuosity: 1.0      # target length / chord of a street (bow node); 1 = straight
+    # Manhattan-style grids
+    oneway_pattern: [none, none]  # (avenues, streets): none | alternating (every second line one-way the other way)
+    boundary: none             # none | ring: roads reaching the edge continue to a two-way ring road
+    ring_offset: 60.0          # distance from the edge of the area to the ring [m]
+    ring_lanes: [2, 2]
+    edge_drop_prob: 0.0        # chance to drop each street segment (traffic stays connected)
+    # Pattern fields (global_goal: field): street patterns blended per location
+    pattern_weights: [1.0, 0.0, 0.0, 0.0, 0.0]  # grid, radial, organic, contour, suburb (without a style map)
+    grid_angle_deg: 0.0        # grid pattern's turn from the local axes [deg]
+    radial_center: [0.5, 0.5]  # radial pattern centre, as a fraction of the extent (without a style map)
+    radial_radius: 0.0         # radial weight falls off as a Gaussian of this radius [m]; 0 = none
+    radial_spokes: 6           # avenues leaving a radial centre at the seed point
+    organic: 0.0               # grid-to-organic knob, 0-1: grid weight moves to the organic pattern
+    organic_max_deg: 45.0      # largest turn of the organic pattern from the grid [deg]
+    organic_scale: 600.0       # size of the organic pattern's bends [m]
+    skew_deg: 0.0              # largest turn of streets away from 90 deg to the avenues [deg]
+    skew_scale: 1500.0         # size of the skew field's patches [m]
+    snap_deg: 15.0             # at organic 0, headings this close to the plain grid snap to it [deg]
+    suburb_block_size: [120.0, 60.0]  # block_size in suburbs (suburb pattern)
+    suburb_branch_prob: 0.6    # branch_prob in suburbs
+    suburb_end_prob: 0.25      # chance a suburb street ends at a node (a dead end, later a bulb)
+    style_blend_width: 300.0   # patterns of neighbouring districts blend over this width [m] (style map)
+    # Connectivity and cul-de-sacs
+    detour_ratio: 0.0          # connect nodes whose network trip is > this x their distance; 0 = off, else >= 1
+    connect_radius: 300.0      # how far a connector may reach [m]
+    culdesac_prob: 0.0         # chance of a turn-around bulb at a street's dead end
+    suburb_culdesac_prob: 0.7  # ... in suburbs (field goal, suburb pattern)
+    culdesac_radius: 15.0      # radius of the bulb's loop (centre line) [m]
+    culdesac_speed: 8.3        # speed on the loop [m/s] (30 km/h)
+    # Junction variety
+    stagger_prob: 0.0          # chance a 4-way crossing becomes two offset T junctions
+    stagger_offset: 35.0       # distance between the two T junctions [m]
+    max_degree: 5              # most roads the repair may join when it merges two nodes
+    # Roundabouts
+    roundabout_prob: 0.0       # chance a 3-5-way junction becomes a roundabout (where it fits)
+    roundabout_radius: 25.0    # single-lane ring, centre line [m]
+    roundabout_radius_avenue: 32.0  # two-lane ring (an avenue or a 4-lane road at the junction) [m]
+    roundabout_speed: 8.3      # on the ring [m/s] (30 km/h)
+    # Grade separation
+    highway_crossings: at_grade  # streets cross highways at_grade (junctions) | separated (under them)
+    highway_max_grade: 0.0     # max rise / run of highways (over 25 m); 0 = max_grade
+    tunnels: false             # highways may tunnel through hills too steep to climb
+    # Interchanges
+    interchanges: false        # diamond interchanges on freeways (needs highway_crossings: separated)
+    interchange_spacing: 1200.0  # least distance between interchanges [m]
+    highway_lane_change_prob: 0.0  # chance a highway stretch gets a lane more each way (lane add + drop)
+    tunnel_min_cover: 8.0      # ground over a tunnel, somewhere along it [m]
+    max_tunnel_length: 800.0   # longest stretch under ground [m]
+
+  junction:                    # one junction per seed (stage C6), JunctionArt-style
+    legs: 0                    # number of legs; 0 = drawn by leg_weights
+    leg_weights: [0.3, 0.3, 0.2, 0.1, 0.1]  # P(3, 4, 5, 6, 7 legs)
+    angles_deg: []             # leg headings [deg]; empty = evenly spread from a random start
+    skew_deg: 20.0             # std dev of each leg's turn from its heading [deg]
+    min_angle_deg: 30.0        # least angle between neighbouring legs [deg]
+    leg_length: 150.0          # [m]
+    lane_probs: [0.15, 0.6, 0.2, 0.05]  # P(0, 1, 2, 3 lanes) on each side of a leg (JunctionArt)
+    lane_width: 3.5            # [m]
+    street_speed: 11.1         # [m/s]
+    avenue_speed: 13.9         # [m/s], legs with 4 or more lanes
+    pair: false                # two T junctions on a through road, stems on opposite sides
+    pair_offset: 35.0          # distance between the two T junctions [m]
+    culdesacs: true            # turn-around bulbs at two-way leg ends (no traps)
+    culdesac_radius: 15.0      # [m]
+    culdesac_speed: 8.3        # [m/s]
+    max_tries: 50              # draws until a buildable junction
+    roundabout: false          # build the junction as a roundabout (where it fits)
+    roundabout_radius: 25.0    # single-lane ring [m]
+    roundabout_radius_avenue: 32.0  # two-lane ring [m]
+    roundabout_speed: 8.3      # [m/s]
+    interchange: none          # none | diamond | cloverleaf: a highway interchange instead of a junction
+    interchange_length: 1500.0 # each road's length from the crossing [m] (interchange)
 
 maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and pipeline --maps
   grid:
@@ -84,6 +138,7 @@ maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and
     terrain: noise
     elevation: fbm
     population: centers
+    style: zones               # only for generators that read it (lsystem with global_goal: field)
   terrain:
     noise:
       scale: 1500.0            # size of the largest water bodies [m]
@@ -147,10 +202,44 @@ maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and
       min_density: 0.0         # [people/km^2] at black
       max_density: 20000.0     # [people/km^2] at white
 
+  style:  # street pattern per district (stage C3), read by lsystem's field goal
+    zones:
+      zone_size: 800.0         # typical district size [m]
+      warp: 0.25               # domain warp of district borders, in units of zone_size
+      shares: [0.5, 0.0, 0.3, 0.0, 0.2]  # grid, radial, organic, contour, suburb without a population map
+      core_density: 6000.0     # denser districts are grid [people/km^2]
+      suburb_density: 1500.0   # sparser districts are suburb [people/km^2]
+      organic_share: 0.35      # share of the middle districts that are organic instead of grid
+      radial_radius: 600.0     # districts this close to the main population centre are radial [m]; 0 = none
+      contour_grade: 0.10      # districts with a steeper mean grade follow the contours
+      angle_spread_deg: 25.0   # std dev of the districts' grid angles [deg]
+    image:                     # `path` is required
+      # RGB in [0, 1]; pixels take the nearest class
+      colors: [[0.30, 0.47, 0.66], [0.89, 0.34, 0.34], [0.33, 0.64, 0.29], [0.70, 0.47, 0.64], [0.93, 0.79, 0.23]]
+
+interchange:  # highway interchange templates (stage C9; roadgen/generators/transforms/interchange.py)
+  ramp_off: 250.0          # diamond: exits this far before the crossing [m]
+  ramp_on: 200.0           # diamond: entries this far after it (beyond the overpass ramps) [m]
+  terminal_offset: 90.0    # diamond: ramp terminals on the crossing road, off the mainline [m]
+  aux_length: 100.0        # deceleration / acceleration lanes (AASHTO parallel type) [m]
+  loop_radius: 60.0        # cloverleaf loop ramps [m]
+  outer_radius: 150.0      # cloverleaf outer ramps [m]
+  ramp_angle_deg: 25.0     # cloverleaf ramps leave and join the highways at this angle [deg]
+  ramp_speed: 13.9         # [m/s] (50 km/h)
+  loop_speed: 11.1         # [m/s] (40 km/h)
+  cross_lanes: [2, 2]      # diamond: the crossing road gets at least these lanes
+
+grade_separation:  # roads crossing without a junction pass over each other (stage C8; `separate`)
+  clearance: 6.0           # between the lower and the upper road surface: 5 m clearance + 1 m deck [m]
+  max_grade: 0.05          # steepest ramp, rise / run
+  flat_margin: 5.0         # flat top beyond each edge of the lower road [m]
+  sample_spacing: 10.0     # most distance between profile points of raised roads [m]
+
 drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/maps.md)
   sample_spacing: 20.0     # max distance between profile points along a road [m]
   smoothing: 80.0          # roads follow the terrain averaged over this length [m]
   bridge_clearance: 2.0    # min bridge deck height above the water surface [m]
+  tunnel_cover: 5.0        # a road this far below the terrain is in a tunnel [m] (edges in metadata.tunnels)
 
 ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground`)
   cell_size: 20.0          # mesh resolution [m]
@@ -159,6 +248,9 @@ ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground
 
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]
+  lane_split: outer     # a straight exit with more lanes than its entry: outer | inner | none (which lane feeds them)
+  u_turns: false        # U-turn movements at junctions where the road is wide enough
+  u_turn_radius: 5.0    # tightest U-turn [m]: in and out lane centres at least 2x this apart
 
 design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AASHTO, MUTCD)
   e_max_street: 0.04        # max superelevation of street curves, rise / run
@@ -184,6 +276,12 @@ metrics:  # `metrics` command: geometry quality of an .xodr (roadgen/metrics/geo
   sample_step: 0.5          # spacing of curvature samples along a road [m]
   comfort_lat_acc: 3.0      # comfortable lateral acceleration [m/s^2]
   curvature_jump_tol: 0.002 # curvature jumps above this are counted [1/m]
+
+network_metrics:  # `metrics --graph`: layout and junction variety of a RoadGraph (roadgen/metrics/network.py)
+  orientation_bins: 36      # bearing bins over 360 deg (Boeing's orientation entropy)
+  skew_threshold_deg: 15.0  # a junction whose arms are this far off 90 / 180 deg is skewed [deg]
+  offset_t_distance: 50.0   # two T junctions this close with stems on opposite sides form an offset T [m]
+  straight_tortuosity: 1.01 # roads with length / chord below this count as straight
 
 scenario:
   sim_duration: 60.0        # simulated time [s]
@@ -222,5 +320,5 @@ bench:  # defaults for keys a sweep config leaves out
   speed_range: [8.0, 13.9]
   timeout_s: 900.0      # per esmini run
   memory_cap_mb: 8192.0 # per esmini run
-  network: {}           # ManhattanParams overrides, e.g. {preset: manhattan_like}
+  network: {}           # LSystemParams overrides, e.g. {preset: manhattan_like}
   out_dir: out/bench

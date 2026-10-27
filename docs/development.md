@@ -15,9 +15,18 @@ is on the path, and matplotlib/pyparsing deprecation noise is filtered.
 |-----------|--------|
 | `test_graph.py` | RoadGraph model, validation, JSON round trip, plotting |
 | `test_registry.py` | Generator registry, presets, params files, `--set` |
-| `test_manhattan.py` | Grid layout, ids, rotation, jitter, edge drop, determinism |
-| `test_manhattan_realism.py` | One-way patterns, multi-lane avenues, presets, ring road, traffic connectivity |
-| `test_lsystem.py` | Local constraints, `grid` preset equals Manhattan, organic determinism |
+| `test_lsystem.py` | Local constraints, `grid` preset is an exact lattice, organic determinism |
+| `test_lsystem_grid.py` | One-way patterns, ring road, edge drop, `manhattan_like`, traffic connectivity, mixed one-way junctions |
+| `test_lsystem_identity.py` | Existing lsystem presets grow exactly the networks recorded before stage C (`tests/lsystem_identity.py`) |
+| `test_patterns.py` | Pattern fields (tensor blend, skew, organic knob) and the field goal |
+| `test_style.py` | Style maps (zones, image) and blending them in the field goal |
+| `test_culdesac.py` | Connectivity knob (detour ratio) and cul-de-sac bulbs |
+| `test_network_metrics.py` | Network metrics: legs, skew, offset T, CNR, orientation, blocks |
+| `test_junction_variety.py` | 5-7-leg stars, Y, K, skewed crossings, lane splits, staggered crossings; built, validated and driven |
+| `test_junction_generator.py` | The `junction` generator: presets, leg-count coverage, bulbs, determinism |
+| `test_roundabout.py` | Roundabouts (3-5 arms, one and two lanes; built, validated, driven) and U-turns |
+| `test_grade_separation.py` | Overpasses (ramps, side roads, skew, clearance), freeways, tunnels through a ridge |
+| `test_interchange.py` | Diamond and cloverleaf templates (validated, ramp-node rules, aux lanes), freeway corridor, lane changes |
 | `test_opendrive.py` | Builder output, id scheme, sidecar, topology and continuity |
 | `test_junctions.py` | Trims, movement planning, lane filling, connecting-road geometry on every fixture |
 | `test_scenario.py` | Spawning, gaps, routes, `.xosc` structure, determinism, esmini log parsing |
@@ -65,7 +74,7 @@ Each phase had acceptance checks before the next one started.
 | 0 | Setup and RoadGraph data model | `graph/` |
 | 1 | Single road → OpenDRIVE → esmini | `opendrive/builder.py`, `lanes.py`, `validate/` |
 | 2 | Junctions | `opendrive/junctions.py`, `geometry/planar.py`, `geometry/junction_space.py`, `sim/drive_check.py` |
-| 3 | Manhattan grid generator | `generators/manhattan.py` |
+| 3 | Manhattan grid generator (removed in stage C; lsystem grows the same grids) | `generators/manhattan.py` |
 | 4 | Manhattan realism: one-way, multi-lane, presets, ring road, connectivity | `manhattan.py`, `validate/connectivity.py` |
 | 5 | Agent scenarios | `scenario/`, `sim/runner.py` |
 | 6 | Scalability experiments | `bench/` |
@@ -73,6 +82,7 @@ Each phase had acceptance checks before the next one started.
 | 8 | Procedural input maps (terrain, elevation, population) | `maps/` |
 | 9 | Map-driven growth: highways, bridges, terrain / density / grade constraints | `lsystem.py`, `generators/base.py` |
 | 10 (stage A) | Geometry accuracy: fitted curves, design speeds, banking, junction planes, clothoid turns, repair, curved growth (plan in `plans/`) | `geometry/`, `metrics/`, `maps/align.py`, `generators/repair.py`, `validate/dynamics.py` |
+| 11 (stage C0–C4) | Network metrics; manhattan folded into lsystem; pattern fields, style maps, connectivity knob, cul-de-sacs (plan in `plans/`) | `metrics/network.py`, `lsystem.py`, `patterns.py`, `maps/style.py`, `generators/transforms/` |
 
 ## Known issues
 

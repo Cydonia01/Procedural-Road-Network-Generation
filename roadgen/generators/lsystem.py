@@ -18,6 +18,15 @@ The "grid" goal proposes a straight continuation (time + 1) and, with
 branch_prob, perpendicular branches (time + branch_delay). Headings are
 pulled back to the grid axes every step, so angle_jitter_deg never drifts.
 
+The "field" goal (stage C2) follows a blend of street patterns instead
+(roadgen.generators.patterns: grid, radial, organic, contour, suburb, mixed by
+pattern_weights or a style control map): avenues follow the field's major
+direction, streets its minor one, each segment stepping along it like a
+streamline (midpoint rule), turning at most as far as its design radius
+allows; branches leave along the other direction. Block lengths and the
+branch probability come from the patterns too. At a radial centre that is
+the seed point, growth starts with radial_spokes avenues (a star, Paris).
+
 With input maps (a MapSet of terrain / elevation / population, normally
 built as one pipeline so they agree: water in the valleys, nobody living on
 it), growth follows the paper more closely:
@@ -48,6 +57,41 @@ length / chord reaches curve_tortuosity (Aliaga et al.), where the bow
 stays legal. The OpenDRIVE builder turns the resulting bend nodes into
 smooth curves.
 
+Manhattan-style grids (stage C1): oneway_pattern "alternating" makes
+every second avenue (or street) one-way the other way, all lanes forward,
+like Manhattan's avenues; each grid line keeps its index from where it
+started. boundary "ring" extends every road that reaches the edge of the
+area straight out to a two-way ring road around it, so one-way grids stay
+strongly connected. edge_drop_prob drops street segments at random where
+every travel direction stays possible (roadgen.generators.transforms.drop).
+
+Connectivity and cul-de-sacs (stage C4): with detour_ratio k > 0, a
+connector pass after growth joins nearby nodes whose trip over the network
+is more than k times their straight distance (Lechner et al. 2003, sec. 3):
+k near 1 closes almost every gap (grid-like, many loops), a large k leaves a
+tree of dead ends (suburbs). Dead ends of streets then become cul-de-sac
+bulbs with culdesac_prob, or in suburbs with suburb_culdesac_prob
+(roadgen.generators.transforms.culdesac), so traffic can turn around.
+
+Tunnels (stage C8, Parish & Mueller sec. 3.3): with tunnels on, a highway
+segment too steep over a hill is still allowed where a straight tunnel
+through it keeps max_grade, has at least tunnel_min_cover of ground over it
+and is at most max_tunnel_length long (listed in metadata["tunnels"]).
+
+Grade separation (stage C8): with highway_crossings "separated", highways
+are freeways: streets ignore them in the intersect, snap and crossing checks,
+so they pass under them without a junction (roadgen.geometry.grade_separation
+raises the highway over them later), and highways spawn no streets. Streets
+reach the highways only at the seed point (and at interchanges, C9).
+
+Interchanges (stage C9): with freeways and interchanges on, slots along
+straight highway stretches (interchange_spacing apart) get a crossing avenue
+under the highway and a reserved zone streets may not enter, before the
+streets grow; streets start from the avenue's ends, so the city reaches the
+freeway through the interchanges. After growth a diamond is built at each
+slot (roadgen.generators.transforms.interchange). highway_lane_change_prob
+widens highway stretches by a lane each way (lane adds and drops).
+
 Everything is computed in the area's local frame (lower-left corner at 0,
 x along the grid's first axis) and rotated/translated to world coordinates
 at the end. Output is deterministic for a seed.
@@ -66,25 +110,56 @@ import numpy as np
 
 from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
+from roadgen.generators.patterns import PATTERNS, RADIAL, SUBURB, FieldParams, StreetField
 from roadgen.generators.repair import repair_short_edges
+from roadgen.generators.transforms.culdesac import add_culdesacs
+from roadgen.generators.transforms.drop import drop_edges
+from roadgen.generators.transforms.interchange import STRAIGHT_TOL, InterchangeParams, add_diamond
+from roadgen.generators.transforms.roundabout import add_roundabouts
+from roadgen.generators.transforms.stagger import stagger_crossings
 from roadgen.geometry import design
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.maps.model import VEGETATION, WATER, Bounds, MapLayer, MapSet
+from roadgen.maps.model import (
+    STYLE_CLASSES,
+    STYLE_RADIAL,
+    VEGETATION,
+    WATER,
+    Bounds,
+    MapLayer,
+    MapSet,
+    bilinear,
+)
 
 log = logging.getLogger(__name__)
 
-GlobalGoal = Literal["grid"]
-GLOBAL_GOALS = ("grid",)
+GlobalGoal = Literal["grid", "field"]
+GLOBAL_GOALS = ("grid", "field")
 CurveMode = Literal["none", "drift", "contour"]
 CURVE_MODES = ("none", "drift", "contour")
+OnewayPattern = Literal["none", "alternating"]
+ONEWAY_PATTERNS = ("none", "alternating")
+BoundaryMode = Literal["none", "ring"]
+BOUNDARY_MODES = ("none", "ring")
+HighwayCrossings = Literal["at_grade", "separated"]
+HIGHWAY_CROSSINGS = ("at_grade", "separated")
+SALT_DROP = 0x6472  # random sub-stream of edge_drop_prob, independent of the growth's
+SALT_FIELD = 0x6669  # random sub-stream of the pattern field's noise
+SALT_CONNECT = 0x636f  # random sub-stream of the connector pass
+SALT_CULDESAC = 0x6375  # random sub-stream of the cul-de-sac bulbs
+SALT_STAGGER = 0x7374  # random sub-stream of the staggered crossings
+SALT_ROUNDABOUT = 0x726f  # random sub-stream of the roundabouts
+SALT_LANES = 0x6c61  # random sub-stream of the highway lane changes
+ZONE_MARGIN = 40.0  # [m] a reserved interchange zone reaches this far beyond its ramps
+CONNECT_CANDIDATES = 6  # nearest nodes a connector tries from each node
+UNDER_MIN_ANGLE_DEG = 30.0  # streets pass under highways at least this far from parallel
 CONTOUR_SLOPE = 0.08  # terrain grade at which contour streets follow the contour fully
 CONTOUR_MAX_DEG = 60.0  # contour streets turn at most this far from their grid axis
 GRADIENT_STEP = 10.0  # [m] finite-difference step for the terrain gradient
 Point = tuple[float, float]
 EPS = 1e-9
 # Road type per edge / proposal ("axis" for grid roads).
-STREET_X, AVENUE_Y, HIGHWAY = 0, 1, 2
+STREET_X, AVENUE_Y, HIGHWAY, RING = 0, 1, 2, 3
 SEED_RAYS = 16  # directions tried for the first two highways
 GRADE_BASELINE = 25.0  # [m] grade is measured over this distance; roads smooth out smaller bumps
 
@@ -136,6 +211,54 @@ class LSystemParams:
     curve_drift_deg: float = _D["curve_drift_deg"]  # std dev of a street's heading change per segment
     curve_reversion: float = _D["curve_reversion"]  # pull back towards the grid axis per segment, 0-1
     curve_tortuosity: float = _D["curve_tortuosity"]  # target length / chord of a street; 1 = straight
+    # --- Manhattan-style grids (stage C1) ------------------------------------------------
+    oneway_pattern: tuple[OnewayPattern, OnewayPattern] = _D["oneway_pattern"]  # (avenues, streets)
+    boundary: BoundaryMode = _D["boundary"]  # none | ring: two-way ring road around the area
+    ring_offset: float = _D["ring_offset"]  # [m] from the edge of the area to the ring
+    ring_lanes: tuple[int, int] = _D["ring_lanes"]
+    edge_drop_prob: float = _D["edge_drop_prob"]  # chance to drop each street segment
+    # --- pattern fields (stage C2), global_goal "field" ---------------------------------
+    pattern_weights: tuple[float, ...] = _D["pattern_weights"]  # grid, radial, organic, contour, suburb
+    grid_angle_deg: float = _D["grid_angle_deg"]  # grid pattern's turn from the local axes
+    radial_center: tuple[float, float] = _D["radial_center"]  # fraction of the extent
+    radial_radius: float = _D["radial_radius"]  # [m] Gaussian falloff of the radial weight; 0 = none
+    radial_spokes: int = _D["radial_spokes"]  # avenues leaving a radial centre at the seed point
+    organic: float = _D["organic"]  # grid-to-organic knob, 0-1
+    organic_max_deg: float = _D["organic_max_deg"]  # largest turn of the organic pattern
+    organic_scale: float = _D["organic_scale"]  # [m] size of the organic pattern's bends
+    skew_deg: float = _D["skew_deg"]  # largest turn of streets away from 90 deg to the avenues
+    skew_scale: float = _D["skew_scale"]  # [m] size of the skew field's patches
+    snap_deg: float = _D["snap_deg"]  # at organic 0, headings this close to the grid snap to it
+    suburb_block_size: tuple[float, float] = _D["suburb_block_size"]  # block_size in suburbs
+    suburb_branch_prob: float = _D["suburb_branch_prob"]  # branch_prob in suburbs
+    suburb_end_prob: float = _D["suburb_end_prob"]  # chance a suburb street ends at a node
+    style_blend_width: float = _D["style_blend_width"]  # [m] neighbouring districts blend over this
+    # --- connectivity and cul-de-sacs (stage C4) -----------------------------------------
+    detour_ratio: float = _D["detour_ratio"]  # connect where the network trip > this x straight; 0 = off
+    connect_radius: float = _D["connect_radius"]  # [m] how far a connector may reach
+    culdesac_prob: float = _D["culdesac_prob"]  # chance of a bulb at a street's dead end
+    suburb_culdesac_prob: float = _D["suburb_culdesac_prob"]  # ... in suburbs (field goal)
+    culdesac_radius: float = _D["culdesac_radius"]  # [m] of the bulb's loop (centre line)
+    culdesac_speed: float = _D["culdesac_speed"]  # [m/s] on the loop
+    # --- junction variety (stage C5) -----------------------------------------------------
+    stagger_prob: float = _D["stagger_prob"]  # chance a 4-way crossing becomes two offset T junctions
+    stagger_offset: float = _D["stagger_offset"]  # [m] between the two T junctions
+    max_degree: int = _D["max_degree"]  # most roads the repair may join at one node
+    # --- roundabouts (stage C7) ----------------------------------------------------------
+    roundabout_prob: float = _D["roundabout_prob"]  # chance a 3-5-way junction becomes a roundabout
+    roundabout_radius: float = _D["roundabout_radius"]  # [m] single-lane ring (centre line)
+    roundabout_radius_avenue: float = _D["roundabout_radius_avenue"]  # [m] two-lane ring
+    roundabout_speed: float = _D["roundabout_speed"]  # [m/s] on the ring
+    # --- grade separation (stage C8) ------------------------------------------------------
+    highway_crossings: HighwayCrossings = _D["highway_crossings"]  # streets cross highways at_grade | separated
+    highway_max_grade: float = _D["highway_max_grade"]  # max rise / run of highways; 0 = max_grade
+    tunnels: bool = _D["tunnels"]  # highways may tunnel through hills too steep to climb
+    tunnel_min_cover: float = _D["tunnel_min_cover"]  # [m] of ground over a tunnel somewhere
+    max_tunnel_length: float = _D["max_tunnel_length"]  # [m] under ground
+    # --- interchanges (stage C9) ---------------------------------------------------------
+    interchanges: bool = _D["interchanges"]  # diamonds on freeways (highway_crossings: separated)
+    interchange_spacing: float = _D["interchange_spacing"]  # [m] least distance between interchanges
+    highway_lane_change_prob: float = _D["highway_lane_change_prob"]  # chance a highway stretch gets a lane more each way
 
     def __post_init__(self) -> None:
         if self.global_goal not in GLOBAL_GOALS:
@@ -152,7 +275,7 @@ class LSystemParams:
             raise ValueError("snap_radius must be well below the block size")
         if not 0.0 < self.min_angle_deg < 90.0:
             raise ValueError("min_angle_deg must be in (0, 90)")
-        for lanes in (self.major_lanes, self.minor_lanes, self.highway_lanes):
+        for lanes in (self.major_lanes, self.minor_lanes, self.highway_lanes, self.ring_lanes):
             if len(lanes) != 2 or min(lanes) < 0 or sum(lanes) < 1:
                 raise ValueError(f"invalid lane counts {lanes}")
         if self.highway_length < self.min_segment_length or self.highway_ray_length <= 0:
@@ -170,6 +293,49 @@ class LSystemParams:
             raise ValueError(f"unknown curve_mode {self.curve_mode!r}; available: {CURVE_MODES}")
         if self.curve_drift_deg < 0 or not 0.0 <= self.curve_reversion <= 1.0 or self.curve_tortuosity < 1.0:
             raise ValueError("need curve_drift_deg >= 0, curve_reversion in [0, 1], curve_tortuosity >= 1")
+        if len(self.oneway_pattern) != 2 or any(o not in ONEWAY_PATTERNS for o in self.oneway_pattern):
+            raise ValueError(f"oneway_pattern needs two of {ONEWAY_PATTERNS}")
+        if self.boundary not in BOUNDARY_MODES:
+            raise ValueError(f"unknown boundary {self.boundary!r}; available: {BOUNDARY_MODES}")
+        if self.ring_offset <= 0 or not 0.0 <= self.edge_drop_prob <= 1.0:
+            raise ValueError("need ring_offset > 0 and edge_drop_prob in [0, 1]")
+        if len(self.pattern_weights) != len(PATTERNS) or min(self.pattern_weights) < 0 \
+                or sum(self.pattern_weights) <= 0:
+            raise ValueError(f"pattern_weights needs {len(PATTERNS)} weights >= 0 ({', '.join(PATTERNS)}), "
+                             "not all 0")
+        if not all(0.0 <= v <= 1.0 for v in (self.organic, self.suburb_branch_prob, self.suburb_end_prob)):
+            raise ValueError("organic, suburb_branch_prob and suburb_end_prob must be in [0, 1]")
+        if self.radial_radius < 0 or self.radial_spokes < 2 or min(self.suburb_block_size) <= 0 \
+                or self.style_blend_width < 0:
+            raise ValueError("need radial_radius >= 0, radial_spokes >= 2, suburb_block_size > 0, "
+                             "style_blend_width >= 0")
+        if min(self.organic_scale, self.skew_scale) <= 0 or min(self.organic_max_deg, self.skew_deg,
+                                                                  self.snap_deg) < 0:
+            raise ValueError("need organic_scale, skew_scale > 0 and angles >= 0")
+        if self.detour_ratio and self.detour_ratio < 1.0 or self.connect_radius <= 0:
+            raise ValueError("need detour_ratio 0 (off) or >= 1, and connect_radius > 0")
+        if not 0.0 <= self.culdesac_prob <= 1.0 or not 0.0 <= self.suburb_culdesac_prob <= 1.0:
+            raise ValueError("culdesac_prob and suburb_culdesac_prob must be in [0, 1]")
+        if self.culdesac_radius <= 0 or self.culdesac_speed <= 0:
+            raise ValueError("culdesac_radius and culdesac_speed must be positive")
+        if self.tunnel_min_cover <= 0 or self.max_tunnel_length <= 0 or self.highway_max_grade < 0:
+            raise ValueError("tunnel_min_cover and max_tunnel_length must be positive, "
+                             "highway_max_grade >= 0")
+        if self.interchanges and self.highway_crossings != "separated":
+            raise ValueError("interchanges need highway_crossings: separated (freeways)")
+        if self.interchange_spacing <= 0 or not 0.0 <= self.highway_lane_change_prob <= 1.0:
+            raise ValueError("need interchange_spacing > 0 and highway_lane_change_prob in [0, 1]")
+        if self.highway_crossings not in HIGHWAY_CROSSINGS:
+            raise ValueError(f"unknown highway_crossings {self.highway_crossings!r}; "
+                             f"available: {HIGHWAY_CROSSINGS}")
+        if not 0.0 <= self.roundabout_prob <= 1.0 or min(self.roundabout_radius, self.roundabout_radius_avenue,
+                                                          self.roundabout_speed) <= 0:
+            raise ValueError("need roundabout_prob in [0, 1] and positive roundabout radii and speed")
+        if not 0.0 <= self.stagger_prob <= 1.0 or self.stagger_offset <= 0 or not 3 <= self.max_degree <= 8:
+            raise ValueError("need stagger_prob in [0, 1], stagger_offset > 0, max_degree in [3, 8]")
+        if self.global_goal == "field" and self.curve_mode != "none":
+            raise ValueError("curve_mode is for the grid goal; the field goal bends streets with "
+                             "organic, contour and suburb patterns")
 
     @classmethod
     def preset(cls, name: str, **overrides: Any) -> "LSystemParams":
@@ -179,12 +345,28 @@ class LSystemParams:
 
 
 PRESETS: dict[str, dict[str, Any]] = {
-    # Exactly a 10 x 10 Manhattan grid: grown from a corner, branching everywhere.
+    # Exactly a 10 x 10 grid: grown from a corner, branching everywhere.
     "grid": {
         "extent": (2250.0, 720.0),
         "start": (0.0, 0.0),
         "block_size": (250.0, 80.0),
         "branch_prob": 1.0,
+    },
+    # Midtown Manhattan: 10 avenues ~250 m apart and 30 streets ~80 m apart, rotated
+    # ~29 deg from true north, both alternating one-way (avenues 4 lanes, streets 2)
+    # at the 25 mph city limit, with a two-way ring road around the grid.
+    "manhattan_like": {
+        "extent": (9 * 250.0, 29 * 80.0),
+        "start": (0.0, 0.0),
+        "block_size": (250.0, 80.0),
+        "branch_prob": 1.0,
+        "rotation_deg": 29.0,
+        "major_lanes": (4, 0),
+        "minor_lanes": (2, 0),
+        "major_speed": 11.2,
+        "minor_speed": 11.2,
+        "oneway_pattern": ("alternating", "alternating"),
+        "boundary": "ring",
     },
     # Organic town: streets drift smoothly away from the grid and bow between junctions.
     "organic_curved": {
@@ -228,6 +410,49 @@ PRESETS: dict[str, dict[str, Any]] = {
         "min_segment_length": 50.0,
         "min_angle_deg": 60.0,
     },
+    # Paris (field goal): a star of avenues and rings around the centre, a grid outside.
+    "paris": {
+        "global_goal": "field",
+        "extent": (2000.0, 1600.0),
+        "start": (0.5, 0.5),
+        "block_size": (200.0, 120.0),
+        "branch_prob": 0.9,
+        "snap_radius": 20.0,
+        "min_segment_length": 40.0,
+        "min_angle_deg": 30.0,
+        "pattern_weights": (0.25, 1.0, 0.0, 0.0, 0.0),
+        "radial_radius": 600.0,
+        "radial_spokes": 6,
+        "max_degree": 7,
+    },
+    # Organic town (field goal): the grid bent by smooth noise, snapping only where nearly straight.
+    "organic_town": {
+        "global_goal": "field",
+        "extent": (1500.0, 1200.0),
+        "start": (0.5, 0.5),
+        "block_size": (200.0, 110.0),
+        "branch_prob": 0.85,
+        "length_jitter": 0.1,
+        "snap_radius": 20.0,
+        "min_segment_length": 40.0,
+        "min_angle_deg": 35.0,
+        "organic": 0.8,
+        "stagger_prob": 0.3,
+        "roundabout_prob": 0.1,
+    },
+    # Skewed grid (field goal): streets cross the avenues at 60-90 deg, in patches.
+    "skewed_grid": {
+        "global_goal": "field",
+        "extent": (1500.0, 1200.0),
+        "start": (0.5, 0.5),
+        "block_size": (200.0, 110.0),
+        "branch_prob": 0.95,
+        "snap_radius": 20.0,
+        "min_segment_length": 40.0,
+        "min_angle_deg": 30.0,
+        "skew_deg": 30.0,
+        "skew_scale": 2500.0,
+    },
     # A city-sized area for use with input maps (pipeline --maps): highways
     # between population centres, noisy grid streets in between.
     "city": {
@@ -241,8 +466,69 @@ PRESETS: dict[str, dict[str, Any]] = {
         "min_segment_length": 40.0,
         "min_angle_deg": 40.0,
     },
+    # Suburb (field goal): curvy, sparsely branching streets, few loops, turn-around
+    # bulbs at most dead ends (Teng & Bidarra's suburban patches).
+    "suburb": {
+        "global_goal": "field",
+        "extent": (1500.0, 1200.0),
+        "start": (0.5, 0.5),
+        "snap_radius": 20.0,
+        "min_segment_length": 30.0,
+        "min_angle_deg": 50.0,
+        "pattern_weights": (0.0, 0.0, 0.0, 0.0, 1.0),
+        "suburb_culdesac_prob": 0.9,
+        "minor_speed": 8.3,
+        "roundabout_prob": 0.15,
+    },
+    # Freeway corridor (input maps): grade-separated highways reached through diamond
+    # interchanges, with lane adds and drops; streets as in city.
+    "highway_corridor": {
+        "extent": (3000.0, 2400.0),
+        "start": (0.5, 0.5),
+        "block_size": (180.0, 100.0),
+        "branch_prob": 0.9,
+        "angle_jitter_deg": 3.0,
+        "length_jitter": 0.1,
+        "snap_radius": 20.0,
+        "min_segment_length": 40.0,
+        "min_angle_deg": 40.0,
+        "highway_crossings": "separated",
+        "interchanges": True,
+        "interchange_spacing": 1000.0,
+        "highway_lane_change_prob": 0.1,
+        "highway_max_turn_deg": 6.0,  # freeways run straight
+        "highway_rays": 5,
+        "highway_branch_prob": 0.04,
+    },
+    # A mixed city for input maps (pipeline --maps, field goal): districts of grid, radial,
+    # organic, contour and suburb streets from the style map, each grid at its own angle;
+    # highways between population centres.
+    "mixed_city": {
+        "global_goal": "field",
+        "extent": (3000.0, 2400.0),
+        "start": (0.5, 0.5),
+        "block_size": (180.0, 100.0),
+        "branch_prob": 0.9,
+        "length_jitter": 0.1,
+        "snap_radius": 20.0,
+        "min_segment_length": 40.0,
+        "min_angle_deg": 35.0,
+        "pattern_weights": (0.5, 0.0, 0.3, 0.0, 0.2),  # without a style map
+        "stagger_prob": 0.15,
+        "detour_ratio": 2.5,
+        "max_degree": 7,
+        "roundabout_prob": 0.08,
+    },
 }
 LSystemParams.PRESETS = PRESETS  # type: ignore[attr-defined]
+
+
+def grid_extent(n_x: int, n_y: int, block_size: tuple[float, float]) -> tuple[float, float]:
+    """Extent of a grid with n_x roads along local y (avenues) and n_y along local x
+    (streets), grown from start (0, 0) with branch_prob 1."""
+    if n_x < 1 or n_y < 1 or n_x * n_y < 2:
+        raise ValueError("need at least two grid nodes")
+    return (n_x - 1) * block_size[0], (n_y - 1) * block_size[1]
 
 
 @dataclass(order=True)
@@ -252,7 +538,9 @@ class _Proposal:
     node: int  # start node
     axis: int  # STREET_X / AVENUE_Y: grid road along local x / y; HIGHWAY
     sign: int  # +1 / -1 along the axis (grid roads)
-    heading: float = 0.0  # highways: current direction [rad, local frame]
+    heading: float = 0.0  # highways, field goal: current direction [rad, local frame]
+    line: int = 0  # grid roads: index of the grid line (one-way patterns)
+    follow: bool = False  # field goal: continues a road (turn limited), not a new branch
 
 
 class _SpatialHash:
@@ -311,6 +599,13 @@ def _project(pt: Point, a: Point, b: Point) -> tuple[float, float]:
     return v, math.hypot(pt[0] - px, pt[1] - py)
 
 
+def _segment_distance(a: Point, b: Point, c: Point, d: Point) -> float:
+    """Shortest distance between segments a-b and c-d (0 where they cross)."""
+    if _segment_hit(a, b, c, d) is not None:
+        return 0.0
+    return min(_project(a, c, d)[1], _project(b, c, d)[1], _project(c, a, b)[1], _project(d, a, b)[1])
+
+
 def _angle_between(u: Point, v: Point) -> float:
     return math.degrees(math.acos(max(-1.0, min(1.0, (u[0] * v[0] + u[1] * v[1]) /
                                                     (math.hypot(*u) * math.hypot(*v))))))
@@ -332,10 +627,11 @@ class _Growth:
     """Mutable network state while growing (local frame)."""
 
     def __init__(self, p: LSystemParams, rng: np.random.Generator,
-                 maps: Optional[MapSet] = None) -> None:
+                 maps: Optional[MapSet] = None, seed: int = 0) -> None:
         self.p, self.rng = p, rng
         self.pos: dict[int, Point] = {}
         self.edges: dict[int, tuple[int, int, int]] = {}  # id -> (a, b, axis)
+        self.line_of: dict[int, int] = {}  # edge id -> grid line index
         self.adj: dict[int, set[int]] = defaultdict(set)  # node -> edge ids
         cell = max(p.block_size)
         self.node_index, self.edge_index = _SpatialHash(cell), _SpatialHash(cell)
@@ -344,9 +640,34 @@ class _Growth:
         self.seq = 0
         self.maps = _MapView(maps, p)
         self.bridges: set[int] = set()
+        self.tunnels: set[int] = set()
         self.highway_phase = False
-        self.deferred: list[tuple[int, int, int, int]] = []  # streets spawned by highways
+        self.deferred: list[tuple[int, int, int, int, float, int]] = []  # streets spawned by highways
+        self.start_pt: Point = (p.start[0] * p.extent[0], p.start[1] * p.extent[1])
         self.max_turn = {axis: _max_turn(p, axis) for axis in (STREET_X, AVENUE_Y)}
+        self.seed = seed
+        self.field = self.make_field(seed) if p.global_goal == "field" else None
+        self.under = False  # the segment being placed passes under highways (separated)
+        self.zones: list[Any] = []  # reserved interchange areas (shapely polygons, local frame)
+        self.slots: list[tuple[Point, int]] = []  # interchange crossing point, crossing avenue edge
+        self.fixed: set[int] = set()  # edges no later pass may change (crossing avenues)
+
+    def make_field(self, seed: int) -> StreetField:
+        p = self.p
+        fp = FieldParams(
+            grid_angle=math.pi / 2 + math.radians(p.grid_angle_deg),  # avenues along local y
+            block=p.block_size, suburb_block=p.suburb_block_size,
+            branch_prob=p.branch_prob, suburb_branch_prob=p.suburb_branch_prob,
+            radial_centers=self.maps.radial_centers() or ((p.radial_center[0] * p.extent[0],
+                                                           p.radial_center[1] * p.extent[1]),),
+            radial_radius=p.radial_radius, organic=p.organic,
+            organic_max=math.radians(p.organic_max_deg), organic_scale=p.organic_scale,
+            skew=math.radians(p.skew_deg), skew_scale=p.skew_scale, snap=math.radians(p.snap_deg),
+            weights=tuple(p.pattern_weights),
+        )
+        return StreetField(fp, np.random.default_rng([seed, SALT_FIELD]), self.maps.style_weights(),
+                           self.maps.gradient if self.maps.elevation is not None else None,
+                           self.maps.district_angle())
 
     # --- mutation -----------------------------------------------------------------------
 
@@ -357,10 +678,11 @@ class _Growth:
         self.node_index.add(nid, pt)
         return nid
 
-    def add_edge(self, a: int, b: int, axis: int) -> int:
+    def add_edge(self, a: int, b: int, axis: int, line: int = 0) -> int:
         eid = self.next_edge
         self.next_edge += 1
         self.edges[eid] = (a, b, axis)
+        self.line_of[eid] = line
         self.adj[a].add(eid)
         self.adj[b].add(eid)
         self.edge_index.add(eid, self.pos[a], self.pos[b])
@@ -368,23 +690,38 @@ class _Growth:
 
     def split_edge(self, eid: int, pt: Point) -> int:
         a, b, axis = self.edges.pop(eid)
+        line = self.line_of.pop(eid)
         self.adj[a].discard(eid)
         self.adj[b].discard(eid)
         self.edge_index.remove(eid)
         mid = self.add_node(pt)
-        first, second = self.add_edge(a, mid, axis), self.add_edge(mid, b, axis)
+        first, second = self.add_edge(a, mid, axis, line), self.add_edge(mid, b, axis, line)
+        if eid in self.tunnels:  # the drape finds the stretches under ground
+            self.tunnels.discard(eid)
+            self.tunnels |= {first, second}
         if eid in self.bridges:  # only the pieces still over water stay bridges
             self.bridges.discard(eid)
             self.bridges |= {piece for piece, (u, v) in ((first, (a, mid)), (second, (mid, b)))
                              if self.maps.crosses_water(self.pos[u], self.pos[v])}
         return mid
 
-    def propose(self, t: int, node: int, axis: int, sign: int, heading: float = 0.0) -> None:
+    def propose(self, t: int, node: int, axis: int, sign: int, heading: float = 0.0,
+                line: Optional[int] = None, follow: bool = False) -> None:
+        """Queue a proposal; a new grid line (line None) gets its index from the node."""
+        if line is None:
+            line = self.line_index(node, axis)
         if self.highway_phase and axis != HIGHWAY:
-            self.deferred.append((t, node, axis, sign))  # streets wait for phase 2
+            self.deferred.append((t, node, axis, sign, heading, line))  # streets wait for phase 2
             return
         self.seq += 1
-        heapq.heappush(self.queue, _Proposal(t, self.seq, node, axis, sign, heading))
+        heapq.heappush(self.queue, _Proposal(t, self.seq, node, axis, sign, heading, line, follow))
+
+    def line_index(self, node: int, axis: int) -> int:
+        """Index of the grid line along axis through node, counted from the seed point's."""
+        if axis not in (STREET_X, AVENUE_Y):
+            return 0
+        across = 1 - axis  # avenues (along y) are spaced along x and vice versa
+        return round((self.pos[node][across] - self.start_pt[across]) / self.p.block_size[across])
 
     # --- local constraints --------------------------------------------------------------
 
@@ -392,14 +729,17 @@ class _Growth:
         """Grid goal end point after bounds and map constraints, and whether it may go straight on."""
         p, rng = self.p, self.rng
         a = self.pos[prop.node]
-        base = 0.0 if prop.axis == STREET_X else math.pi / 2
-        heading = base + (0.0 if prop.sign > 0 else math.pi)
-        if p.curve_mode != "none":
-            prop.heading = self.curve_deviation(prop, a, heading)
-            heading += prop.heading
+        if self.field is not None:
+            heading, length = self.field_step(prop, a)
+        else:
+            base = 0.0 if prop.axis == STREET_X else math.pi / 2
+            heading = base + (0.0 if prop.sign > 0 else math.pi)
+            if p.curve_mode != "none":
+                prop.heading = self.curve_deviation(prop, a, heading)
+                heading += prop.heading
+            length = p.block_size[prop.axis]
         if p.angle_jitter_deg:
             heading += math.radians(rng.normal(0.0, p.angle_jitter_deg))
-        length = p.block_size[prop.axis]
         if p.length_jitter:
             length *= max(0.3, 1.0 + rng.normal(0.0, p.length_jitter))
         end = (a[0] + length * math.cos(heading), a[1] + length * math.sin(heading))
@@ -408,6 +748,27 @@ class _Growth:
         if not self.maps.active:
             return end, True
         return self.maps.legal_street(a, end)
+
+    def field_step(self, prop: _Proposal, a: Point) -> tuple[float, float]:
+        """Field goal: heading and length of the next segment from a.
+
+        The heading is the field direction at the segment's midpoint (a
+        midpoint streamline step, so rings stay round), closest to the
+        proposal's heading. A continuation (or a spoke of a radial star, where
+        the field has no direction at the centre) predicts the midpoint along
+        its own heading and turns at most max_turn; a new branch along the
+        field direction at a.
+        """
+        role = 1 - prop.axis  # AVENUE_Y -> MAJOR, STREET_X -> MINOR
+        length = self.field.length(a, role)
+        first = prop.heading if prop.follow else self.field.direction(a, role, prop.heading)
+        mid = (a[0] + 0.5 * length * math.cos(first), a[1] + 0.5 * length * math.sin(first))
+        heading = self.field.direction(mid, role, first)
+        if prop.follow:
+            limit = self.max_turn[prop.axis]
+            heading = prop.heading + max(-limit, min(limit, _wrap(heading - prop.heading)))
+        prop.heading = heading
+        return heading, length
 
     def curve_deviation(self, prop: _Proposal, a: Point, axis_heading: float) -> float:
         """Curved streets: the next segment's deviation [rad] from its grid axis.
@@ -433,7 +794,7 @@ class _Growth:
         rise = math.sqrt(p.curve_tortuosity ** 2 - 1.0)
         for eid in sorted(self.edges):
             a, b, axis = self.edges[eid]
-            if axis == HIGHWAY or eid in self.bridges:
+            if axis == HIGHWAY or eid in self.bridges or eid in self.tunnels or eid in self.fixed:
                 continue
             pa, pb = self.pos[a], self.pos[b]
             length = math.dist(pa, pb)
@@ -470,6 +831,134 @@ class _Growth:
                     return False
         return True
 
+    def ring_road(self) -> None:
+        """boundary "ring": every grid road ending near the edge of the area (within the
+        largest block size) continues straight out to a two-way ring road ring_offset
+        outside the area, like the roads of a Manhattan grid meeting a ring.
+
+        Extensions keep their road's axis and grid line (one-way direction). One
+        that would cross another road, or end closer than min_segment_length to a
+        ring corner or to the previous extension on its side, is left out.
+        """
+        p = self.p
+        w, h = p.extent
+        lo, hi = (-p.ring_offset, -p.ring_offset), (w + p.ring_offset, h + p.ring_offset)
+        reach = max(p.block_size)
+        cos45 = math.sqrt(0.5)
+        # Sides as (coordinate across it, outward sign); stubs per side: (along, node, end, axis, line)
+        sides = ((1, -1), (0, 1), (1, 1), (0, -1))  # bottom, right, top, left: counter-clockwise
+        stubs: dict[int, list[tuple[float, int, Point, int, int]]] = {k: [] for k in range(4)}
+        for node in sorted(self.pos):
+            pt = self.pos[node]
+            for k, (c, sign) in enumerate(sides):
+                if abs(pt[c] - (p.extent[c] if sign > 0 else 0.0)) > reach:
+                    continue
+                inward, outward = None, False
+                for eid in sorted(self.adj[node]):
+                    v = self._vec(node, self._other(eid, node))
+                    d = sign * v[c] / math.hypot(*v)
+                    outward |= d > cos45
+                    if d < -cos45 and self.edges[eid][2] in (STREET_X, AVENUE_Y):
+                        inward = eid
+                if inward is None or outward:
+                    continue
+                v = self._vec(self._other(inward, node), node)  # along the road, outwards
+                t = ((hi if sign > 0 else lo)[c] - pt[c]) / v[c]
+                end = (pt[0] + t * v[0], pt[1] + t * v[1])
+                along = end[1 - c]
+                if not lo[1 - c] + p.min_segment_length <= along <= hi[1 - c] - p.min_segment_length:
+                    continue
+                if self.crosses_road(pt, end, {node}):
+                    continue
+                stubs[k].append((along, node, end, *self.edges[inward][2:], self.line_of[inward]))
+        corners = [(lo[0], lo[1]), (hi[0], lo[1]), (hi[0], hi[1]), (lo[0], hi[1])]
+        ring = []
+        for k, (c, sign) in enumerate(sides):
+            ring.append(self.add_node(corners[k]))
+            counter_clockwise = sign > 0 if c == 0 else sign < 0  # bottom, right: ascending
+            last = None
+            for along, node, end, axis, line in sorted(stubs[k], reverse=not counter_clockwise):
+                if last is not None and abs(along - last) < p.min_segment_length:
+                    continue
+                last = along
+                stop = self.add_node(end)
+                self.add_edge(node, stop, axis, line)
+                ring.append(stop)
+        for a, b in zip(ring, ring[1:] + ring[:1]):
+            self.add_edge(a, b, RING)
+
+    def connect_pass(self) -> None:
+        """detour_ratio: join a node to a nearby one when the network trip between
+        them is more than detour_ratio times their straight distance (Lechner's
+        connector agents). Dead ends go first, then the other nodes in random
+        order; each node gets at most one connector, to the nearest such node
+        whose segment passes the local constraints."""
+        import networkx as nx
+
+        p, rng = self.p, np.random.default_rng([self.seed, SALT_CONNECT])
+        g = nx.Graph()
+        for a, b, _ in self.edges.values():
+            g.add_edge(a, b, weight=math.dist(self.pos[a], self.pos[b]))
+        nodes = sorted(n for n in self.pos if self.adj[n])
+        dead = [n for n in nodes if len(self.adj[n]) == 1]
+        rest = [n for n in nodes if len(self.adj[n]) > 1]
+        order = dead + [rest[k] for k in rng.permutation(len(rest))]
+        added = 0
+        for a in order:
+            pa = self.pos[a]
+            near = sorted((math.dist(pa, self.pos[n]), n) for n in self.node_index.query(pa, pa, p.connect_radius)
+                          if n != a and self.adj[n])
+            near = [(d, n) for d, n in near if p.min_segment_length <= d <= p.connect_radius]
+            if not near:
+                continue
+            reach = nx.single_source_dijkstra_path_length(g, a, cutoff=p.detour_ratio * near[-1][0])
+            for d, b in near[:CONNECT_CANDIDATES]:
+                if reach.get(b, math.inf) <= p.detour_ratio * d:
+                    continue  # already close over the network
+                self.under = p.highway_crossings == "separated"
+                if not self.acceptable(a, self.pos[b], b, None):
+                    continue
+                if self.maps.active:
+                    legal = self.maps.legal_street(pa, self.pos[b])
+                    if legal is None or legal[0] != self.pos[b] or self.maps.crosses_water(pa, self.pos[b]):
+                        continue
+                self.add_edge(a, b, STREET_X)
+                g.add_edge(a, b, weight=d)
+                added += 1
+                break
+        log.debug("lsystem: %d connectors (detour ratio %.2f)", added, p.detour_ratio)
+
+    def culdesac_prob(self, node: Node) -> float:
+        """Chance of a bulb at a dead end (world coordinates): culdesac_prob, or more
+        in suburbs (field goal)."""
+        p = self.p
+        if self.field is None or not p.suburb_culdesac_prob:
+            return p.culdesac_prob
+        suburb = self.field.weights(self.maps.to_local(node.x, node.y))[SUBURB]
+        return max(p.culdesac_prob, suburb * p.suburb_culdesac_prob)
+
+    def culdesac_allowed(self, footprint: Any) -> bool:
+        """A bulb or a roundabout (world polygon) must lie inside the area and on legal ground."""
+        pts = [self.maps.to_local(x, y) for x, y in footprint.exterior.coords]
+        if not all(self.inside(pt) for pt in pts):
+            return False
+        if self.maps.terrain is not None:
+            x, y = np.array([pt[0] for pt in pts]), np.array([pt[1] for pt in pts])
+            if self.maps._illegal_for_streets(x, y).any():
+                return False
+        return True
+
+    def crosses_road(self, a: Point, b: Point, touching: set[int]) -> bool:
+        """Whether segment a -> b crosses a road that touches none of the touching nodes."""
+        for eid in self.edge_index.query(a, b, 0.0):
+            ea, eb, _ = self.edges[eid]
+            if touching & {ea, eb}:
+                continue
+            hit = _segment_hit(a, b, self.pos[ea], self.pos[eb])
+            if hit and EPS < hit[0] < 1 - EPS:
+                return True
+        return False
+
     def inside(self, pt: Point) -> bool:
         w, h = self.p.extent
         return -EPS <= pt[0] <= w + EPS and -EPS <= pt[1] <= h + EPS
@@ -483,7 +972,7 @@ class _Growth:
         best = None
         for eid in self.edge_index.query(a, end, p.snap_radius):
             ea, eb, _ = self.edges[eid]
-            if node in (ea, eb):
+            if node in (ea, eb) or self.passes(eid):
                 continue
             hit = _segment_hit(a, end, self.pos[ea], self.pos[eb])
             if hit and hit[0] > EPS and (best is None or hit[0] < best[0]):
@@ -498,7 +987,8 @@ class _Growth:
             return "split", (eid, pt)
 
         # 3. snap to a node, then to a road.
-        near = [n for n in self.node_index.query(end, end, p.snap_radius) if n != node]
+        near = [n for n in self.node_index.query(end, end, p.snap_radius)
+                if n != node and not (self.under and all(self.passes(e) for e in self.adj[n]))]
         near = [(math.dist(end, self.pos[n]), n) for n in near]
         near = [(d, n) for d, n in near if d <= p.snap_radius]
         if near:
@@ -506,7 +996,7 @@ class _Growth:
         best_edge = None
         for eid in self.edge_index.query(end, end, p.snap_radius):
             ea, eb, _ = self.edges[eid]
-            if node in (ea, eb):
+            if node in (ea, eb) or self.passes(eid):
                 continue
             v, d = _project(end, self.pos[ea], self.pos[eb])
             if d <= p.snap_radius and (best_edge is None or d < best_edge[0]):
@@ -548,7 +1038,7 @@ class _Growth:
         # The (possibly snapped) segment must not cross any other road.
         touching = {a} | ({end_node} if end_node is not None else set())
         for eid in self.edge_index.query(pa, end, 0.0):
-            if eid == split_edge:
+            if eid == split_edge or self.passes(eid):
                 continue
             ea, eb, _ = self.edges[eid]
             if touching & {ea, eb}:
@@ -556,7 +1046,103 @@ class _Growth:
             hit = _segment_hit(pa, end, self.pos[ea], self.pos[eb])
             if hit and EPS < hit[0] < 1 - EPS:
                 return False
+        if self.zones and self.in_zone(pa, end):
+            return False
+        return not self.under or self.clear_of_highways(a, end)
+
+    def in_zone(self, a: Point, b: Point) -> bool:
+        from shapely.geometry import LineString
+
+        line = LineString([a, b])
+        return any(line.intersects(z) for z in self.zones)
+
+    def plan_interchanges(self) -> None:
+        """Slots for diamonds along the highways grown so far: on straight stretches,
+        interchange_spacing apart, inside the area, on legal ground, clear of other
+        highways and of the seed point. Each gets a crossing avenue under the highway
+        (one edge), a reserved zone, and streets proposed from the avenue's ends."""
+        from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
+
+        p, ip = self.p, InterchangeParams()
+        along = ip.diamond_reach + ZONE_MARGIN
+        across = ip.terminal_offset + ZONE_MARGIN
+        hw = sorted(eid for eid, (_, _, axis) in self.edges.items() if axis == HIGHWAY)
+        skipped: dict[str, int] = defaultdict(int)
+        lines = {eid: LineString([self.pos[self.edges[eid][0]], self.pos[self.edges[eid][1]]]) for eid in hw}
+        for eid in hw:
+            a, b, _ = self.edges[eid]
+            pa, pb = np.array(self.pos[a]), np.array(self.pos[b])
+            if eid in self.bridges or eid in self.tunnels or np.linalg.norm(pb - pa) < 2 * p.min_segment_length:
+                skipped["structure or short"] += 1
+                continue
+            centre = (pa + pb) / 2
+            u = (pb - pa) / np.linalg.norm(pb - pa)
+            v = np.array([-u[1], u[0]])
+            if any(math.dist(tuple(centre), s) < p.interchange_spacing for s, _ in self.slots):
+                skipped["spacing"] += 1
+                continue
+            corners = [centre + su * along * u + sv * across * v for su, sv in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+            zone = Polygon([tuple(c) for c in corners])
+            if not all(self.inside(tuple(c)) for c in corners) or zone.contains(ShapelyPoint(self.start_pt)):
+                skipped["outside or seed"] += 1
+                continue
+            # Only this highway's straight line may pass through the zone.
+            near = [k for k in hw if lines[k].intersects(zone)]
+            def off(pt) -> float:  # distance of a point from the stretch's line
+                d = np.array(pt) - centre
+                return abs(float(u[0] * d[1] - u[1] * d[0]))
+
+            # Only the highway's part inside the zone counts.
+            inner = [lines[k].intersection(zone) for k in near]
+            if any(g.length > 1.0 and max(off(pt) for pt in g.coords) > STRAIGHT_TOL
+                   for g in inner if g.geom_type == "LineString"):
+                skipped["not straight or other highway"] += 1
+                continue
+            if self.maps.active and not all(self.maps.legal_point(tuple(c)) for c in corners):
+                skipped["illegal ground"] += 1
+                continue
+            ends = [tuple(centre + s * (across + 5.0) * v) for s in (-1.0, 1.0)]
+            if not all(self.inside(e) for e in ends):
+                continue
+            left, right = self.add_node(ends[0]), self.add_node(ends[1])
+            axis = STREET_X if abs(v[0]) >= abs(v[1]) else AVENUE_Y
+            cross = self.add_edge(left, right, AVENUE_Y if axis == AVENUE_Y else STREET_X)
+            self.fixed.add(cross)
+            self.zones.append(zone.buffer(-1.0))
+            self.slots.append((tuple(centre), cross))
+            for node, d in ((left, -v), (right, v)):
+                heading = math.atan2(d[1], d[0])
+                if self.field is not None:
+                    self.deferred.append((0, node, axis, 1, heading, self.line_index(node, axis)))
+                else:
+                    sign = 1 if (d[0] if axis == STREET_X else d[1]) > 0 else -1
+                    self.deferred.append((0, node, axis, sign, 0.0, self.line_index(node, axis)))
+        log.info("lsystem: %d interchange slots (skipped: %s)", len(self.slots), dict(skipped))
+
+    def clear_of_highways(self, start: int, b: Point) -> bool:
+        """A segment passing under highways crosses them at least UNDER_MIN_ANGLE_DEG
+        apart and doesn't end within their corridor (half width + snap_radius).
+        Highways at its start node are left to the angle check there."""
+        p = self.p
+        a = self.pos[start]
+        corridor = max(p.highway_lanes) * p.lane_width + p.snap_radius
+        for eid in self.edge_index.query(a, b, corridor):
+            if not self.passes(eid):
+                continue
+            ea, eb, _ = self.edges[eid]
+            if start in (ea, eb):
+                continue
+            ha, hb = self.pos[ea], self.pos[eb]
+            if _project(b, ha, hb)[1] < corridor:
+                return False  # would end under the highway
+            angle = _angle_between((b[0] - a[0], b[1] - a[1]), (hb[0] - ha[0], hb[1] - ha[1]))
+            if min(angle, 180.0 - angle) < UNDER_MIN_ANGLE_DEG and _segment_distance(a, b, ha, hb) < corridor:
+                return False  # along the highway, not across it
         return True
+
+    def passes(self, eid: int) -> bool:
+        """Whether the segment being placed passes under (ignores) edge eid."""
+        return self.under and self.edges[eid][2] == HIGHWAY
 
     def _other(self, eid: int, n: int) -> int:
         a, b, _ = self.edges[eid]
@@ -568,10 +1154,10 @@ class _Growth:
     # --- main loop ------------------------------------------------------------------------
 
     def run(self) -> None:
-        p = self.p
-        start_pt = (p.start[0] * p.extent[0], p.start[1] * p.extent[1])
+        start_pt = self.start_pt
         if self.maps.active:
             start_pt = self.maps.legal_start(start_pt)
+        self.start_pt = start_pt
         start = self.add_node(start_pt)
         if self.maps.highways:
             self.highway_phase = True
@@ -580,14 +1166,50 @@ class _Growth:
             self.loop()
             self.highway_phase = False
             log.debug("lsystem: %d highway segments, %d bridges", len(self.edges), len(self.bridges))
-        for axis in (AVENUE_Y, STREET_X):
-            for sign in (1, -1):
-                self.propose(0, start, axis, sign)
-        for t, node, axis, sign in self.deferred:
-            self.propose(t, node, axis, sign)
+            if self.p.interchanges:
+                self.plan_interchanges()
+        if self.field is not None:
+            self.seed_field(start)
+        else:
+            for axis in (AVENUE_Y, STREET_X):
+                for sign in (1, -1):
+                    self.propose(0, start, axis, sign)
+        for t, node, axis, sign, heading, line in self.deferred:
+            self.propose(t, node, axis, sign, heading, line=line)
         self.loop()
-        if self.p.curve_mode != "none" and self.p.curve_tortuosity > 1.0:
+        if self.p.detour_ratio:
+            self.connect_pass()
+        if (self.p.curve_mode != "none" or self.field is not None) and self.p.curve_tortuosity > 1.0:
             self.bow_streets()
+        if self.p.boundary == "ring":
+            self.ring_road()
+
+    def seed_field(self, start: int) -> None:
+        """Field goal: avenues and streets both ways from the seed point, or a star of
+        radial_spokes avenues where the seed point is a radial centre. Every other
+        radial centre in the area (radial weight >= 0.5 there) gets a star too
+        (Paris's étoiles), which grows until it meets the rest of the network."""
+        p, pt = self.p, self.pos[start]
+        stars = [c for c in self.field.params.radial_centers
+                 if self.inside(c) and self.field.weights(c)[RADIAL] >= 0.5]
+        at_start = [c for c in stars if math.dist(pt, c) <= p.snap_radius]
+        if at_start:
+            self.star(start)
+        else:
+            major = self.field.major_angle(pt) or math.pi / 2
+            for axis, base in ((AVENUE_Y, major), (STREET_X, major + math.pi / 2)):
+                for sign in (1, -1):
+                    self.propose(0, start, axis, sign, base if sign > 0 else base + math.pi)
+        for c in stars:
+            if math.dist(pt, c) > max(p.block_size) and self.maps.legal_point(c):
+                self.star(self.add_node(c))
+
+    def star(self, node: int) -> None:
+        """radial_spokes avenues leaving node evenly (their headings followed, as the
+        field has no direction at a radial centre)."""
+        n = self.p.radial_spokes
+        for k in range(n):
+            self.propose(0, node, AVENUE_Y, 1, 2 * math.pi * k / n, follow=True)
 
     def loop(self) -> None:
         while self.queue and len(self.edges) < self.p.max_segments:
@@ -602,30 +1224,33 @@ class _Growth:
         if proposed is None:
             return
         end, straight = proposed
-        added = self.connect(prop.node, end, prop.axis)
+        added = self.connect(prop.node, end, prop.axis, prop.line)
         if added and added[1] is not None:
             self.grow(prop, added[1], straight)
 
     def step_highway(self, prop: _Proposal) -> None:
         """Best direction by population whose segment passes the constraints."""
-        for heading, end, bridge in self.maps.highway_candidates(self.pos[prop.node], prop.heading,
-                                                                 self.inside):
+        for heading, end, bridge, tunnel in self.maps.highway_candidates(self.pos[prop.node], prop.heading,
+                                                                         self.inside):
             added = self.connect(prop.node, end, HIGHWAY)
             if added is None:
                 continue  # rejected by the local constraints: try the next direction
             eid, node = added
             if bridge:
                 self.bridges.add(eid)
+            if tunnel:
+                self.tunnels.add(eid)
             if node is not None:
                 self.grow_highway(prop, node, heading)
             return
 
-    def connect(self, a: int, end: Point, axis: int) -> Optional[tuple[int, Optional[int]]]:
+    def connect(self, a: int, end: Point, axis: int, line: int = 0) -> Optional[tuple[int, Optional[int]]]:
         """Resolve, check and add a segment from a towards end.
 
         Returns None if rejected, else (new edge id, free end node to grow
         from, or None when the segment ended on an existing road).
         """
+        self.under = self.p.highway_crossings == "separated" and axis != HIGHWAY
         kind, data = self.resolve(a, end)
         if kind == "free":
             end, end_node, split = data, None, None
@@ -643,19 +1268,35 @@ class _Growth:
             end_node = self.split_edge(split, end)
         elif kind == "free":
             end_node = self.add_node(end)
-        eid = self.add_edge(a, end_node, axis)
+        eid = self.add_edge(a, end_node, axis, line)
         return eid, (end_node if kind == "free" else None)
 
     def grow(self, prop: _Proposal, node: int, straight: bool = True) -> None:
         """Global goal "grid": continue straight, branch perpendicular."""
         # Curved streets carry their deviation from the grid axis on: a straight
         # continuation keeps it, and branches leave perpendicular to the street.
+        if self.field is not None:
+            self.grow_field(prop, node, straight)
+            return
         if straight:
-            self.propose(prop.t + 1, node, prop.axis, prop.sign, prop.heading)
+            self.propose(prop.t + 1, node, prop.axis, prop.sign, prop.heading, prop.line)
         other = 1 - prop.axis
         for sign in (1, -1):
             if self.rng.random() < self.p.branch_prob:
                 self.propose(prop.t + self.p.branch_delay, node, other, sign, prop.heading)
+
+    def grow_field(self, prop: _Proposal, node: int, straight: bool = True) -> None:
+        """Field goal: continue along the road (in suburbs it may end here instead,
+        suburb_end_prob), branch to both sides along the other direction."""
+        weights = self.field.weights(self.pos[node])
+        ends = self.rng.random() < weights[SUBURB] * self.p.suburb_end_prob
+        if straight and not ends:
+            self.propose(prop.t + 1, node, prop.axis, prop.sign, prop.heading, prop.line, follow=True)
+        branch_prob = self.field.branch_prob(self.pos[node])
+        for sign in (1, -1):
+            if self.rng.random() < branch_prob:
+                self.propose(prop.t + self.p.branch_delay, node, 1 - prop.axis, sign,
+                             prop.heading + sign * math.pi / 2)
 
     def grow_highway(self, prop: _Proposal, node: int, heading: float) -> None:
         """Continue, maybe branch a new highway, and spawn grid streets on both sides."""
@@ -665,7 +1306,11 @@ class _Growth:
             normal = heading + side * math.pi / 2
             if self.rng.random() < p.highway_branch_prob:
                 self.propose(prop.t + p.highway_branch_delay, node, HIGHWAY, 1, normal)
-            if self.rng.random() < p.branch_prob:
+            if self.rng.random() < p.branch_prob and p.highway_crossings == "at_grade":
+                if self.field is not None:  # the field direction closest to the normal
+                    axis = AVENUE_Y if self.field.closest_role(self.pos[node], normal) == 0 else STREET_X
+                    self.propose(prop.t + p.branch_delay, node, axis, 1, normal)
+                    continue
                 # The grid direction closest to the highway's normal.
                 c, s = math.cos(normal), math.sin(normal)
                 axis = STREET_X if abs(c) >= abs(s) else AVENUE_Y
@@ -680,6 +1325,7 @@ class _MapView:
         maps = maps or MapSet()
         self.p = p
         self.terrain, self.elevation, self.population = maps.terrain, maps.elevation, maps.population
+        self.style = maps.style
         layers = list(maps.layers().values())
         self.active = bool(layers)
         self.highways = p.highways and self.population is not None
@@ -700,12 +1346,13 @@ class _MapView:
         u = s / length if length > 0 else s
         return a[0] + u * (b[0] - a[0]), a[1] + u * (b[1] - a[1]), s
 
-    def _too_steep(self, a: Point, b: Point, on_land: bool = False) -> bool:
-        """Grade over any GRADE_BASELINE stretch of a -> b above max_grade.
+    def _too_steep(self, a: Point, b: Point, on_land: bool = False, limit: Optional[float] = None) -> bool:
+        """Grade over any GRADE_BASELINE stretch of a -> b above limit (max_grade).
 
         on_land: skip stretches touching water (bridges are level).
         """
-        if self.elevation is None or not self.p.max_grade:
+        limit = self.p.max_grade if limit is None else limit
+        if self.elevation is None or not limit:
             return False
         length = math.dist(a, b)
         n = max(2, math.ceil(length / GRADE_BASELINE) + 1)
@@ -715,17 +1362,14 @@ class _MapView:
         if on_land and self.terrain is not None:
             land = self.sample(self.terrain, x, y) != WATER
             grade = grade[land[1:] & land[:-1]]
-        return bool(grade.size) and float(grade.max()) > self.p.max_grade
+        return bool(grade.size) and float(grade.max()) > limit
 
     def contour_deviation(self, a: Point, axis_heading: float) -> float:
         """Deviation [rad] from axis_heading towards the terrain contour at a, weighted
         by the slope (0 on flat ground, the full contour from CONTOUR_SLOPE on)."""
         if self.elevation is None:
             return 0.0
-        h = GRADIENT_STEP
-        z = self.sample(self.elevation, np.array([a[0] + h, a[0] - h, a[0], a[0]]),
-                        np.array([a[1], a[1], a[1] + h, a[1] - h]))
-        gx, gy = (z[0] - z[1]) / (2 * h), (z[2] - z[3]) / (2 * h)
+        gx, gy = self.gradient(a)
         slope = math.hypot(gx, gy)
         if slope < 1e-9:
             return 0.0
@@ -733,6 +1377,67 @@ class _MapView:
         dev = (contour - axis_heading + math.pi / 2) % math.pi - math.pi / 2  # either way along it
         dev = max(-math.radians(CONTOUR_MAX_DEG), min(math.radians(CONTOUR_MAX_DEG), dev))
         return dev * min(1.0, slope / CONTOUR_SLOPE)
+
+    def gradient(self, a: Point) -> tuple[float, float]:
+        """Terrain gradient (dz/dx, dz/dy) at a, by central differences (needs elevation)."""
+        h = GRADIENT_STEP
+        z = self.sample(self.elevation, np.array([a[0] + h, a[0] - h, a[0], a[0]]),
+                        np.array([a[1], a[1], a[1] + h, a[1] - h]))
+        return float((z[0] - z[1]) / (2 * h)), float((z[2] - z[3]) / (2 * h))
+
+    def to_local(self, x: float, y: float) -> Point:
+        ox, oy = self.p.origin
+        dx, dy = x - ox, y - oy
+        return self.cos * dx + self.sin * dy, -self.sin * dx + self.cos * dy
+
+    def radial_centers(self) -> tuple[Point, ...]:
+        """Radial pattern centres of a style map (local frame): its metadata's, or
+        the centroid of its radial cells; empty without one or without radial cells."""
+        if self.style is None:
+            return ()
+        centers = self.style.metadata.get("radial_centers")
+        if centers is None:
+            radial = self.style.data == STYLE_RADIAL
+            if not radial.any():
+                return ()
+            x, y = self.style.grid.cell_centers()
+            centers = [[float(x[radial].mean()), float(y[radial].mean())]]
+        return tuple(self.to_local(cx, cy) for cx, cy in centers)
+
+    def style_weights(self) -> Optional[Any]:
+        """Per-pattern weights at a local point from a style map: each class's share
+        of the cells within style_blend_width (box blur); None without a style map."""
+        if self.style is None:
+            return None
+        from scipy.ndimage import uniform_filter
+
+        layer, n = self.style, len(STYLE_CLASSES)
+        size = max(1, round(self.p.style_blend_width / layer.grid.cell_size))
+        stack = np.stack([uniform_filter((layer.data == k).astype(float), size, mode="nearest")
+                          for k in range(n)], axis=-1)
+        g = layer.grid
+
+        def weights(pt: Point) -> np.ndarray:
+            ox, oy = self.p.origin
+            x, y = ox + self.cos * pt[0] - self.sin * pt[1], oy + self.sin * pt[0] + self.cos * pt[1]
+            fc, fr = (x - g.origin[0]) / g.cell_size - 0.5, (y - g.origin[1]) / g.cell_size - 0.5
+            return bilinear(stack, np.array(fc), np.array(fr))
+
+        return weights
+
+    def district_angle(self) -> Optional[Any]:
+        """Grid angle [rad, local frame] at a local point: the nearest district site's
+        (style map metadata), on top of grid_angle_deg; None without sites."""
+        sites = self.style.metadata.get("sites") if self.style is not None else None
+        if not sites:
+            return None
+        from scipy.spatial import cKDTree
+
+        local = np.array([self.to_local(x, y) for x, y, _, _ in sites])
+        base = math.pi / 2 + math.radians(self.p.grid_angle_deg - self.p.rotation_deg)
+        angles = [base + math.radians(a) for _, _, _, a in sites]
+        tree = cKDTree(local)
+        return lambda pt: angles[int(tree.query(pt)[1])]
 
     def crosses_water(self, a: Point, b: Point, ends: bool = True) -> bool:
         """Whether a -> b touches water; ends=False ignores both end points
@@ -749,6 +1454,15 @@ class _MapView:
         if self.p.avoid_vegetation:
             bad |= cls == VEGETATION
         return bad
+
+    def legal_point(self, pt: Point) -> bool:
+        """Whether a road may start at pt (not in water / vegetation, populated enough)."""
+        if self.terrain is not None and self._illegal_for_streets(np.array([pt[0]]), np.array([pt[1]]))[0]:
+            return False
+        if self.population is not None and self.p.street_min_density > 0:
+            return bool(self.sample(self.population, np.array([pt[0]]), np.array([pt[1]]))[0]
+                        >= self.p.street_min_density)
+        return True
 
     def legal_start(self, pt: Point) -> Point:
         """The seed point, or the nearest legal cell centre inside the area if it is illegal."""
@@ -809,8 +1523,8 @@ class _MapView:
         return [first, second]
 
     def highway_candidates(self, a: Point, heading: float,
-                           inside: Any) -> Iterator[tuple[float, Point, bool]]:
-        """(heading, end, bridge) for the fan of directions, best population first.
+                           inside: Any) -> Iterator[tuple[float, Point, bool, bool]]:
+        """(heading, end, bridge, tunnel) for the fan of directions, best population first.
 
         Then, as a detour, the directions between highway_max_turn_deg and
         highway_max_detour_deg, smallest turn first: around a lake or along
@@ -829,11 +1543,13 @@ class _MapView:
             if segment is not None:
                 yield (h, *segment)
 
-    def highway_segment(self, a: Point, heading: float, inside: Any) -> Optional[tuple[Point, bool]]:
-        """End point and bridge flag, or None if the direction is not allowed.
+    def highway_segment(self, a: Point, heading: float, inside: Any) -> Optional[tuple[Point, bool, bool]]:
+        """End point, bridge and tunnel flags, or None if the direction is not allowed.
 
         Water may be crossed once, up to max_bridge_length; the segment is
-        stretched to the far shore when it would end in water.
+        stretched to the far shore when it would end in water. A segment too
+        steep on the terrain may tunnel through it (tunnels), stretched to the
+        far side of the hill.
         """
         p = self.p
         c, s_ = math.cos(heading), math.sin(heading)
@@ -859,11 +1575,41 @@ class _MapView:
         end = (a[0] + length * c, a[1] + length * s_)
         if not inside(end):
             return None
-        if self._too_steep(a, end, on_land=True):
-            return None
+        tunnel = False
+        if self._too_steep(a, end, on_land=True, limit=p.highway_max_grade or p.max_grade):
+            if bridge or not p.tunnels:
+                return None
+            # Like a bridge, a tunnel reaches through to the far side of the hill.
+            for extra in np.arange(0.0, p.max_tunnel_length + EPS, p.highway_length / 2):
+                far = (a[0] + (length + extra) * c, a[1] + (length + extra) * s_)
+                if not inside(far):
+                    return None
+                if self.tunnel_ok(a, far):
+                    end, tunnel = far, True
+                    break
+            else:
+                return None
         if self.sample(self.population, np.array([end[0]]), np.array([end[1]]))[0] < p.highway_min_density:
             return None
-        return end, bridge
+        return end, bridge, tunnel
+
+    def tunnel_ok(self, a: Point, b: Point) -> bool:
+        """A straight tunnel a -> b: at most max_grade end to end, at least
+        tunnel_min_cover of ground over it somewhere, at most max_tunnel_length
+        under ground, no water on the way."""
+        p = self.p
+        if self.elevation is None:
+            return False
+        x, y, s = self._line(a, b)
+        z = self.sample(self.elevation, x, y)
+        length = float(s[-1])
+        if length <= 0 or abs(float(z[-1] - z[0])) / length > (p.highway_max_grade or p.max_grade):
+            return False
+        if self.terrain is not None and (self.sample(self.terrain, x, y) == WATER).any():
+            return False
+        cover = z - (z[0] + (z[-1] - z[0]) * s / length)
+        under = s[1:][(cover[1:] > 0) & (cover[:-1] > 0)]
+        return bool(cover.max() >= p.tunnel_min_cover) and len(under) * self.step <= p.max_tunnel_length
 
 
 def _wrap(angle: float) -> float:
@@ -877,6 +1623,10 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
     uses_maps = True
 
     def generate(self, params: LSystemParams, seed: int, maps: Optional[MapSet] = None) -> RoadGraph:
+        if maps is not None and maps.style is not None and params.global_goal != "field":
+            # Only the field goal reads a style map; without it the grid grows as if it weren't there.
+            maps = MapSet(**{k: v for k, v in maps.layers().items() if k != "style"})
+            maps = maps if maps.layers() else None
         if maps is not None:
             bounds = self.map_bounds(params)
             for kind, layer in maps.layers().items():
@@ -884,10 +1634,30 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                     log.warning("lsystem: the %s map does not cover the whole area; "
                                 "its edge values are used outside", kind)
         rng = np.random.default_rng(seed)
-        growth = _Growth(params, rng, maps)
+        growth = _Growth(params, rng, maps, seed)
         growth.run()
         graph = self._to_graph(growth, params, seed, maps)
-        if repair_short_edges(graph):
+        if growth.slots:
+            self._interchanges(graph, growth)
+        if params.highway_lane_change_prob:
+            self._lane_changes(graph, np.random.default_rng([seed, SALT_LANES]), params.highway_lane_change_prob)
+        if params.edge_drop_prob and drop_edges(graph, params.edge_drop_prob,
+                                                np.random.default_rng([seed, SALT_DROP])):
+            assign_node_kinds(graph)
+        if params.stagger_prob and stagger_crossings(graph, params.stagger_prob, params.stagger_offset,
+                                                     np.random.default_rng([seed, SALT_STAGGER]),
+                                                     params.min_angle_deg):
+            assign_node_kinds(graph)
+        if repair_short_edges(graph, max_degree=params.max_degree):
+            assign_node_kinds(graph)
+        if params.roundabout_prob and add_roundabouts(
+                graph, np.random.default_rng([seed, SALT_ROUNDABOUT]), lambda node: params.roundabout_prob,
+                params.roundabout_radius, params.roundabout_radius_avenue, params.roundabout_speed,
+                growth.culdesac_allowed):
+            assign_node_kinds(graph)
+        if (params.culdesac_prob or (params.suburb_culdesac_prob and growth.field is not None)) \
+                and add_culdesacs(graph, np.random.default_rng([seed, SALT_CULDESAC]), growth.culdesac_prob,
+                                  params.culdesac_radius, params.culdesac_speed, growth.culdesac_allowed):
             assign_node_kinds(graph)
         if not graph.edges:
             log.warning("lsystem: no road could be grown from the seed point; on input maps it is "
@@ -896,14 +1666,50 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                         params.max_grade)
         return graph
 
+    @staticmethod
+    def _interchanges(graph: RoadGraph, growth: _Growth) -> None:
+        """A diamond at each slot: where the slot's crossing avenue passes under the highway."""
+        from roadgen.geometry.grade_separation import find_crossings
+
+        new_id = {old: k for k, old in enumerate(sorted(growth.edges), 1)}
+        cross_ids = {new_id[e] for _, e in growth.slots if e in new_id}
+        built = 0
+        for c in find_crossings(graph):
+            if c.lower in cross_ids and c.upper in graph.edges and c.lower in graph.edges \
+                    and graph.edges[c.upper].road_class == "highway":
+                built += add_diamond(graph, c.upper, c.lower, (c.x, c.y))
+        assign_node_kinds(graph)
+        log.info("lsystem: %d of %d interchanges built", built, len(cross_ids))
+
+    @staticmethod
+    def _lane_changes(graph: RoadGraph, rng: np.random.Generator, prob: float) -> None:
+        """Highway stretches (two-way, between two-road nodes, away from interchanges)
+        get a lane more each way, with probability prob: a lane add and a lane drop."""
+        for eid in sorted(graph.edges):
+            e = graph.edges[eid]
+            r = rng.random()
+            if e.road_class != "highway" or e.is_one_way or r >= prob:
+                continue
+            if any(graph.nodes[n].kind == "ramp" or graph.degree(n) != 2 for n in (e.from_node, e.to_node)):
+                continue
+            e.lanes_forward += 1
+            e.lanes_backward += 1
+
+    def map_kinds(self, params: LSystemParams) -> tuple[str, ...]:
+        """The style map only matters to the field goal."""
+        kinds = ("terrain", "elevation", "population")
+        return (*kinds, "style") if params.global_goal == "field" else kinds
+
     def map_bounds(self, params: LSystemParams) -> Bounds:
         """World bounding box of the (rotated) growth area."""
         theta = math.radians(params.rotation_deg)
         c, s = math.cos(theta), math.sin(theta)
         w, h = params.extent
         ox, oy = params.origin
-        xs = [ox + c * x - s * y for x, y in ((0, 0), (w, 0), (w, h), (0, h))]
-        ys = [oy + s * x + c * y for x, y in ((0, 0), (w, 0), (w, h), (0, h))]
+        m = params.ring_offset if params.boundary == "ring" else 0.0  # the ring lies outside
+        box = ((-m, -m), (w + m, -m), (w + m, h + m), (-m, h + m))
+        xs = [ox + c * x - s * y for x, y in box]
+        ys = [oy + s * x + c * y for x, y in box]
         return min(xs), min(ys), max(xs), max(ys)
 
     @staticmethod
@@ -928,16 +1734,28 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
             HIGHWAY: ("highway", p.highway_lanes, p.highway_speed),
             AVENUE_Y: ("avenue", p.major_lanes, p.major_speed),
             STREET_X: ("street", p.minor_lanes, p.minor_speed),
+            RING: ("avenue", p.ring_lanes, p.major_speed),
         }
-        bridges = []
+        pattern = {AVENUE_Y: p.oneway_pattern[0], STREET_X: p.oneway_pattern[1]}
+        bridges, tunnels = [], []
         for k, (old, (a, b, axis)) in enumerate(sorted(g.edges.items()), 1):
             road_class, lanes, speed = roads[axis]
+            if pattern.get(axis) == "alternating":
+                # Even grid lines run along +axis, odd ones against it, all lanes forward.
+                along = g.pos[b][axis] - g.pos[a][axis]
+                if (along > 0) != (g.line_of[old] % 2 == 0):
+                    a, b = b, a
+                lanes = (sum(lanes), 0)
             graph.add_edge(Edge(k, new_id[a], new_id[b], road_class, *lanes,
                                 lane_width=p.lane_width, speed_limit=speed))
             if old in g.bridges:
                 bridges.append(k)
+            if old in g.tunnels:
+                tunnels.append(k)
         if maps is not None:
             graph.metadata["bridges"] = bridges  # edge ids of highways crossing water
+            if tunnels:
+                graph.metadata["tunnels"] = tunnels  # edge ids of highways through hills
         assign_node_kinds(graph)
         log.debug("lsystem: %d nodes, %d edges", len(graph.nodes), len(graph.edges))
         return graph

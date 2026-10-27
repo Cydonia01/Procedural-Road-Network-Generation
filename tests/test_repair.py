@@ -4,7 +4,7 @@ import pytest
 
 from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import get_generator, load_params
-from roadgen.generators.repair import repair_short_edges, short_edges
+from roadgen.generators.repair import MIN_ROAD_LENGTH, repair_short_edges, short_edges, stub_roads
 from roadgen.graph.io import graph_to_dict
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.base import make_map
@@ -77,5 +77,20 @@ def test_buildable_networks_are_unchanged(monkeypatch):
     # The repair only touches edges the builder would reject: a seed that built
     # before (seed 3) gives the same graph with the repair switched off.
     repaired = graph_to_dict(_sweep_graph(3))
-    monkeypatch.setattr("roadgen.generators.lsystem.repair_short_edges", lambda graph: 0)
+    monkeypatch.setattr("roadgen.generators.lsystem.repair_short_edges", lambda graph, **kw: 0)
     assert graph_to_dict(_sweep_graph(3)) == repaired
+
+
+def test_stub_road_between_junctions_is_merged():
+    # Two T junctions 20 m apart with 2+2-lane roads: each trims 9 m, leaving a 2 m stub
+    # road that cannot change from one junction's slope and banking to the other's.
+    g = RoadGraph()
+    for nid, (x, y) in {1: (0, 0), 2: (20, 0), 3: (-100, 0), 4: (-30, 100), 5: (50, 100), 6: (120, 0)}.items():
+        g.add_node(Node(nid, float(x), float(y)))
+    for eid, (a, b) in enumerate([(1, 2), (3, 1), (1, 4), (2, 5), (2, 6)], 1):
+        g.add_edge(Edge(eid, a, b, "avenue", 2, 2))
+    assert MIN_ROAD_LENGTH > 2.0
+    assert stub_roads(g) == [1]
+    assert repair_short_edges(g) == 1
+    assert stub_roads(g) == [] and 1 not in g.edges
+    OpenDriveBuilder().build(g)

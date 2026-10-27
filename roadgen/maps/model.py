@@ -19,20 +19,27 @@ import numpy as np
 
 from roadgen.graph.model import RoadGraph
 
-MapKind = Literal["terrain", "elevation", "population"]
+MapKind = Literal["terrain", "elevation", "population", "style"]
 # Also the order maps are built in: each kind's generator may read the kinds before it.
-MAP_KINDS: tuple[str, ...] = ("terrain", "elevation", "population")
+MAP_KINDS: tuple[str, ...] = ("terrain", "elevation", "population", "style")
 SCHEMA_VERSION = 1
 MAX_CELLS = 16_000_000  # 4000 x 4000; guards against a cell_size typo
 
 # Terrain classes, after Parish & Müller's land/water/vegetation map.
 WATER, LAND, VEGETATION = 0, 1, 2
 TERRAIN_CLASSES: dict[int, str] = {WATER: "water", LAND: "land", VEGETATION: "vegetation"}
+# Style classes (stage C3): the street pattern of each district, in the order of
+# roadgen.generators.patterns.PATTERNS.
+STYLE_GRID, STYLE_RADIAL, STYLE_ORGANIC, STYLE_CONTOUR, STYLE_SUBURB = range(5)
+STYLE_CLASSES: dict[int, str] = {STYLE_GRID: "grid", STYLE_RADIAL: "radial", STYLE_ORGANIC: "organic",
+                                 STYLE_CONTOUR: "contour", STYLE_SUBURB: "suburb"}
+CLASSES: dict[str, dict[int, str]] = {"terrain": TERRAIN_CLASSES, "style": STYLE_CLASSES}
 
 UNITS: dict[str, str] = {
     "terrain": "class",
     "elevation": "m",
     "population": "people/km^2",
+    "style": "class",
 }
 
 PathLike = Union[str, Path]
@@ -103,7 +110,7 @@ class GridSpec:
 
 @dataclass
 class MapLayer:
-    """One raster map. terrain: uint8 class ids; elevation, population: float32."""
+    """One raster map. terrain, style: uint8 class ids; elevation, population: float32."""
 
     kind: MapKind
     grid: GridSpec
@@ -118,7 +125,7 @@ class MapLayer:
 
     @property
     def categorical(self) -> bool:
-        return self.kind == "terrain"
+        return self.kind in CLASSES
 
     def sample(self, x: Any, y: Any) -> np.ndarray:
         """Values at world points: nearest cell for terrain, bilinear otherwise.
@@ -134,15 +141,7 @@ class MapLayer:
             c = np.clip(np.rint(fc), 0, cols - 1).astype(int)
             r = np.clip(np.rint(fr), 0, rows - 1).astype(int)
             return self.data[r, c]
-        fc, fr = np.clip(fc, 0, cols - 1), np.clip(fr, 0, rows - 1)
-        c0 = np.minimum(np.floor(fc).astype(int), max(cols - 2, 0))
-        r0 = np.minimum(np.floor(fr).astype(int), max(rows - 2, 0))
-        c1, r1 = np.minimum(c0 + 1, cols - 1), np.minimum(r0 + 1, rows - 1)
-        tc, tr = fc - c0, fr - r0
-        d = self.data.astype(float)
-        lo = d[r0, c0] * (1 - tc) + d[r0, c1] * tc
-        hi = d[r1, c0] * (1 - tc) + d[r1, c1] * tc
-        return lo * (1 - tr) + hi * tr
+        return bilinear(self.data.astype(float), fc, fr)
 
     def on_grid(self, grid: GridSpec) -> np.ndarray:
         """Values at another grid's cell centers; the data itself if the grid is the same."""
@@ -151,10 +150,10 @@ class MapLayer:
         return self.sample(*grid.cell_centers())
 
     def fractions(self) -> dict[str, float]:
-        """terrain only: share of cells per class."""
+        """Categorical maps (terrain, style) only: share of cells per class."""
         if not self.categorical:
-            raise ValueError("fractions() is only defined for terrain maps")
-        return {name: float(np.mean(self.data == k)) for k, name in TERRAIN_CLASSES.items()}
+            raise ValueError("fractions() is only defined for categorical maps (terrain, style)")
+        return {name: float(np.mean(self.data == k)) for k, name in CLASSES[self.kind].items()}
 
     def summary(self) -> str:
         if self.categorical:
@@ -162,6 +161,22 @@ class MapLayer:
         unit = UNITS[self.kind]
         return (f"min {self.data.min():.1f}, mean {self.data.mean():.1f}, "
                 f"max {self.data.max():.1f} {unit}")
+
+
+def bilinear(data: np.ndarray, fc: Any, fr: Any) -> np.ndarray:
+    """data (rows, cols, ...) at fractional column / row indices (cell centers at
+    whole numbers), clamped to the edge cells; extra axes of data are kept."""
+    rows, cols = data.shape[:2]
+    fc, fr = np.clip(fc, 0, cols - 1), np.clip(fr, 0, rows - 1)
+    c0 = np.minimum(np.floor(fc).astype(int), max(cols - 2, 0))
+    r0 = np.minimum(np.floor(fr).astype(int), max(rows - 2, 0))
+    c1, r1 = np.minimum(c0 + 1, cols - 1), np.minimum(r0 + 1, rows - 1)
+    tc, tr = fc - c0, fr - r0
+    if data.ndim > 2:  # broadcast the weights over the extra axes
+        tc, tr = (np.expand_dims(t, tuple(range(-data.ndim + 2, 0))) for t in (tc, tr))
+    lo = data[r0, c0] * (1 - tc) + data[r0, c1] * tc
+    hi = data[r1, c0] * (1 - tc) + data[r1, c1] * tc
+    return lo * (1 - tr) + hi * tr
 
 
 @dataclass(frozen=True)
@@ -172,6 +187,7 @@ class MapSet:
     terrain: Optional[MapLayer] = None
     elevation: Optional[MapLayer] = None
     population: Optional[MapLayer] = None
+    style: Optional[MapLayer] = None
 
     def __post_init__(self) -> None:
         for kind in MAP_KINDS:

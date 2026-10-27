@@ -12,7 +12,7 @@ its edges. Coordinates are in metres, headings in radians and speeds in m/s.
 |-------|------|---------|
 | `id` | int | Unique node id |
 | `x`, `y` | float | Position [m] |
-| `kind` | `"junction"` / `"dead_end"` / `"auto"` | Generators set it from the degree (1 → `dead_end`, ≥3 → `junction`, otherwise `auto`). `"junction"` on a two-road node keeps it an OpenDRIVE junction instead of a bend |
+| `kind` | `"junction"` / `"dead_end"` / `"auto"` / `"ramp"` | Generators set it from the degree (1 → `dead_end`, ≥3 → `junction`, otherwise `auto`). `"junction"` on a two-road node keeps it an OpenDRIVE junction instead of a bend. `"ramp"` (stage C9): a highway node where interchange ramps leave or join; kept by `assign_node_kinds`, and the builder allows only straight-through, right exits and right merges there |
 | `radius_cap` | float or null, default null | Largest corner radius [m] at a bend, set by [`align`](maps.md#heights-from-the-maps-to-esmini) where the fitted curve would leave legal ground. Left out of the JSON when unset |
 | `z` | float, default 0 | Height [m]. At a junction it is the height of the whole (flat) junction area. Set by [drape](maps.md#heights-from-the-maps-to-esmini) |
 
@@ -36,7 +36,8 @@ A road between two nodes. **Forward lanes run `from_node → to_node`**.
 | `lane_width` | 3.5 | [m] |
 | `speed_limit` | 13.9 | [m/s] (≈ 50 km/h) |
 | `profile` | `[]` | Heights [m] at evenly spaced points strictly between the nodes: point k of n lies `k · length / (n + 1)` from `from_node`. Empty means straight between the node heights |
-| `bridges` | `[]` | Stretches over water, as `(start, end)` distances [m] from `from_node`. Written as OpenDRIVE `<bridge>` objects |
+| `bridges` | `[]` | Stretches over water (or over another road, stage C8), as `(start, end)` distances [m] from `from_node`. Written as OpenDRIVE `<bridge>` objects |
+| `tunnels` | `[]` | Stretches under ground (stage C8), as `(start, end)` distances [m] from `from_node`. Written as `<tunnel>` objects |
 
 Properties: `total_lanes`, and `is_one_way`, which is true when exactly one
 of the lane counts is 0.
@@ -57,7 +58,10 @@ Generators fill `metadata` with `name`, `generator`, `seed` and the full
 `params`, so every graph records how it was made. A graph grown on input
 maps also has `maps` (per kind: `generator`, `file`, and `source` for a
 `--map-file`) and, from `lsystem`, `bridges`: the ids of highway edges that
-cross water. The builder uses
+cross water. Stage C adds lists of what transforms and generators built:
+`tunnels` (highway edge ids through hills), `culdesacs`, `roundabouts`,
+`interchanges` and, after grade separation, `overpasses`; the network metrics
+count them. The builder uses
 `metadata["name"]` as the OpenDRIVE header name.
 
 ## JSON format
@@ -85,7 +89,7 @@ Nodes and edges are written sorted by id. The format is versioned. Loading any
 ```
 
 Fields with defaults (`kind`, `lane_width`, `speed_limit`, `z`, `profile`,
-`bridges`) may be omitted. `z`, `profile` and `bridges` are only written when
+`bridges`, `tunnels`) may be omitted. `z`, `profile`, `bridges` and `tunnels` are only written when
 set, so a flat graph's JSON has no height fields at all.
 `RoadGraph.edge_profile(edge_id)` returns (distances, heights) along an edge,
 with both endpoints included, and `RoadGraph.has_elevation` tells whether any

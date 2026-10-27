@@ -8,6 +8,27 @@ Conventions (right-hand traffic):
   leftmost lane to the rightmost lane.
 - A connecting road's reference line is the lane center path; its single
   lane -1 is centered on it with a laneOffset of half the lane width.
+
+Lane splits (stage C5, JunctionArt stage 3): where a straight exit has more
+lanes than its entry, one incoming lane feeds two (or more) outgoing lanes,
+so every outgoing lane is fed: the outermost incoming lane by default
+(JunctionParams.lane_split "outer"), or the innermost ("inner"), with the
+other lanes shifted outward so that no two connecting roads of one approach
+cross. "none" leaves the extra lanes to the turns from other approaches.
+
+Ramp nodes (stage C9, Node.kind "ramp"): where interchange ramps leave or
+join a highway, a junction keeps only straight-through movements, right
+exits and right merges: no left turn across the centre line, and no
+movement from one ramp (one-way road) to another. Only turns within
+RAMP_STRAIGHT of straight ahead count as straight there, so a ramp joining
+at 15-25 deg merges into the outermost lane as a right turn.
+
+U-turns (stage C7, JunctionParams.u_turns, off by default): at a junction of
+three or more roads, the innermost incoming lane of a road may turn back
+into the first outgoing lane of the same road whose centre is at least
+2 * u_turn_radius away, so only wide roads get one (with 3.5 m lanes, three
+or more lanes each way). Elsewhere roundabouts and cul-de-sac bulbs turn
+traffic around.
 """
 
 from __future__ import annotations
@@ -19,6 +40,7 @@ from typing import Literal, Optional
 import numpy as np
 from scenariogeneration import xodr
 
+from roadgen.config import DEFAULTS, section
 from roadgen.geometry import design as design_lib
 from roadgen.geometry.clothoid import g2_hermite
 from roadgen.geometry.design import DesignParams
@@ -34,11 +56,29 @@ from roadgen.geometry.primitives import Piece
 from roadgen.geometry.vertical import JunctionPlane, path_profiles
 
 Contact = Literal["start", "end"]
-MovementKind = Literal["straight", "left", "right"]
+MovementKind = Literal["straight", "left", "right", "uturn"]
 PathKind = Literal["line", "clothoid", "poly3"]
+LaneSplit = Literal["outer", "inner", "none"]
+LANE_SPLITS = ("outer", "inner", "none")
+
+_D = {k: v for k, v in section(DEFAULTS, "opendrive").items() if k != "junction_margin"}
+
+
+@dataclass(frozen=True)
+class JunctionParams:
+    lane_split: LaneSplit = _D["lane_split"]  # which incoming lane feeds a straight exit's extra lanes
+    u_turns: bool = _D["u_turns"]  # U-turn movements where the road is wide enough
+    u_turn_radius: float = _D["u_turn_radius"]  # [m] tightest U-turn: lane centres 2x this apart
+
+    def __post_init__(self) -> None:
+        if self.lane_split not in LANE_SPLITS:
+            raise ValueError(f"unknown lane_split {self.lane_split!r}; available: {LANE_SPLITS}")
+        if self.u_turn_radius <= 0:
+            raise ValueError("u_turn_radius must be positive")
 
 # |heading change| below this counts as straight.
 STRAIGHT_THRESHOLD = math.pi / 4
+RAMP_STRAIGHT = math.radians(5.0)  # ... at ramp nodes
 ROAD_TYPE = xodr.RoadType.town
 
 _CONTACT = {"start": xodr.ContactPoint.start, "end": xodr.ContactPoint.end}
@@ -108,7 +148,7 @@ def classify(heading_in: float, heading_out: float) -> MovementKind:
     return "left" if diff > 0 else "right"
 
 
-def classify_exits(turns: dict[int, float]) -> dict[int, MovementKind]:
+def classify_exits(turns: dict[int, float], threshold: float = STRAIGHT_THRESHOLD) -> dict[int, MovementKind]:
     """Kinds for all exits of one incoming road, given their turn angles.
 
     At most one exit is "straight": the one with the smallest turn, if within
@@ -118,19 +158,36 @@ def classify_exits(turns: dict[int, float]) -> dict[int, MovementKind]:
     kinds: dict[int, MovementKind] = {k: ("left" if t > 0 else "right") for k, t in turns.items()}
     if turns:
         best = min(turns, key=lambda k: (abs(turns[k]), k))
-        if abs(turns[best]) < STRAIGHT_THRESHOLD:
+        if abs(turns[best]) < threshold:
             kinds[best] = "straight"
     return kinds
 
 
-def lane_pairs(kind: MovementKind, in_lanes: list[int], out_lanes: list[int]) -> list[tuple[int, int]]:
+def lane_pairs(kind: MovementKind, in_lanes: list[int], out_lanes: list[int],
+               lane_split: LaneSplit = "none") -> list[tuple[int, int]]:
     if not in_lanes or not out_lanes:
         return []
     if kind == "straight":
-        return list(zip(in_lanes, out_lanes))
+        return straight_pairs(in_lanes, out_lanes, lane_split)
     if kind == "right":
         return [(in_lanes[-1], out_lanes[-1])]
     return [(in_lanes[0], out_lanes[0])]
+
+
+def straight_pairs(in_lanes: list[int], out_lanes: list[int],
+                   lane_split: LaneSplit = "none") -> list[tuple[int, int]]:
+    """Lane-to-lane straight movements, centre outward. With more outgoing than
+    incoming lanes, lane_split says which incoming lane also feeds the extra
+    ones: "outer" the outermost (it fans out to the outer lanes), "inner" the
+    innermost (the others shift outward); "none" leaves them unfed."""
+    pairs = list(zip(in_lanes, out_lanes))
+    extra = len(out_lanes) - len(in_lanes)
+    if extra <= 0 or lane_split == "none":
+        return pairs
+    if lane_split == "outer":
+        return pairs + [(in_lanes[-1], lane) for lane in out_lanes[len(in_lanes):]]
+    inner = [(in_lanes[0], lane) for lane in out_lanes[:extra + 1]]
+    return inner + list(zip(in_lanes[1:], out_lanes[extra + 1:]))
 
 
 def continuation_pairs(in_lanes: list[int], out_lanes: list[int]) -> list[tuple[int, int]]:
@@ -171,7 +228,21 @@ def fill_pair(
     return None
 
 
-def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int) -> list[Movement]:
+def u_turn_lane(a: RoadEnd, radius: float) -> Optional[tuple[int, int]]:
+    """(in lane, out lane) of a U-turn back onto road a, or None if it is too narrow:
+    from the innermost incoming lane into the first outgoing lane whose centre is
+    at least 2 * radius away."""
+    if not a.in_lanes or not a.out_lanes:
+        return None
+    lane = a.in_lanes[0]
+    for out in a.out_lanes:
+        if (abs(lane) - 0.5 + abs(out) - 0.5) * a.lane_width >= 2 * radius - 1e-9:
+            return lane, out
+    return None
+
+
+def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
+                   params: JunctionParams = JunctionParams(), ramp: bool = False) -> list[Movement]:
     """All lane movements through a junction, excluding U-turns, with road ids assigned.
 
     With exactly two arms the junction is just a bend or a lane-count change,
@@ -192,7 +263,11 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int) ->
             for idx, b in enumerate(ends)
             if a.edge_id != b.edge_id and b.out_lanes
         }
-        exit_kinds = classify_exits(turns)
+        exit_kinds = classify_exits(turns, RAMP_STRAIGHT if ramp else STRAIGHT_THRESHOLD)
+        if ramp:  # no left turns, no ramp to ramp
+            one_way = a.right_lanes == 0 or a.left_lanes == 0
+            turns = {idx: t for idx, t in turns.items() if exit_kinds[idx] != "left"
+                     and not (one_way and (ends[idx].right_lanes == 0 or ends[idx].left_lanes == 0))}
         for idx, b in enumerate(ends):
             if idx not in turns:
                 continue
@@ -201,7 +276,8 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int) ->
             if continuation:
                 pairs[idx] = continuation_pairs(a.in_lanes, b.out_lanes)
             else:
-                pairs[idx] = lane_pairs(kind, a.in_lanes, b.out_lanes)
+                # No lane split at a ramp node: the acceleration lane is the entry ramp's.
+                pairs[idx] = lane_pairs(kind, a.in_lanes, b.out_lanes, "none" if ramp else params.lane_split)
             if kind not in options:
                 options[kind], option_end[kind] = b.out_lanes, idx
 
@@ -214,6 +290,10 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int) ->
                 kind, out_lane = fill
                 pairs[option_end[kind]].append((lane, out_lane))
 
+        uturn = u_turn_lane(a, params.u_turn_radius) if params.u_turns and not continuation else None
+        if uturn is not None:
+            pairs[ends.index(a)] = [uturn]
+            kinds[ends.index(a)], turns[ends.index(a)] = "uturn", math.pi
         for idx, b in enumerate(ends):
             for in_lane, out_lane in sorted(set(pairs.get(idx, [])), key=lambda p: (abs(p[0]), abs(p[1]))):
                 movements.append(
@@ -234,14 +314,15 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int) ->
 
 
 def build_junction(
-    junction_id: int, ends: list[RoadEnd], first_road_id: int, plane: Optional[JunctionPlane] = None
+    junction_id: int, ends: list[RoadEnd], first_road_id: int, plane: Optional[JunctionPlane] = None,
+    params: JunctionParams = JunctionParams(), ramp: bool = False,
 ) -> tuple[xodr.Junction, list[xodr.Road], list[Movement]]:
     """Junction, connecting roads and movements; with plane, connecting roads lie on it
-    (height, grade and superelevation)."""
+    (height, grade and superelevation); ramp: an interchange ramp node."""
     by_edge = {e.edge_id: e for e in ends}
     junction = xodr.Junction(f"junction_{junction_id}", junction_id)
     roads: list[xodr.Road] = []
-    movements = plan_movements(junction_id, ends, first_road_id)
+    movements = plan_movements(junction_id, ends, first_road_id, params, ramp)
     built = []
     for m in movements:
         a, b = by_edge[m.from_edge], by_edge[m.to_edge]

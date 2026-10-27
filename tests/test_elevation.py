@@ -29,6 +29,7 @@ from roadgen.scene.ground import GroundParams, ground_heights, ground_mesh
 from roadgen.scene.osgt import write_osgt
 from roadgen.validate.continuity import RoadEval, check_continuity
 from roadgen.validate.topology import check_topology
+from tests.grids import ON_MAPS, grid_cli
 
 GRID = GridSpec((-100.0, -100.0), (1200.0, 700.0), 10.0)
 X, Y = GRID.cell_centers()
@@ -297,7 +298,7 @@ def test_cli_pipeline_drapes_and_writes_the_scene(tmp_path):
 
 def test_cli_drape_and_ground_commands(tmp_path):
     prefix = tmp_path / "net"
-    assert main(["pipeline", "manhattan", "--avenues", "3", "--streets", "3", "--maps", "--flat",
+    assert main(["pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps", "--flat",
                  "-o", str(prefix)]) == 0
     files = [f"--map-file={k}={tmp_path / f'net_{k}.npz'}" for k in ("terrain", "elevation")]
     assert main(["drape", str(prefix.with_suffix(".json")), *files]) == 0
@@ -316,5 +317,5 @@ def test_cli_drape_and_ground_commands(tmp_path):
 
 def test_cli_ground_needs_an_elevation_map(tmp_path):
     with pytest.raises(SystemExit, match="--ground needs an elevation map"):
-        main(["pipeline", "manhattan", "--avenues", "2", "--streets", "2", "--ground",
+        main(["pipeline", "lsystem", *grid_cli(2, 2), *ON_MAPS, "--ground",
               "-o", str(tmp_path / "n")])

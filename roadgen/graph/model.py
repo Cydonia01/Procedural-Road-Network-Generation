@@ -16,7 +16,9 @@ from typing import Any, Literal, Optional
 import networkx as nx
 import numpy as np
 
-NodeKind = Literal["junction", "dead_end", "auto"]
+# "ramp": a highway node where interchange ramps leave or join (stage C9): the
+# builder allows only straight-through, right exits and right merges there.
+NodeKind = Literal["junction", "dead_end", "auto", "ramp"]
 RoadClass = Literal["highway", "avenue", "street"]
 
 # Edges shorter than this are treated as zero-length.
@@ -48,8 +50,10 @@ class Edge:
     # Heights [m] at evenly spaced points strictly between from_node and
     # to_node (k * length / (n + 1), k = 1..n); empty = straight between node heights.
     profile: list[float] = field(default_factory=list)
-    # Stretches over water as (start, end) distances [m] from from_node.
+    # Stretches over water (or over another road) as (start, end) distances [m] from from_node.
     bridges: list[tuple[float, float]] = field(default_factory=list)
+    # Stretches under ground as (start, end) distances [m] from from_node.
+    tunnels: list[tuple[float, float]] = field(default_factory=list)
 
     @property
     def total_lanes(self) -> int:
@@ -166,6 +170,9 @@ class RoadGraph:
             if not missing and any(not 0 <= s0 < s1 <= self.edge_length(eid) + 1e-6
                                    for s0, s1 in e.bridges):
                 errors.append(f"edge {eid}: bridge outside the edge")
+            if not missing and any(not 0 <= s0 < s1 <= self.edge_length(eid) + 1e-6
+                                   for s0, s1 in e.tunnels):
+                errors.append(f"edge {eid}: tunnel outside the edge")
         return errors
 
     def _endpoints(self, edge_id: int) -> tuple[Node, Node]:

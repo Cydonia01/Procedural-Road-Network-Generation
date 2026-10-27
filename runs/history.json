@@ -366,68 +366,6 @@
    "note": "1 maps | population centers, two centres, on the image terrain + elevation",
    "recorded": "2026-10-18T21:58:38+00:00"
   },
-  "234f458fa465": {
-   "argv": [
-    "generate",
-    "manhattan",
-    "--preset",
-    "manhattan_like",
-    "--seed",
-    "1",
-    "-o",
-    "out/examples/net/manhattan_like.json"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "2 network | manhattan, preset manhattan_like (one-way avenues, rotated 29 deg)",
-   "recorded": "2026-10-18T21:58:40+00:00"
-  },
-  "41a5766b33f2": {
-   "argv": [
-    "generate",
-    "manhattan",
-    "--avenues",
-    "6",
-    "--streets",
-    "12",
-    "--avenue-spacing",
-    "220",
-    "--street-spacing",
-    "90",
-    "--rotation",
-    "15",
-    "--jitter",
-    "3",
-    "--edge-drop",
-    "0.05",
-    "--boundary",
-    "loop",
-    "--seed",
-    "2",
-    "-o",
-    "out/examples/net/manhattan_ring.json"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "2 network | manhattan, bare parameters: 6 x 12 grid, ring road, jitter, dropped streets",
-   "recorded": "2026-10-18T21:58:41+00:00"
-  },
-  "65095a3342b1": {
-   "argv": [
-    "generate",
-    "manhattan",
-    "--avenues",
-    "5",
-    "--streets",
-    "8",
-    "-o",
-    "out/examples/net/manhattan_wide.json"
-   ],
-   "config": "0289d44bb30e",
-   "config_file": "runs/inputs/wide_lanes.yaml",
-   "note": "2 network | manhattan with --config runs/inputs/wide_lanes.yaml (3.75 m lanes)",
-   "recorded": "2026-10-18T21:58:43+00:00"
-  },
   "c5d6a17157d3": {
    "argv": [
     "generate",
@@ -618,18 +556,6 @@
    "note": "2 network | plot the coastal city graph",
    "recorded": "2026-10-18T21:59:00+00:00"
   },
-  "5979b8407e41": {
-   "argv": [
-    "plot-graph",
-    "out/examples/net/manhattan_ring.json",
-    "out/examples/net/manhattan_ring.png",
-    "--node-ids"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "2 network | plot the manhattan ring with node ids",
-   "recorded": "2026-10-18T21:59:02+00:00"
-  },
   "ff542f4b9b0f": {
    "argv": [
     "plot-map",
@@ -642,28 +568,6 @@
    "config_file": null,
    "note": "2 network | the coastal population map with the coastal city on top",
    "recorded": "2026-10-18T21:59:03+00:00"
-  },
-  "063741241dea": {
-   "argv": [
-    "build-xodr",
-    "out/examples/net/manhattan_like.json",
-    "out/examples/net/manhattan_like.xodr"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "3 xodr | build-xodr: manhattan_like",
-   "recorded": "2026-10-18T21:59:07+00:00"
-  },
-  "e1d927634e4a": {
-   "argv": [
-    "build-xodr",
-    "out/examples/net/manhattan_ring.json",
-    "out/examples/net/manhattan_ring.xodr"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "3 xodr | build-xodr: manhattan ring",
-   "recorded": "2026-10-18T21:59:09+00:00"
   },
   "f42f1db9a3c6": {
    "argv": [
@@ -698,22 +602,6 @@
    "config_file": null,
    "note": "3 xodr | drive-check: every junction movement of the coastal city in esmini",
    "recorded": "2026-10-18T21:59:33+00:00"
-  },
-  "a095a6febcd9": {
-   "argv": [
-    "pipeline",
-    "manhattan",
-    "--preset",
-    "manhattan_like",
-    "--seed",
-    "1",
-    "-o",
-    "out/examples/pl/manhattan_like"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "3 xodr | pipeline: manhattan_like -> json, png, xodr, all validators",
-   "recorded": "2026-10-18T21:59:36+00:00"
   },
   "3ef2d6aaf62f": {
    "argv": [
@@ -819,23 +707,6 @@
    "note": "4 scene | pipeline: lsystem grid_organic + buildings (.osgt)",
    "recorded": "2026-10-18T22:00:44+00:00"
   },
-  "495cd073e19e": {
-   "argv": [
-    "pipeline",
-    "manhattan",
-    "--preset",
-    "manhattan_like",
-    "--seed",
-    "1",
-    "--buildings",
-    "-o",
-    "out/examples/pl/manhattan_buildings"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "4 scene | pipeline: manhattan_like + buildings",
-   "recorded": "2026-10-18T22:00:48+00:00"
-  },
   "a75ac46317f5": {
    "argv": [
     "pipeline",
@@ -887,48 +758,6 @@
    "note": "4 scene | ground: bare mountainous terrain, no roads",
    "recorded": "2026-10-18T22:00:59+00:00"
   },
-  "e698213b661a": {
-   "argv": [
-    "scenario",
-    "out/examples/net/manhattan_like.xodr",
-    "-o",
-    "out/examples/net/manhattan_like.xosc",
-    "--vehicles",
-    "100",
-    "--duration",
-    "30"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "5 scenario | manhattan_like, 100 vehicles, random junction choices",
-   "recorded": "2026-10-18T22:01:00+00:00"
-  },
-  "be58277cc05b": {
-   "argv": [
-    "scenario",
-    "out/examples/pl/manhattan_like.xodr",
-    "-o",
-    "out/examples/pl/manhattan_like_routes.xosc",
-    "--vehicles",
-    "80",
-    "--mode",
-    "explicit_routes",
-    "--speed-min",
-    "8",
-    "--speed-max",
-    "14",
-    "--min-gap",
-    "15",
-    "--duration",
-    "30",
-    "--seed",
-    "2"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "5 scenario | manhattan_like pipeline, 80 vehicles on explicit shortest-path routes, 8-14 m/s",
-   "recorded": "2026-10-18T22:01:02+00:00"
-  },
   "b829a179eecb": {
    "argv": [
     "scenario",
@@ -946,24 +775,6 @@
    "config_file": null,
    "note": "5 scenario | grid_organic with its buildings as scene graph",
    "recorded": "2026-10-18T22:01:04+00:00"
-  },
-  "9f82122169a2": {
-   "argv": [
-    "scenario",
-    "out/examples/pl/manhattan_buildings.xodr",
-    "-o",
-    "out/examples/pl/manhattan_buildings.xosc",
-    "--vehicles",
-    "100",
-    "--duration",
-    "30",
-    "--scenegraph",
-    "out/examples/pl/manhattan_buildings_buildings.osgt"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "5 scenario | manhattan_like with its buildings as scene graph",
-   "recorded": "2026-10-18T22:01:05+00:00"
   },
   "68fefd666ab7": {
    "argv": [
@@ -1001,30 +812,6 @@
    "note": "5 scenario | generated-maps city on its ground + buildings scene",
    "recorded": "2026-10-18T22:01:09+00:00"
   },
-  "0bc96a18db4c": {
-   "argv": [
-    "simulate",
-    "out/examples/net/manhattan_like.xosc"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "6 simulate | manhattan_like, random traffic",
-   "recorded": "2026-10-18T22:01:18+00:00"
-  },
-  "5ce2a2457ed7": {
-   "argv": [
-    "simulate",
-    "out/examples/pl/manhattan_like_routes.xosc",
-    "--timestep",
-    "0.02",
-    "--no-record",
-    "--no-csv"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "6 simulate | manhattan_like, explicit routes, 0.02 s timestep, no recording",
-   "recorded": "2026-10-18T22:01:28+00:00"
-  },
   "5cc2b1ab4f3b": {
    "argv": [
     "simulate",
@@ -1034,16 +821,6 @@
    "config_file": null,
    "note": "6 simulate | grid_organic with buildings",
    "recorded": "2026-10-18T22:01:30+00:00"
-  },
-  "99b10e867a5f": {
-   "argv": [
-    "simulate",
-    "out/examples/pl/manhattan_buildings.xosc"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "6 simulate | manhattan_like with buildings",
-   "recorded": "2026-10-18T22:01:39+00:00"
   },
   "ac96d08ca541": {
    "argv": [
@@ -1090,37 +867,6 @@
    "note": "6 simulate | whole chain in one pipeline: maps, city, ground, buildings, esmini run",
    "recorded": "2026-10-18T22:02:28+00:00"
   },
-  "f035568101d1": {
-   "argv": [
-    "pipeline",
-    "manhattan",
-    "--preset",
-    "manhattan_like",
-    "--seed",
-    "1",
-    "--buildings",
-    "--simulate",
-    "--sim-vehicles",
-    "100",
-    "-o",
-    "out/examples/pl/manhattan_full"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "6 simulate | whole chain in one pipeline: manhattan_like with buildings, esmini run",
-   "recorded": "2026-10-18T22:02:40+00:00"
-  },
-  "909299126a95": {
-   "argv": [
-    "simulate",
-    "out/examples/pl/manhattan_buildings.xosc",
-    "--gui"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "7 gui | esmini: manhattan_like with buildings, top camera",
-   "recorded": "2026-10-18T22:03:12+00:00"
-  },
   "2e45f514ec2e": {
    "argv": [
     "simulate",
@@ -1131,18 +877,6 @@
    "config_file": null,
    "note": "7 gui | esmini: coastal city on its ground + buildings",
    "recorded": "2026-10-18T22:04:52+00:00"
-  },
-  "3369a331a99f": {
-   "argv": [
-    "view",
-    "out/examples/pl/manhattan_buildings.xodr",
-    "--scenegraph",
-    "out/examples/pl/manhattan_buildings_buildings.osgt"
-   ],
-   "config": "1fce02eee248",
-   "config_file": null,
-   "note": "7 gui | odrviewer: manhattan_like with buildings, random cars",
-   "recorded": "2026-10-18T22:26:11+00:00"
   },
   "97f8879ee028": {
    "argv": [

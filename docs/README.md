@@ -21,11 +21,11 @@ Read these in pipeline order:
 | Page | Stage |
 |------|-------|
 | [RoadGraph data model](road-graph.md) | The generator-agnostic graph and its JSON format |
-| [Input maps](maps.md) | Terrain, elevation and population maps (procedural or from images), data sources |
-| [Generators](generators.md) | `manhattan` and `lsystem`, presets, parameter files, writing a new generator |
+| [Input maps](maps.md) | Terrain, elevation, population and style maps (procedural or from images), data sources |
+| [Generators](generators.md) | `lsystem` (grids, pattern fields, connectivity, cul-de-sacs), presets, parameter files, graph transforms, writing a new generator |
 | [Road geometry](geometry.md) | Neutral geometry package: design-speed rules, line / arc / spiral pieces, clothoid transitions, junction trims |
 | [OpenDRIVE builder](opendrive.md) | RoadGraph → `.xodr`: roads, lanes, junctions, id scheme, `.roadmap.json` |
-| [Validation](validation.md) | Traffic connectivity, topology, continuity, XSD schema, esmini drive-check |
+| [Validation](validation.md) | Traffic connectivity, topology, continuity, clearance, XSD schema, esmini drive-check, geometry and network metrics |
 | [Scenarios & simulation](scenarios-and-simulation.md) | `.xosc` generation, running esmini, 3D buildings |
 | [Scalability benchmark](benchmarking.md) | Sweep config, results CSV, statuses, plots |
 

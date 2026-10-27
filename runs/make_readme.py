@@ -25,18 +25,20 @@ PHASES = {
     "6": "Simulation (headless esmini)",
     "7": "esmini GUI",
     "8": "Road geometry (stage A): fitted curves, metrics, align, curved streets",
+    "9": "Long-tail diversity (stage C): pattern fields, style maps, cul-de-sacs, junction variety, "
+         "roundabouts, overpasses, tunnels, interchanges, network metrics",
 }
 # From scratch to the GUI: the notes of each chain's runs, in order.
 CHAINS = {
-    "Manhattan grid with buildings: pipeline, scenario, simulation, GUI": [
+    "Manhattan-style grid with buildings: pipeline, scenario, simulation, GUI": [
         "4 scene | pipeline: manhattan_like + buildings",
         "5 scenario | manhattan_like with its buildings as scene graph",
         "6 simulate | manhattan_like with buildings",
         "7 gui | esmini: manhattan_like with buildings, top camera",
         "7 gui | odrviewer: manhattan_like with buildings, random cars",
     ],
-    "Manhattan grid, one stage per command": [
-        "2 network | manhattan, preset manhattan_like (one-way avenues, rotated 29 deg)",
+    "Manhattan-style grid, one stage per command": [
+        "2 network | lsystem, preset manhattan_like (alternating one-way avenues and streets, ring road, rotated 29 deg)",
         "3 xodr | build-xodr: manhattan_like",
         "5 scenario | manhattan_like, 100 vehicles, random junction choices",
         "6 simulate | manhattan_like, random traffic",
@@ -103,7 +105,7 @@ from the run folders by [`make_readme.py`](make_readme.py). Later runs read
 files from the folders of earlier ones, so on a fresh checkout run
 `examples.sh` (or replay the hashes in order). Each note starts with its
 phase (`1 maps |`, `2 network |`, `3 xodr |`, `4 scene |`, `5 scenario |`,
-`6 simulate |`, `7 gui |`, `8 geometry |`):
+`6 simulate |`, `7 gui |`, `8 geometry |`, `9 diversity |`):
 
 ```bash
 # everything, oldest first (phase 7 needs the gui service)
@@ -113,7 +115,27 @@ for h in $(python -m cli history --grep "1 maps |" | grep -oE '^[0-9a-f]{12}'); 
 ```
 
 or one chain from the list below.
+
+Every run that wrote a road network also lists a `view` command for it:
+odrviewer with random cars, on the run's 3D scene (ground and buildings)
+where it has one. Run it with the gui service in Docker
+(`docker compose run --rm gui python -m cli view ...`); a view is not
+recorded as a run.
 """
+
+
+def view_command(folder: Path) -> str | None:
+    """`view` command for the network a run wrote, on its 3D scene if it has one."""
+    xodrs = sorted(folder.glob("*.xodr"))
+    if not xodrs:
+        return None
+    xodr = xodrs[0]
+    rel = xodr.relative_to(ROOT)
+    for suffix in ("_scene.osgt", "_buildings.osgt"):
+        scene = xodr.with_name(xodr.stem + suffix)
+        if scene.is_file():
+            return f"python -m cli view {rel} --scenegraph {scene.relative_to(ROOT)}"
+    return f"python -m cli view {rel}"
 
 
 def main() -> None:
@@ -128,7 +150,11 @@ def main() -> None:
         for r in runs:
             if r.note.startswith(f"{phase} "):
                 what = r.note.split("|", 1)[-1].strip()
-                out.append(f"- `{r.hash}` {what}\n\n  ```bash\n  {r.command_line()}\n  ```\n")
+                lines = [r.command_line()]
+                view = None if phase == "7" else view_command(ROOT / "out" / r.hash)
+                if view:
+                    lines.append(f"{view}   # look at it")
+                out.append(f"- `{r.hash}` {what}\n\n  ```bash\n" + "".join(f"  {x}\n" for x in lines) + "  ```\n")
     (HERE / "README.md").write_text("\n".join(out))
 
 

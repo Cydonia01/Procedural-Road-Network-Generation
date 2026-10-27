@@ -38,7 +38,7 @@ from roadgen.geometry.alignment import (
     network_alignment,
 )
 from roadgen.geometry.design import DesignParams
-from roadgen.geometry.profiles import bridge_spans, lane_layout, speed_profile
+from roadgen.geometry.profiles import bridge_spans, lane_layout, speed_profile, tunnel_spans
 from roadgen.geometry.vertical import (
     JunctionPlane,
     chain_elevation,
@@ -47,6 +47,7 @@ from roadgen.geometry.vertical import (
 )
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.junctions import (
+    JunctionParams,
     Movement,
     RoadEnd,
     build_junction,
@@ -57,6 +58,7 @@ from roadgen.opendrive.lanes import make_lane_sections
 log = logging.getLogger(__name__)
 
 BRIDGE_TYPE = "concrete"  # OpenDRIVE e_bridgeType
+TUNNEL_TYPE = "standard"  # OpenDRIVE e_tunnelType
 
 ODR_REV_MAJOR = "1"
 ODR_REV_MINOR = "6"
@@ -76,11 +78,12 @@ def sidecar_path(xodr_path: PathLike) -> Path:
 class OpenDriveBuilder:
     def __init__(
         self, name: str = "roadgen", junction_margin: float = DEFAULT_JUNCTION_MARGIN,
-        design: DesignParams = DesignParams(),
+        design: DesignParams = DesignParams(), junctions: JunctionParams = JunctionParams(),
     ) -> None:
         self.name = name
         self.junction_margin = junction_margin
         self.design = design
+        self.junction_params = junctions
         self.odr: Optional[xodr.OpenDrive] = None
         self.alignment: Optional[NetworkAlignment] = None
         self.edge_to_road: dict[int, int] = {}
@@ -88,6 +91,7 @@ class OpenDriveBuilder:
         self.node_to_junction: dict[int, int] = {}
         self.movements: list[Movement] = []
         self.bridges: dict[int, list[tuple[float, float]]] = {}  # road id -> (s, length)
+        self.tunnels: dict[int, list[tuple[float, float]]] = {}  # road id -> (s, length)
 
     def build(self, graph: RoadGraph) -> xodr.OpenDrive:
         errors = graph.validate()
@@ -100,6 +104,7 @@ class OpenDriveBuilder:
         edge_to_road: dict[int, int] = {}
         edge_s_range: dict[int, tuple[int, float, float]] = {}
         bridges: dict[int, list[tuple[float, float]]] = {}
+        tunnels: dict[int, list[tuple[float, float]]] = {}
         ends: dict[int, list[RoadEnd]] = {n: [] for n in na.junctions}
         junctions = set(na.junctions)
         planes = junction_planes(graph, na, self.design) if heights else None
@@ -107,6 +112,8 @@ class OpenDriveBuilder:
             road, road_ends, spans = self._make_road(graph, ca, road_id, junctions, planes, self.design)
             if spans:
                 bridges[road_id] = spans
+            if tunnel_spans(graph, ca):
+                tunnels[road_id] = tunnel_spans(graph, ca)
             for node_id, end in road_ends:
                 ends[node_id].append(end)
             odr.add_road(road)
@@ -121,7 +128,8 @@ class OpenDriveBuilder:
         for node_id in na.junctions:
             junction_id = next_id
             plane = planes[node_id] if planes is not None else None
-            junction, roads, moves = build_junction(junction_id, ends[node_id], junction_id + 1, plane)
+            junction, roads, moves = build_junction(junction_id, ends[node_id], junction_id + 1, plane,
+                                                    self.junction_params, graph.nodes[node_id].kind == "ramp")
             for end in ends[node_id]:
                 road = odr.roads[str(end.road_id)]
                 link = road.add_successor if end.contact == "end" else road.add_predecessor
@@ -144,6 +152,7 @@ class OpenDriveBuilder:
         self.node_to_junction = node_to_junction
         self.movements = movements
         self.bridges = bridges
+        self.tunnels = tunnels
         return odr
 
     def write(self, path: PathLike) -> Path:
@@ -154,7 +163,8 @@ class OpenDriveBuilder:
         path.parent.mkdir(parents=True, exist_ok=True)
         root = self.odr.get_element()
         root.find("header").set("date", HEADER_DATE)
-        self._add_bridges(root)
+        self._add_structures(root, "bridge", self.bridges, BRIDGE_TYPE)
+        self._add_structures(root, "tunnel", self.tunnels, TUNNEL_TYPE)
         # scenariogeneration's prettyprint round-trips through minidom, which
         # dominates write time on large networks; ET.indent is equivalent and fast.
         ET.indent(root, space="    ")
@@ -198,22 +208,26 @@ class OpenDriveBuilder:
                 })
         return out
 
-    def _add_bridges(self, root: ET.Element) -> None:
-        """<objects><bridge> per bridge span (scenariogeneration has no bridges)."""
-        if not self.bridges:
+    @staticmethod
+    def _add_structures(root: ET.Element, tag: str, spans_by_road: dict[int, list[tuple[float, float]]],
+                        kind: str) -> None:
+        """<objects><bridge> / <tunnel> per span (scenariogeneration has neither)."""
+        if not spans_by_road:
             return
         for road in root.findall("road"):
-            spans = self.bridges.get(int(road.get("id")))
+            spans = spans_by_road.get(int(road.get("id")))
             if not spans:
                 continue
             objects = road.find("objects")
             if objects is None:
                 objects = ET.Element("objects")
                 road.insert(list(road).index(road.find("lanes")) + 1, objects)
+            # Bridge ids end in 0-499, tunnel ids in 500-999, so they stay unique per road.
+            base = 0 if tag == "bridge" else 500
             for k, (s, length) in enumerate(spans):
-                ET.SubElement(objects, "bridge", {
-                    "s": f"{s:.3f}", "length": f"{length:.3f}", "name": f"bridge_{road.get('id')}_{k}",
-                    "id": f"{road.get('id')}{k:03d}", "type": BRIDGE_TYPE,
+                ET.SubElement(objects, tag, {
+                    "s": f"{s:.3f}", "length": f"{length:.3f}", "name": f"{tag}_{road.get('id')}_{k}",
+                    "id": f"{road.get('id')}{base + k:03d}", "type": kind,
                 })
 
     @staticmethod

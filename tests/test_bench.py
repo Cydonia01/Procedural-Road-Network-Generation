@@ -58,7 +58,7 @@ def test_config_from_yaml(tmp_path):
     cfg = BenchConfig.from_yaml(write_config(tmp_path, SMALL))
     assert cfg.grid_sizes == [(2, 2), (3, 3)]
     assert len(list(cfg.combinations())) == 2 * 3 * 2
-    assert cfg.network_params(4, 5).n_avenues == 4
+    assert cfg.network_params(4, 5).extent == (750.0, 320.0)
 
 
 def test_config_rejects_unknown_keys(tmp_path):
@@ -69,14 +69,14 @@ def test_config_rejects_unknown_keys(tmp_path):
 def test_config_network_preset(tmp_path):
     cfg = BenchConfig.from_yaml(write_config(tmp_path, SMALL + "network: {preset: manhattan_like}\n"))
     p = cfg.network_params(3, 4)
-    assert (p.n_avenues, p.n_streets, p.boundary_mode) == (3, 4, "loop")
+    assert (p.extent, p.start, p.boundary) == ((500.0, 240.0), (0.0, 0.0), "ring")
 
 
 def test_config_id_tracks_fixed_parameters(tmp_path):
     a = BenchConfig.from_yaml(write_config(tmp_path, SMALL))
     assert a.config_id == dataclasses.replace(a, seeds=[9], timeout_s=1).config_id
     assert a.config_id != dataclasses.replace(a, sim_duration=6).config_id
-    assert a.config_id != dataclasses.replace(a, network={"jitter": 1.0}).config_id
+    assert a.config_id != dataclasses.replace(a, network={"angle_jitter_deg": 1.0}).config_id
 
 
 # --- sweep logic (fake esmini) ------------------------------------------------------------

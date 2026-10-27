@@ -3,7 +3,10 @@
 A generator places nodes without knowing how much road each junction will
 take: the OpenDRIVE builder trims a road back to every junction it ends at
 (roadgen.geometry.junction_space). An edge between two junctions whose trims
-add up to more than its length cannot be built. This pass, run at the end of
+add up to more than its length cannot be built, and one that keeps less than
+MIN_ROAD_LENGTH between them gives a stub road that cannot change from one
+junction's slope and banking to the other's (stage C: found on pattern-field
+cities on hilly maps). This pass, run at the end of
 a generator, fixes exactly those edges and touches nothing else, so a network
 that could be built before is returned unchanged:
 
@@ -25,6 +28,7 @@ from typing import Optional
 import networkx as nx
 
 from roadgen.geometry.chains import find_chains, junction_nodes
+from roadgen.geometry.alignment import network_alignment
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN, node_trims
 from roadgen.graph.model import RoadGraph
@@ -33,6 +37,7 @@ log = logging.getLogger(__name__)
 
 MAX_DEGREE = 5  # roads a collapsed node may join (Teng & Bidarra's vertex-degree rule)
 LENGTH_EPS = 1e-9
+MIN_ROAD_LENGTH = 5.0  # [m] least road an edge between two junctions keeps after both trims
 
 
 def short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
@@ -61,6 +66,21 @@ def short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
     return sorted(out)
 
 
+def stub_roads(graph: RoadGraph, design: DesignParams = DesignParams(),
+                junction_margin: float = DEFAULT_MARGIN) -> list[int]:
+    """Single-edge roads between two junctions that keep less than MIN_ROAD_LENGTH
+    after both trims, by edge id. Uses the builder's own alignment, which also
+    keeps bends too tight for their inner lane as junctions."""
+    try:
+        na = network_alignment(graph, design, junction_margin)
+    except ValueError:
+        return []  # too-short edges first (short_edges)
+    junctions = set(na.junctions)
+    return sorted(ca.chain.edge_ids[0] for ca in na.chains
+                  if len(ca.chain.edges) == 1 and ca.chain.start in junctions
+                  and ca.chain.end in junctions and ca.length < MIN_ROAD_LENGTH)
+
+
 def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
                        junction_margin: float = DEFAULT_MARGIN, max_degree: int = MAX_DEGREE) -> int:
     """Fix too-short edges in place; return how many were collapsed or removed."""
@@ -68,6 +88,8 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
     tried: set[int] = set()
     while True:
         todo = [e for e in short_edges(graph, design, junction_margin) if e not in tried]
+        if not todo:  # only once every edge fits: the alignment needs that
+            todo = [e for e in stub_roads(graph, design, junction_margin) if e not in tried]
         if not todo:
             break
         eid = todo[0]
@@ -136,6 +158,7 @@ def _remove(graph: RoadGraph, eid: int) -> bool:
 
 
 def _drop_bridge_ref(graph: RoadGraph, eid: int) -> None:
-    bridges: Optional[list] = graph.metadata.get("bridges")
-    if bridges and eid in bridges:
-        graph.metadata["bridges"] = [b for b in bridges if b != eid]
+    for key in ("bridges", "tunnels"):
+        ids: Optional[list] = graph.metadata.get(key)
+        if ids and eid in ids:
+            graph.metadata[key] = [b for b in ids if b != eid]
