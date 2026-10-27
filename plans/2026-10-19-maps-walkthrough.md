@@ -1,4 +1,11 @@
-# Input maps and heights: reading order and CLI guide
+# Input maps and heights: walkthrough of the maps branch (historical)
+
+> Moved from `docs/implementation-guide.md` on 2026-10-27
+> ([docs refactor](2026-10-27-docs-refactor.md)). It describes the
+> `pre-generation-maps` changes as reviewed on 2026-10-19: the `git diff`
+> steps, node counts and `out/try/` paths refer to that time. The current
+> reference is [docs/maps.md](../docs/maps.md) and [docs/heights.md](../docs/heights.md).
+> The prompts behind it were not saved.
 
 A walkthrough of the `pre-generation-maps` changes. Every command below was run
 in the dev container (124 runs). The script and full log are in
@@ -44,7 +51,7 @@ cli() { docker compose run --rm -T dev python -m cli --no-history "$@"; }
 
 `--no-history` keeps the walkthrough's file chains short: outputs go to the
 `-o` paths as given. Without it, every run writes into its own folder
-`out/<hash>/` and `-o` only names the files ([CLI reference](cli-reference.md#outputs)).
+`out/<hash>/` and `-o` only names the files ([CLI reference](../docs/cli-reference.md#outputs)).
 
 
 

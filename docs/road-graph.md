@@ -1,48 +1,47 @@
-# RoadGraph data model
+# RoadGraph
 
 `roadgen/graph/model.py` defines the interface between generators and the
-rest of the pipeline. It is a plain undirected graph with lane information on
-its edges. Coordinates are in metres, headings in radians and speeds in m/s.
+rest of the pipeline. A RoadGraph is a plain undirected graph with lane
+information on its edges. Units are metres, radians and m/s.
 
-## Classes
-
-### `Node`
+## Node
 
 | Field | Type | Meaning |
 |-------|------|---------|
 | `id` | int | Unique node id |
 | `x`, `y` | float | Position [m] |
-| `kind` | `"junction"` / `"dead_end"` / `"auto"` / `"ramp"` | Generators set it from the degree (1 → `dead_end`, ≥3 → `junction`, otherwise `auto`). `"junction"` on a two-road node keeps it an OpenDRIVE junction instead of a bend. `"ramp"` (stage C9): a highway node where interchange ramps leave or join; kept by `assign_node_kinds`, and the builder allows only straight-through, right exits and right merges there |
-| `radius_cap` | float or null, default null | Largest corner radius [m] at a bend, set by [`align`](maps.md#heights-from-the-maps-to-esmini) where the fitted curve would leave legal ground. Left out of the JSON when unset |
-| `z` | float, default 0 | Height [m]. At a junction it is the height of the whole (flat) junction area. Set by [drape](maps.md#heights-from-the-maps-to-esmini) |
+| `kind` | `"junction"` / `"dead_end"` / `"auto"` / `"ramp"` | Set by `assign_node_kinds` from the degree (1 → `dead_end`, ≥3 → `junction`, else `auto`). `"junction"` on a two-road node keeps it a junction instead of a bend. `"ramp"` marks a highway node where interchange ramps leave or join ([movement rules](opendrive.md#ramp-nodes)) |
+| `radius_cap` | float or null | Largest corner radius [m] at a bend, set by [align](heights.md#1-align-bends-that-leave-legal-ground) |
+| `z` | float, default 0 | Height [m]; at a junction, the height of the junction area. Set by [drape](heights.md#2-drape-heights-from-the-elevation-map) |
 
-The builder decides from the **degree**: degree 1 is a dead end, and every
-node of degree ≥3 becomes an OpenDRIVE junction. A node of degree 2 is a
-**bend** that the road continues through (the two edges become one curved
-road, see [chains](geometry.md#chains-and-fitted-roads)) unless its `kind` is
-`"junction"` or it can't be merged, in which case it is a two-arm junction.
+**What a node becomes** in OpenDRIVE depends on its degree:
 
-### `Edge`
+| Degree | Becomes |
+|--------|---------|
+| 1 | A dead end: the road simply ends there |
+| 2 | A **bend**: the road continues through it, and both edges become one curved road ([chains](geometry.md#chains)). It stays a two-arm junction if `kind` is `"junction"` or it can't be merged |
+| ≥ 3 | An OpenDRIVE junction |
 
-A road between two nodes. **Forward lanes run `from_node → to_node`**.
+## Edge
+
+A road between two nodes. **Forward lanes run `from_node → to_node`.**
 
 | Field | Default | Meaning |
 |-------|---------|---------|
 | `id` | – | Unique edge id |
 | `from_node`, `to_node` | – | Endpoint node ids |
-| `road_class` | – | `"highway"` (lsystem with a population map), `"avenue"` (major) or `"street"` (minor). Used for plotting and stats |
-| `lanes_forward` | – | Lanes driving from → to |
-| `lanes_backward` | – | Lanes driving to → from |
+| `road_class` | – | `"highway"`, `"avenue"` (major) or `"street"` (minor). Sets design rules and plot colours |
+| `lanes_forward`, `lanes_backward` | – | Lanes driving from → to, and to → from |
 | `lane_width` | 3.5 | [m] |
 | `speed_limit` | 13.9 | [m/s] (≈ 50 km/h) |
 | `profile` | `[]` | Heights [m] at evenly spaced points strictly between the nodes: point k of n lies `k · length / (n + 1)` from `from_node`. Empty means straight between the node heights |
-| `bridges` | `[]` | Stretches over water (or over another road, stage C8), as `(start, end)` distances [m] from `from_node`. Written as OpenDRIVE `<bridge>` objects |
-| `tunnels` | `[]` | Stretches under ground (stage C8), as `(start, end)` distances [m] from `from_node`. Written as `<tunnel>` objects |
+| `bridges` | `[]` | Stretches over water or another road, as `(start, end)` distances [m] from `from_node` |
+| `tunnels` | `[]` | Stretches under ground, same form |
 
-Properties: `total_lanes`, and `is_one_way`, which is true when exactly one
-of the lane counts is 0.
+- `total_lanes` gives the sum of both directions.
+- `is_one_way` is true when exactly one of the lane counts is 0.
 
-### `RoadGraph`
+## RoadGraph
 
 `nodes: dict[int, Node]`, `edges: dict[int, Edge]`, `metadata: dict`.
 
@@ -50,25 +49,33 @@ of the lane counts is 0.
 |--------|---------|
 | `add_node`, `add_edge` | Insert; duplicate ids raise `ValueError` |
 | `incident_edges(n)`, `neighbors(n)`, `degree(n)` | Topology queries, sorted by id for determinism |
-| `edge_length(e)`, `edge_heading(e)` | Geometry of a straight edge |
+| `edge_length(e)`, `edge_heading(e)` | Geometry of the straight edge |
+| `edge_profile(e)` | (distances, heights) along an edge, endpoints included |
+| `has_elevation` | Whether any height is set |
 | `to_networkx()` | Undirected `networkx.Graph` with all attributes |
-| `validate()` | List of errors: missing endpoint nodes, zero length, duplicate edges between the same pair of nodes, negative lane counts, edges with no lanes |
+| `validate()` | Errors: missing endpoint nodes, zero length, duplicate edges between one pair of nodes, negative lane counts, edges without lanes |
 
-Generators fill `metadata` with `name`, `generator`, `seed` and the full
-`params`, so every graph records how it was made. A graph grown on input
-maps also has `maps` (per kind: `generator`, `file`, and `source` for a
-`--map-file`) and, from `lsystem`, `bridges`: the ids of highway edges that
-cross water. Stage C adds lists of what transforms and generators built:
-`tunnels` (highway edge ids through hills), `culdesacs`, `roundabouts`,
-`interchanges` and, after grade separation, `overpasses`; the network metrics
-count them. The builder uses
-`metadata["name"]` as the OpenDRIVE header name.
+### Metadata
+
+Every graph records how it was made: `name` (also the OpenDRIVE header
+name), `generator`, `seed` and the full `params`. Some generators and steps
+add lists of what they built:
+
+| Key | Content |
+|-----|---------|
+| `maps` | Per kind: `generator`, `file`, and `source` for a `--map-file` |
+| `bridges`, `tunnels` | Highway edge ids over water / through hills |
+| `culdesacs`, `roundabouts`, `interchanges` | Built by the [transforms](generators.md#graph-transforms) |
+| `overpasses` | Built by [grade separation](heights.md#3-grade-separation-overpasses) |
+| `attempts` | Draws the `junction` generator needed |
+
+The [network metrics](validation.md#network-metrics) count these features.
 
 ## JSON format
 
 `roadgen/graph/io.py` reads and writes the graph (`save_json`, `load_json`).
-Nodes and edges are written sorted by id. The format is versioned. Loading any
-`schema_version` other than `1` raises an error.
+Nodes and edges are sorted by id. Loading any `schema_version` other than 1
+is an error.
 
 ```json
 {
@@ -88,19 +95,19 @@ Nodes and edges are written sorted by id. The format is versioned. Loading any
 }
 ```
 
-Fields with defaults (`kind`, `lane_width`, `speed_limit`, `z`, `profile`,
-`bridges`, `tunnels`) may be omitted. `z`, `profile`, `bridges` and `tunnels` are only written when
-set, so a flat graph's JSON has no height fields at all.
-`RoadGraph.edge_profile(edge_id)` returns (distances, heights) along an edge,
-with both endpoints included, and `RoadGraph.has_elevation` tells whether any
-height is set.
-Hand-written graphs like this one are useful for testing the builder in
-isolation. See `tests/fixtures/` for junction shapes (T, Y, skewed 4-way,
-5-way stars, one-way crossings).
+- Fields with defaults may be left out.
+- `radius_cap`, `z`, `profile`, `bridges` and `tunnels` are only written when
+  set, so a flat graph's JSON has no height fields.
+- Hand-written graphs like this one test the builder in isolation.
+  `tests/fixtures/` has junction shapes ([Development](development.md#fixtures)).
 
 ## Plotting
 
-`plot_graph(graph, path, show_node_ids=False)` (CLI: `plot-graph`) draws
-avenues in red and streets in blue. Line width scales with the lane count,
-one-way edges get a direction arrow, and nodes are coloured by `kind`. It uses
-matplotlib's object API (`Figure`), so it never needs a display.
+`plot_graph(graph, path, show_node_ids=False)` (CLI `plot-graph`) draws the
+fitted roads:
+
+- highways orange, avenues red and streets blue;
+- line width scaled by lane count;
+- arrows on one-way edges, and nodes coloured by `kind`.
+
+It uses matplotlib's object API, so it needs no display.

@@ -235,7 +235,7 @@ grade_separation:  # roads crossing without a junction pass over each other (sta
   flat_margin: 5.0         # flat top beyond each edge of the lower road [m]
   sample_spacing: 10.0     # most distance between profile points of raised roads [m]
 
-drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/maps.md)
+drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/heights.md)
   sample_spacing: 20.0     # max distance between profile points along a road [m]
   smoothing: 80.0          # roads follow the terrain averaged over this length [m]
   bridge_clearance: 2.0    # min bridge deck height above the water surface [m]
@@ -311,14 +311,3 @@ pipeline:
   sim_vehicles: 50      # --simulate: number of vehicles
   sim_duration: 30.0    # --simulate: simulated time [s]
   sim_timeout: 600.0    # --simulate: wall-clock limit for esmini [s]
-
-bench:  # defaults for keys a sweep config leaves out
-  sim_duration: 60.0
-  timestep: 0.05
-  spawn_mode: random_lanes
-  min_spawn_gap: 10.0
-  speed_range: [8.0, 13.9]
-  timeout_s: 900.0      # per esmini run
-  memory_cap_mb: 8192.0 # per esmini run
-  network: {}           # LSystemParams overrides, e.g. {preset: manhattan_like}
-  out_dir: out/bench

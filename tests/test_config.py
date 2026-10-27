@@ -6,7 +6,6 @@ import pytest
 import yaml
 
 from cli import build_parser, main
-from roadgen.bench.benchmark import BenchConfig
 from roadgen.config import DEFAULTS, load_config, merge, section
 from roadgen.generators.base import load_params
 from roadgen.generators.lsystem import LSystemParams
@@ -96,14 +95,6 @@ def test_cli_bad_config_file(tmp_path):
     cfg.write_text("bogus: 1\n")
     with pytest.raises(SystemExit, match="bogus"):
         main(["--config", str(cfg), "generators"])
-
-
-def test_bench_config_defaults(tmp_path):
-    path = tmp_path / "sweep.yaml"
-    path.write_text(yaml.safe_dump({"grid_sizes": [[2, 2]], "vehicle_counts": [1], "seeds": [1]}))
-    assert BenchConfig.from_yaml(path).timeout_s == DEFAULTS["bench"]["timeout_s"]
-    cfg = BenchConfig.from_yaml(path, {**DEFAULTS["bench"], "timeout_s": 5.0})
-    assert cfg.timeout_s == 5.0
 
 
 def test_cli_precedence_preset_config_params_set(tmp_path):

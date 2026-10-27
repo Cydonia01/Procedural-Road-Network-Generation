@@ -1,88 +1,93 @@
 # Getting started
 
-There are two ways to run the project:
+## Install
 
-- **Docker (recommended):** Python, every dependency and esmini come preinstalled. Works the same on Linux and macOS.
-- **Native:** a Python virtualenv plus an esmini release you download yourself.
+### Docker (recommended)
 
-## Option A: Docker
-
-Requires Docker with the Compose plugin (Docker Desktop on macOS).
+Python, every dependency and esmini v3.9 come preinstalled, the same on
+Linux and macOS. You need Docker with the Compose plugin (Docker Desktop on
+macOS).
 
 ```bash
 docker compose build              # once, and again after pyproject.toml changes
-docker compose run --rm dev       # shell in /workspace (your checkout)
+docker compose run --rm dev       # shell in /workspace (your checkout, mounted)
 ```
 
-Inside the container, every command below works as written. `ESMINI_HOME` is
-already set. To open esmini windows, use the `gui` service (Linux) or `gui-mac`
-(macOS with XQuartz) instead of `dev`. See [Docker environment](docker.md).
+Every command below works inside that shell as written. For a single command,
+use `docker compose run --rm -T dev <command>`. Details are in
+[Docker](docker.md).
 
-## Option B: Native install
+### Native
 
-Requires Python 3.10+.
+You need Python 3.10+ and an esmini release (tested with v3.9; `drive-check`
+is calibrated against it).
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-esmini is an external tool. Download a release for your OS from
-<https://github.com/esmini/esmini/releases> (`esmini-bin_<OS>.zip`). Either
-unpack it so that `./esmini/bin/esmini` exists in the repo (the folder is
-git-ignored), or point `ESMINI_HOME` at it:
+Download `esmini-bin_<OS>.zip` from
+<https://github.com/esmini/esmini/releases>. Then either unpack it so that
+`./esmini/bin/esmini` exists (the folder is git-ignored), or point
+`ESMINI_HOME` at it:
 
 ```bash
-export ESMINI_HOME=/path/to/esmini        # must contain bin/esmini, bin/odrviewer, ...
-export OPENDRIVE_XSD=/path/to/opendrive_16_core.xsd   # optional, enables the schema check
+export ESMINI_HOME=/path/to/esmini                    # contains bin/esmini, bin/odrviewer, ...
+export OPENDRIVE_XSD=/path/to/opendrive_16_core.xsd   # optional: enables the schema check
 ```
-
-The code was tested against esmini **v3.9**. `drive-check` calibrates its
-junction-selector angles against that version.
 
 ## First run
 
 ```bash
-# 1. Is everything installed?
-pytest
+pytest                                     # is everything installed?
+python -m cli generators                   # generators, presets and parameters
 
-# 2. List the available generators and their parameters
-python -m cli generators
-
-# 3. Full pipeline on a small grid: graph → PNG → .xodr → validation
-#    → drive-check → short simulation
+# Generate a small grid, plot it, build the .xodr, validate it,
+# drive every junction movement and run a short simulation
 python -m cli pipeline lsystem --preset grid --set extent=[750,240] --seed 1 \
     --drive-check --simulate -o first
-
-# 4. Look at the result
-#    out/<hash>/first.png            top-down plot of the graph
-#    out/<hash>/first.xodr           OpenDRIVE road network
-#    out/<hash>/first.roadmap.json   graph-id → OpenDRIVE-id mapping
-#    out/<hash>/first.xosc           traffic scenario (from --simulate)
-python -m cli view out/<hash>/first.xodr    # natively; in Docker see below
 ```
 
-A passing run ends with `INFO roadgen.cli: run <hash>: out/<hash>`: the run's
-folder, with all its outputs and `run.yaml` (its command and non-default
-parameters).
+A passing run ends with `INFO roadgen.cli: run <hash>: out/<hash>`. That
+folder holds:
 
-Opening a window (`view`, `simulate --gui`) needs a display. The `dev`
-service has none, so `odrviewer` exits immediately without an error.
-In Docker, use the GUI service for your OS:
+| File | Contents |
+|------|----------|
+| `first.json` | The [RoadGraph](road-graph.md) |
+| `first.png` | Top-down plot of the graph |
+| `first.xodr` | OpenDRIVE road network |
+| `first.roadmap.json` | Graph id → OpenDRIVE id mapping, every junction movement |
+| `first.xosc` | Traffic scenario (from `--simulate`) |
+| `run.yaml` | The command and its non-default parameters, enough to rerun it |
+
+Every output file is listed in
+[Architecture → Output files](architecture.md#output-files), and run folders
+are explained in the
+[CLI reference](cli-reference.md#run-folders-history-replay-run).
+
+## Viewing results
+
+`view` opens a network in esmini's `odrviewer` with random cars, and
+`simulate --gui` shows a scenario running:
 
 ```bash
-# Linux (X11 or Wayland/XWayland), from a terminal in your desktop session
-docker compose run --rm gui python -m cli view out/<hash>/first.xodr
-
-# macOS: XQuartz running, "Allow connections from network clients" on,
-# and `xhost +localhost` run once (see docker.md#macos-dev-and-gui-mac)
-docker compose run --rm gui-mac python -m cli view out/<hash>/first.xodr
+python -m cli view out/<hash>/first.xodr
+python -m cli simulate out/<hash>/first.xosc --gui
 ```
 
-## Where to go next
+Both need a display. The Docker `dev` service has none: `odrviewer` exits
+immediately without an error. Use the GUI service for your OS instead (setup
+in [Docker](docker.md)):
 
-- **Change the network:** [Generators](generators.md)
-- **Understand the `.xodr` output:** [OpenDRIVE builder](opendrive.md)
-- **Run traffic:** [Scenarios & simulation](scenarios-and-simulation.md)
-- **Measure scalability:** [Scalability benchmark](benchmarking.md)
+```bash
+docker compose run --rm gui     python -m cli view out/<hash>/first.xodr   # Linux
+docker compose run --rm gui-mac python -m cli view out/<hash>/first.xodr   # macOS + XQuartz
+```
+
+## Next
+
+- More example commands: [Example runs](../runs/README.md)
+- Grow a city on terrain: `python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings`,
+  explained in [lsystem](lsystem.md) and [Input maps](maps.md)
+- How the pipeline fits together: [Architecture](architecture.md)

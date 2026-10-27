@@ -1,283 +1,277 @@
 # Input maps
 
-Parish & Müller (2001) drive their road growth with 2D image maps: a
-land/water/vegetation map, an elevation map and a population density map
-(Section 1.2, Figure 2). Highways look for population peaks, and local
-constraints keep roads out of water and off steep slopes. The paper's maps
-were not downloaded. They were "generated either by drawing them or by
-scanning from statistical and geographical maps" (Section 2, citing the
-printed *Four World Cities Transport Study*), and the Figure 2 city is
-imaginary.
+Parish & Müller (2001) drive road growth with image maps of land and water,
+elevation and population density. Highways seek population peaks, and local
+constraints keep roads out of water and off steep slopes. Their maps were
+drawn by hand or scanned from printed atlases, and the city in their Figure 2
+is imaginary.
 
-`roadgen/maps/` generates these three maps procedurally and can also read
-real ones from images. The `lsystem` generator grows on them: highways head
-for population peaks and bridge rivers, and streets stop at shores, parks,
-steep slopes and empty land. See
-[Generators → Input maps](generators.md#input-maps) for the rules and
-[Architecture](architecture.md#input-maps-and-the-order-of-stages) for how
-the maps enter the pipeline.
+`roadgen/maps/` generates these maps procedurally, adds a **style** map of
+street patterns, and can also read real maps from images. Only
+[lsystem](lsystem.md#growing-on-input-maps) grows on them. The order the
+maps enter the pipeline in is described in
+[Architecture](architecture.md#how-maps-enter).
 
-## Design
+```bash
+python -m cli maps                                               # generators, presets, parameters
+python -m cli map terrain noise --preset coastal --seed 3 -o coast
+python -m cli map elevation fbm --preset hilly --on terrain=out/<hash>/coast.npz -o coast_elev
+python -m cli pipeline lsystem --preset city --maps --allow-traps     # all maps, then the network on them
+```
 
-- **A linear pipeline: terrain → elevation → population → style.** Each kind has
-  its own registry, and the kinds are built in this order. A generator gets
-  the maps of the earlier kinds as `upstream` (a `MapSet`, any layer may be
-  missing): elevation reads the terrain, population reads both, style
-  reads all three. So the
-  stack is consistent: water lies flat in the valleys, and nobody lives on
-  water, in parks or on steep slopes. A generator never reads a later kind
-  or a RoadGraph. Without upstream maps it gives exactly its standalone
-  result, so any terrain generator still works with any elevation and
-  population generator. The kinds use unrelated random streams for the
-  same seed (the seed is salted with the kind and generator name).
-- **Same pattern as the road generators.** Each generator is a
-  `MapGenerator` subclass with a frozen params dataclass whose defaults come
-  from `roadgen/defaults.yaml` (`maps:`). It is registered with
-  `@register_map(kind, name)`, may offer presets, and is deterministic for
-  (params, grid, seed). Parameters use the same layering: `defaults.yaml` <
-  preset < `--config` < `--params` < `--set`, all stored in the run's
-  config section `maps.<kind>.<name>`.
-- **One grid, world coordinates.** A `GridSpec` (lower-left `origin`,
-  `size` in metres, square `cell_size`) defines where a map lies. Noise is
-  sampled in world metres divided by a feature `scale`, so changing only
-  `cell_size` changes the resolution, not the landscape.
-- **Files.** A `MapLayer` is stored as `.npz` (the array plus JSON metadata:
-  kind, grid, generator, seed, params) with a `.png` preview next to it.
-  Row 0 of the array is the **south** edge (`imshow(origin="lower")`).
-  `MapLayer.sample(x, y)` reads values at world points (nearest cell for
-  terrain and style, bilinear otherwise). A road generator receives the layers as
-  one `MapSet(terrain=…, elevation=…, population=…, style=…)`; each may be `None`.
+## Map kinds
 
 | Kind | Values | dtype | Generators |
-|------|--------|-------|-----------|
+|------|--------|-------|------------|
 | `terrain` | `0` water, `1` land, `2` vegetation (park / forest) | `uint8` | `noise`, `image` |
 | `elevation` | height [m] | `float32` | `fbm`, `image` |
 | `population` | density [people/km²] | `float32` | `centers`, `image` |
 | `style` | `0` grid, `1` radial, `2` organic, `3` contour, `4` suburb | `uint8` | `zones`, `image` |
 
-## `terrain noise`: lakes, coast, rivers, vegetation (`terrain.py`)
+**A linear pipeline: terrain → elevation → population → style.**
 
-Three features, each drawn from its own random stream. Adding a river
-therefore leaves the lakes and parks unchanged.
+- Each generator gets the maps of the earlier kinds as `upstream` (a `MapSet`;
+  any layer may be missing):
+  - elevation reads terrain;
+  - population reads both;
+  - style reads all three.
+- The stack is therefore consistent: water lies flat in valleys, and nobody
+  lives on water, in parks or on steep slopes.
+- A generator never reads a later kind or a RoadGraph. Without upstream maps
+  it gives its standalone result, so any generators can be combined.
+- The seed is salted with the kind and generator name, so one `--seed` gives
+  unrelated maps.
 
-1. **Lakes / sea.** Domain-warped fBm (Perlin octaves) is thresholded at its
+**Grid and files.**
+
+- A `GridSpec` (lower-left `origin`, `size` [m], square `cell_size`) places a
+  map in world coordinates. Noise is sampled in world metres divided by a
+  feature `scale`, so changing only `cell_size` changes the resolution, not
+  the landscape.
+- A `MapLayer` is saved as `.npz`: the array plus JSON metadata (kind, grid,
+  generator, seed, params). A `.png` preview is written next to it.
+- Row 0 of the array is the **south** edge.
+- `MapLayer.sample(x, y)` reads values at world points: nearest cell for
+  terrain and style, bilinear for the rest.
+- `layer.on_grid(grid)` resamples a layer onto another grid.
+
+Parameters follow the [usual layering](cli-reference.md#parameters-and---config),
+under `maps.<kind>.<generator>` in the config. `--map-set KIND.KEY=VALUE`
+sets one in `pipeline`.
+
+## terrain `noise`: lakes, coast, rivers, vegetation
+
+Three features, each from its own random stream, so adding a river leaves the
+lakes and parks unchanged:
+
+1. **Lakes and sea.** Domain-warped fBm is thresholded at its
    `water_fraction` quantile, so the share of water is exact before
-   smoothing. `coast_strength` blends in a linear ramp, which pushes the
-   water to one side (`coast_angle_deg`, or random) and turns lakes into a
-   sea. `smoothing` runs 3×3 majority passes that remove speckles.
-2. **Rivers.** Each river is a band `river_width` wide through a random point
-   in the middle half of the map, in a random direction. Its centre line is a
-   sine meander (`river_meander` amplitude, `river_wavelength`) made
-   irregular by 1D fBm.
+   smoothing.
+   - `coast_strength` blends in a linear ramp that pushes the water to one
+     side (`coast_angle_deg`, or random), turning lakes into a sea.
+   - `smoothing` runs 3×3 majority passes against speckles.
+2. **Rivers.** Each is a band `river_width` wide through a random point in
+   the middle half of the map, in a random direction. Its centre line is a
+   sine meander (`river_meander`, `river_wavelength`), made irregular by 1D
+   fBm.
 3. **Vegetation.** The top `vegetation_fraction` of the land in another fBm
-   field (`vegetation_scale`) becomes park / forest.
+   field (`vegetation_scale`) becomes park or forest.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `scale` | 1500 | Size of the largest water bodies [m] |
+| `octaves`, `lacunarity`, `gain` | 5, 2, 0.5 | fBm layers, frequency step, amplitude falloff |
+| `warp` | 0.3 | Domain warp strength (in units of `scale`); bends outlines |
+| `water_fraction` | 0.12 | Share of lakes or sea, before rivers |
+| `coast_strength` | 0 | 0 gives scattered lakes, 1 a straight coast on one side |
+| `coast_angle_deg` | null | Direction of the sea [deg from +x]; null = random |
+| `smoothing` | 2 | Majority passes |
+| `rivers`, `river_width`, `river_meander`, `river_wavelength` | 1, 50, 150, 1800 | Count, width [m], sideways amplitude [m], meander length [m] |
+| `vegetation_fraction`, `vegetation_scale` | 0.15, 400 | Share of land that is park or forest, patch size [m] |
 
 Presets: `inland` (no water), `lakes`, `coastal`, `river_city`.
 
-## `elevation fbm`: fractal terrain (`elevation.py`)
+## elevation `fbm`: fractal terrain
 
-This follows Musgrave et al. (1989), which Parish & Müller cite for terrain.
+After Musgrave et al. (1989), which Parish & Müller cite for terrain:
 
-1. Domain-warped fBm. `ridge` blends in a ridged multifractal (sharp
-   crests, as in mountain ranges).
-2. The result is stretched to [0, 1] and raised to `exponent`. Values above
-   1 flatten valleys and sharpen peaks.
-3. It is scaled to [`min_elevation`, `max_elevation`].
-4. Thermal erosion runs for `erosion_iterations` passes. Where the step to a
-   4-neighbour exceeds `tan(talus_deg) · cell_size`, `erosion_rate` of the
+1. Domain-warped fBm. `ridge` blends in a ridged multifractal, which gives
+   sharp mountain crests.
+2. Stretched to [0, 1] and raised to `exponent`. Values above 1 flatten
+   valleys and sharpen peaks.
+3. Scaled to [`min_elevation`, `max_elevation`].
+4. **Thermal erosion.** For `erosion_iterations` passes, wherever the step to
+   a 4-neighbour exceeds `tan(talus_deg) · cell_size`, `erosion_rate` of the
    excess slides downhill. Total height is conserved. This rounds off the
-   unnaturally steep slopes that raw noise has.
+   unnaturally steep slopes of raw noise.
 
-**On a terrain map** (the pipeline, or `map elevation fbm --on terrain=…`)
-with any water, step 3 changes: land rises from `shore_height` above the
-water at the shore to its full noise height `shore_width` away (smoothstep
-over the distance to the nearest water cell). After erosion every water
-cell is set flat to `min_elevation`, the water surface, and land is kept at
-least `shore_height` above it. Lakes, rivers and the sea therefore lie in
-valleys, all at the same level. A terrain without water changes nothing.
-Too small a `shore_width` packs the whole relief into steep banks that
-roads cannot climb (`max_grade`). The default of 600 m keeps the share of
-steep cells about the same as without terrain.
+**On a terrain map with water**, step 3 changes:
+
+- Land rises from `shore_height` above the water at the shore to its full
+  height `shore_width` away (a smoothstep over the distance to water).
+- After erosion, every water cell is set to `min_elevation` (the water
+  surface), and land stays at least `shore_height` above it.
+
+Lakes, rivers and sea therefore lie in valleys, all at one level. A small
+`shore_width` packs the relief into steep banks that roads can't climb. The
+default of 600 m keeps the share of steep cells about as without terrain.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `min_elevation`, `max_elevation` | 0, 80 | Height range [m]; `min_elevation` is also the water surface |
+| `scale`, `octaves`, `lacunarity`, `gain`, `warp` | 1500, 6, 2, 0.5, 0.2 | As for terrain; higher `gain` is rougher |
+| `ridge` | 0 | Ridged-noise blend, 0–1 |
+| `exponent` | 1 | > 1 flattens valleys, sharpens peaks |
+| `erosion_iterations`, `talus_deg`, `erosion_rate` | 20, 30, 0.5 | Erosion passes, steepest stable slope [deg], share moved per pass |
+| `shore_width`, `shore_height` | 600, 2 | On a terrain map only: distance to full height [m], height at the shore [m] |
 
 Presets: `flat`, `rolling`, `hilly`, `mountainous`.
 
-## `population centers`: polycentric density (`population.py`)
+## population `centers`: polycentric density
 
-This is a polycentric form of Clark's (1951) urban density model,
-D(r) = D₀·e^(−r/b). Density falls exponentially with distance from a
-centre.
+A polycentric form of Clark's (1951) urban density model, D(r) = D₀·e^(−r/b):
+density falls exponentially with distance from a centre.
 
 1. `n_centers` centres are placed at random, at least `min_center_distance`
-   apart and `center_margin` away from the edges. The first is the main
-   centre, with weight 1. The others get a weight drawn from
-   `secondary_weight`, and their decay length is scaled by √weight.
-2. Density is the sum of the centre profiles: `exponential` (Clark) or
+   apart and `center_margin` from the edges.
+   - The first is the main centre, with weight 1.
+   - The others draw a weight from `secondary_weight`, and their decay length
+     is scaled by √weight.
+2. Density is the sum of the centre profiles, `exponential` (Clark) or
    `gaussian` (flatter core), with `peak_density` at the main centre.
-3. The sum is multiplied by `1 + noise_amount · fBm` (`noise_scale`) for
-   neighbourhood-scale variation, and `base_density` is added everywhere.
+3. It is multiplied by `1 + noise_amount · fBm` for neighbourhood variation,
+   and `base_density` is added everywhere.
 
-**On terrain / elevation maps** each cell's density is multiplied by its
-habitability, a factor in [0, 1]. It is 0 on water and `vegetation_factor`
-in parks / forest, and it falls linearly from 1 on flat ground to 0 at
-`max_slope_deg` (0 turns the slope limit off). Centres are only placed where
-the factor is at least 0.5, so a city never centres on a lake or a cliff.
+**On terrain and elevation maps**, each cell is multiplied by its
+habitability, a factor in [0, 1]:
 
-The centres are stored in the layer's metadata (`centers: [[x, y, weight], …]`),
-for reference. A layer built on upstream maps lists them in
-`metadata.upstream`. Presets: `monocentric`,
-`polycentric`, `sprawl`.
+- 0 on water;
+- `vegetation_factor` in parks and forest;
+- falling linearly from 1 on flat ground to 0 at `max_slope_deg`.
 
-## `style zones`: street patterns per district (`style.py`)
+Centres are only placed where habitability is at least 0.5, so a city never
+centres on a lake or a cliff. They are stored in the metadata as `centers:
+[[x, y, weight], …]`.
 
-Stage C3. Parish & Müller (2001, sec. 3.2.2) drive their pattern rules with
-grey-scale control maps; a style map holds one street pattern class per
-cell, and lsystem's [field goal](generators.md#pattern-fields-global_goal-field)
-blends the patterns by it. Only the field goal reads it: `pipeline --maps`
-builds it only for the field goal, and the `grid` goal ignores one passed in.
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `n_centers`, `peak_density`, `decay_length` | 3, 15000, 700 | Centres, main peak [people/km²], decay length [m] |
+| `profile` | `exponential` | or `gaussian` |
+| `secondary_weight` | [0.3, 0.7] | Other centres' peak relative to the main one |
+| `min_center_distance`, `center_margin` | 800, 0.15 | Spacing [m]; distance from the edges as a share of map size |
+| `noise_amount`, `noise_scale` | 0.35, 400 | Relative fBm variation and its size [m] |
+| `base_density` | 50 | Rural floor [people/km²] |
+| `vegetation_factor`, `max_slope_deg` | 0.1, 20 | With upstream maps only: density in parks; slope where density reaches 0 [deg] (0 = no limit) |
 
-`zones` splits the grid into **districts**: one site per `zone_size` square
-(at a random spot in it), cells to the nearest site after a domain warp of
-`warp` · `zone_size`, so borders are irregular. Each district gets a class:
+Presets: `monocentric`, `polycentric`, `sprawl`.
 
-- **on a population map**, by its mean density on land: a district holding
-  the main population centre (or with its site within `radial_radius` of
-  it) is **radial**; at least `core_density` is a **grid**; down to
-  `suburb_density` a grid, or **organic** with `organic_share`; below,
-  **suburb**;
-- **on an elevation map**, a district with a mean grade of at least
-  `contour_grade` follows the **contours** (checked before the density bands);
-- **without upstream maps**, by `shares` (grid, radial, organic, contour, suburb).
+## style `zones`: street patterns per district
 
-Every district also draws its own **grid angle**, a common base angle plus a
-normal spread of `angle_spread_deg`, so neighbouring districts meet at an
-angle as in real cities. The metadata holds the `sites` (`[x, y, class,
-angle_deg]`) and the `radial_centers`, which lsystem reads: its grid
-follows the nearest site's angle, and its radial pattern centres on them.
-lsystem blends neighbouring districts over `style_blend_width` (each
-class's share of the cells within it).
+Parish & Müller drive their pattern rules with grey-scale control maps
+(sec. 3.2.2). A style map holds one street-pattern class per cell, and
+lsystem's [field goal](lsystem.md#pattern-fields-global_goal-field) blends
+the patterns by it. Only the field goal reads it, so `pipeline --maps` builds
+a style map only for that goal.
+
+**Districts.** `zones` places one site per `zone_size` square, at a random
+spot in it. Each cell belongs to its nearest site after a domain warp of
+`warp · zone_size`, so borders are irregular.
+
+**Each district gets a class**, by the first rule that applies:
+
+1. **Contour**, on an elevation map, if its mean grade is at least
+   `contour_grade`.
+2. On a population map, by its mean density on land:
+   - **radial** if it holds the main centre or its site is within
+     `radial_radius` of it;
+   - **grid** at `core_density` or more;
+   - down to `suburb_density`, **grid**, or **organic** with probability
+     `organic_share`;
+   - **suburb** below that.
+3. Without upstream maps, by `shares` (grid, radial, organic, contour, suburb).
+
+**Grid angles.** Every district also draws a grid angle: a common base angle
+plus a normal spread of `angle_spread_deg`. Neighbouring districts therefore
+meet at an angle, as in real cities.
+
+**Metadata.** The layer stores the `sites` (`[x, y, class, angle_deg]`) and
+the `radial_centers`. lsystem's grid follows the nearest site's angle, and its
+radial pattern centres on the radial centres.
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
 | `zone_size` | 800 | Typical district size [m] |
-| `warp` | 0.25 | Domain warp of the borders, in units of `zone_size` |
+| `warp` | 0.25 | Border warp, in units of `zone_size` |
 | `shares` | (0.5, 0, 0.3, 0, 0.2) | Class shares without a population map |
 | `core_density`, `suburb_density` | 6000, 1500 | Density bands [people/km²] |
-| `organic_share` | 0.35 | Share of the middle districts that are organic |
+| `organic_share` | 0.35 | Share of middle districts that are organic |
 | `radial_radius` | 600 | Districts this close to the main centre are radial [m]; 0 = none |
-| `contour_grade` | 0.10 | Districts at least this steep (mean rise / run) follow the contours |
-| `angle_spread_deg` | 25 | Spread of the districts' grid angles [deg] |
+| `contour_grade` | 0.10 | Districts at least this steep (mean rise / run) follow contours |
+| `angle_spread_deg` | 25 | Spread of district grid angles [deg] |
 
 Presets: `planned` (one grid angle, few organic districts, no radial core)
 and `old_town` (a wide radial core, mostly organic, many angles).
 
 ## `image`: real or hand-drawn maps
 
-Every kind has an `image` generator that stretches a PNG / JPEG (or `.npy`)
-over the grid. The first row of the image is the **north** edge. `path` is
-required. Image maps are used as given; they don't adapt to upstream maps
-(real data is consistent already), but they do feed the kinds after them.
+Every kind has an `image` generator that stretches a PNG, JPEG or `.npy`
+over the grid. The first image row is the **north** edge, and `path` is
+required. Image maps are used as given and don't adapt to upstream maps,
+since real data is consistent already. They do feed the kinds after them.
 
-| Kind | How pixels become values |
-|------|--------------------------|
-| `terrain` | Color image: nearest of `water_color` / `land_color` / `vegetation_color`. Grayscale image (also gray saved as RGB): a water mask, water where darker than `gray_threshold` (`water_is_dark: false` flips this) |
-| `elevation` | Grayscale 0..1 → `min_elevation`..`max_elevation`. `stretch: true` maps the raster's own min..max instead (use this for 16-bit or `.npy` data in arbitrary units) |
-| `population` | Grayscale 0..1 → `min_density`..`max_density` |
-| `style` | Color image: nearest of the five `colors` (grid, radial, organic, contour, suburb); radial centres are the centroid of the radial pixels |
+| Kind | Pixels → values |
+|------|-----------------|
+| `terrain` | **Colour image:** nearest of `water_color`, `land_color`, `vegetation_color`. **Grayscale** (also gray saved as RGB): water where darker than `gray_threshold` (`water_is_dark: false` flips it) |
+| `elevation` | Grayscale 0..1 → `min_elevation`..`max_elevation` (default 0..100). `stretch: true` uses the raster's own min..max, for 16-bit or `.npy` data in arbitrary units |
+| `population` | Grayscale 0..1 → `min_density`..`max_density` (default 0..20000) |
+| `style` | Nearest of the five `colors` (grid, radial, organic, contour, suburb); radial centres are the centroids of radial pixels |
 
-GeoTIFFs are not read directly (that would add a GDAL/rasterio dependency).
-Convert them first:
+GeoTIFFs are not read directly, since that would need GDAL. Convert them
+first:
 
 ```bash
 gdal_translate -of PNG -ot UInt16 -scale srtm_tile.tif heightmap.png
+python -m cli pipeline lsystem --preset city --maps --allow-traps --elevation image \
+    --map-set elevation.path=heightmap.png --map-set elevation.stretch=true
 ```
 
-## Where to get real maps
+A map file should cover the generator's area. A file made for another area
+logs a warning, and its edge values are used outside it.
+
+### Where to get real maps
 
 All of these are free. Crop them to your area and export a grayscale or
-class-colored PNG.
+class-coloured PNG.
 
 | Kind | Source | Notes |
 |------|--------|-------|
-| Elevation | [Tangram Heightmapper](https://tangrams.github.io/heightmapper/) | Draws a grayscale heightmap of any view in the browser and exports a PNG directly. The quickest option |
+| Elevation | [Tangram Heightmapper](https://tangrams.github.io/heightmapper/) | Grayscale heightmap of any view, exported from the browser. Quickest |
 | Elevation | [Copernicus DEM GLO-30](https://registry.opendata.aws/copernicus-dem/) | 30 m global DEM (GeoTIFF) |
-| Elevation | [SRTM via USGS EarthExplorer](https://earthexplorer.usgs.gov/), [OpenTopography](https://opentopography.org/) | 30 m (1 arc-second) global DEM |
-| Terrain (water) | [JRC Global Surface Water](https://global-surface-water.appspot.com/) | 30 m water occurrence, a ready-made water mask |
-| Terrain (water / vegetation) | [ESA WorldCover](https://esa-worldcover.org/) | 10 m land cover: water, tree cover, grassland, built-up, … Recolor the classes to the three terrain colors |
-| Terrain (Europe) | [CORINE Land Cover](https://land.copernicus.eu/) | 100 m land cover, 44 classes |
-| Population | [GHSL GHS-POP](https://human-settlement.emergency.copernicus.eu/) | JRC global population grid, 100 m / 1 km, several epochs |
-| Population | [WorldPop](https://www.worldpop.org/) | 100 m population counts per country |
+| Elevation | [USGS EarthExplorer (SRTM)](https://earthexplorer.usgs.gov/), [OpenTopography](https://opentopography.org/) | 30 m global DEM |
+| Terrain (water) | [JRC Global Surface Water](https://global-surface-water.appspot.com/) | 30 m water occurrence: a ready water mask |
+| Terrain | [ESA WorldCover](https://esa-worldcover.org/) | 10 m land cover; recolour classes to the three terrain colours |
+| Terrain (Europe) | [CORINE Land Cover](https://land.copernicus.eu/) | 100 m, 44 classes |
+| Population | [GHSL GHS-POP](https://human-settlement.emergency.copernicus.eu/) | 100 m / 1 km global grid |
+| Population | [WorldPop](https://www.worldpop.org/) | 100 m counts per country |
 | Population | [HDX: Meta High Resolution Population Density](https://data.humdata.org/) | ~30 m, many countries |
 | Population | [NASA SEDAC GPWv4](https://sedac.ciesin.columbia.edu/data/collection/gpw-v4) | ~1 km global density |
-| All | [Virtual Terrain Project](http://vterrain.org/) | The terrain resource Parish & Müller cite ([32]) |
+| All | [Virtual Terrain Project](http://vterrain.org/) | The terrain resource Parish & Müller cite |
 
-Population grids give people per cell. Divide by the cell area in km² (or
-choose `max_density` to match) to get people/km².
-
-## CLI
-
-Each run writes into its own folder `out/<hash>/`; below, `out/<hash>/` stands
-for the folder of the run that wrote the file, and `-o` only names outputs.
-
-```bash
-python -m cli maps                                             # generators, presets, parameters
-
-# One map on its own grid (default origin [0, 0], size 3000 x 3000 m, 10 m cells)
-python -m cli map terrain noise --preset coastal --seed 3 -o coast
-python -m cli map elevation fbm --preset hilly --size 4000 3000 --cell-size 20
-python -m cli map population centers --set n_centers=5 --graph out/<hash>/net.json   # roads on the preview
-# The pipeline by hand: elevation on the terrain, population on both
-python -m cli map elevation fbm --on terrain=out/<hash>/coast.npz -o coast_elev
-python -m cli map population centers --on terrain=out/<hash>/coast.npz \
-    --on elevation=out/<hash>/coast_elev.npz -o coast_pop
-python -m cli map elevation image --set path=heightmap.png --set max_elevation=250
-python -m cli plot-map out/<hash>/coast.npz coast_roads.png --graph out/<hash>/net.json
-
-# In the pipeline: lsystem grows on the maps (grid = its area + maps.grid.margin)
-python -m cli pipeline lsystem --preset city --allow-traps --maps
-python -m cli pipeline lsystem --preset city --allow-traps --terrain noise --population centers \
-    --map-set terrain.rivers=2 --map-set population.n_centers=1
-python -m cli pipeline lsystem --preset city --allow-traps --maps --elevation image \
-    --map-set elevation.path=heightmap.png
-
-# Reuse maps from files (e.g. made with `map`, or by an earlier pipeline run)
-python -m cli generate lsystem --preset city --map-file terrain=out/<hash>/coast.npz \
-    --map-file population=out/<hash>/lsystem_city_s0_population.npz -o net.json
-
-# Street patterns from a style map: districts of grid, radial, organic, contour, suburb
-python -m cli pipeline lsystem --preset mixed_city --allow-traps --maps
-python -m cli map style zones --preset old_town --on population=out/<hash>/city_population.npz
-```
-
-`pipeline --maps` uses the generators named in `maps.pipeline` of the
-config and builds terrain, then elevation on it, then population on both,
-then style on all three (only for generators that read it: lsystem's field
-goal). `--terrain/--elevation/--population/--style NAME` choose one kind
-explicitly, and `--map-file KIND=FILE.npz` loads one (it wins over a
-generator for that kind). `generate` takes `--map-file` too. A map file
-should cover the generator's area; a file made for another area logs a
-warning. The pipeline writes `PREFIX_<kind>.npz` and a `.png` with the roads
-drawn on top, and lists the maps in the RoadGraph's `metadata.maps`. Defaults
-for every map parameter can be changed with `--config`, for example:
-
-```yaml
-maps:
-  grid: {cell_size: 5.0}
-  terrain:
-    noise: {water_fraction: 0.25, coast_strength: 0.7}
-```
+Population grids give people per cell. Divide by the cell area in km² (or set
+`max_density` to match) to get people/km².
 
 ## Adding a map generator
 
 ```python
 from dataclasses import dataclass
+from typing import Optional
 import numpy as np
 from roadgen.maps.base import MapGenerator, register_map
-from typing import Optional
 from roadgen.maps.model import GridSpec, MapLayer, MapSet
 
 @dataclass(frozen=True)
 class RampParams:
-    slope: float = 0.05  # m per m
+    slope: float = 0.05  # [m/m]
 
 @register_map("elevation", "ramp")
 class RampGenerator(MapGenerator[RampParams]):
@@ -292,103 +286,10 @@ class RampGenerator(MapGenerator[RampParams]):
                         {"generator": self.name, "seed": seed})
 ```
 
-Import the module in `roadgen/maps/__init__.py`. If the parameters should be
-configurable, add them under `maps.elevation.ramp` in `defaults.yaml`. The
-generator then shows up in `maps`, `map elevation ramp` and `pipeline
---elevation ramp`. Use `self.rng(seed)` (or `self.seed_sequence(seed).spawn(n)`
-for independent features) for all randomness. `upstream` holds the maps of
-the earlier kinds (an elevation generator may read `upstream.terrain`); read
-them with `layer.on_grid(grid)`, which also resamples a layer from another
-grid, and give the standalone result when they are missing.
-
-## Heights: from the maps to esmini
-
-With an elevation map, roads are no longer flat. OpenDRIVE stores heights
-per road as an `<elevationProfile>` of cubic polynomials along the
-reference line, z(ds) = a + b·ds + c·ds² + d·ds³, and esmini's vehicles
-follow it. The builder still knows nothing about maps; the heights travel
-through the RoadGraph:
-
-```mermaid
-flowchart LR
-    G["generate"] -->|RoadGraph| D["drape<br/>(maps/drape.py)"]
-    E[("elevation<br/>terrain")] --> D
-    D -->|"Node.z, Edge.profile,<br/>Edge.bridges"| B["OpenDRIVE builder"]
-    B --> X[(".xodr<br/>elevationProfile, bridge")]
-    D --> S["ground + buildings<br/>(scene/)"] --> O[(".osgt")]
-    E --> S
-```
-
-0. **Align** (`roadgen/maps/align.py`, parameters under `align:`, CLI
-   `align`; the pipeline runs it whenever there are maps). Roads are built
-   along fitted curves ([road geometry](geometry.md#chains-and-fitted-roads))
-   that cut inside every bend, but the generator only checked its straight
-   segments. Each bend's curve is checked against the maps: it may not cross
-   water where the straight corner did not, and the terrain grade along it
-   (over `grade_length`, 25 m) may not exceed `max_grade` (0.15) where the
-   straight corner stayed within it. A bend that fails gets the largest
-   radius that passes as `Node.radius_cap`, which the builder, drape and
-   scene then all honour. Without maps nothing is written.
-1. **Drape** (`roadgen/maps/drape.py`, parameters under `drape:`). Every node
-   gets the elevation averaged over a disc `smoothing` (80 m) wide, at the
-   node or, for a bend, at the fitted road's corner midpoint; at a junction
-   this is the height of the junction area. Every edge gets heights every
-   `sample_spacing` (20 m) along the straight edge, sampled under the fitted
-   road: the elevation averaged along the road over `smoothing` (a road is
-   graded, not draped over every bump), shifted linearly so it meets its
-   nodes' heights exactly.
-2. **Bridges.** Stretches of an edge's fitted road over water (from the
-   terrain map, sampled at its own resolution) become `Edge.bridges`. On them the deck
-   runs straight from shore to shore and stays at least `bridge_clearance`
-   (2 m) above the water surface. A node on water is raised the same way.
-   The water surface is flat at `min_elevation` (see the elevation map
-   above), so without this a bridge would dip down to the water.
-3. **Profiles** (`roadgen/geometry/vertical.py`). The builder fits each
-   chain road's heights with a monotone cubic Hermite spline (PCHIP): height
-   and slope are continuous, and it never overshoots the samples. Bend nodes
-   are ordinary knots. Every junction area is a **plane** through its node's
-   height, fitted to the approach roads' heights 10 m in and capped at
-   `design.junction_max_grade` (4 %, flat with 0). A road ends on its
-   junction's plane with the plane's grade along it and its cross slope as
-   superelevation; connecting roads lie on the plane (height, grade and roll
-   matched exactly at both ends), so every road of a junction meets at the
-   same height, grade and roll.
-   Bridges become `<objects><bridge type="concrete">` records.
-4. **Validation.** The continuity check also compares height (1 cm) and
-   grade (0.01) at every contact point. esmini's RoadManager reads the same
-   heights (checked in `tests/test_elevation.py`).
-5. **Scene** (`roadgen/scene/`). esmini draws only roads, so `--ground`
-   adds the terrain: a mesh from the elevation map every `ground.cell_size`
-   (20 m), colored by terrain class, and levelled `below_road` (0.3 m)
-   under every road and junction area, along the same fitted roads, junction
-   trims, junction planes and profile fit as the builder (a KD-tree finds
-   the nearest point of each road), so the ground never covers a road. Under bridges
-   it is left alone. Buildings stand on the ground (base 1 m below the
-   lowest ground under them) and none stand on water. Ground and buildings
-   share one `PREFIX_scene.osgt`, because esmini takes a single
-   SceneGraphFile.
-
-```bash
-python -m cli pipeline lsystem --preset city --allow-traps --maps --ground --buildings -o hills
-python -m cli pipeline lsystem --preset city --allow-traps --maps --flat      # roads stay flat
-python -m cli drape out/<hash>/net.json --map-file elevation=out/<hash>/net_elevation.npz \
-    --map-file terrain=out/<hash>/net_terrain.npz                                    # -> net.draped.json in its run folder
-python -m cli ground scene.osgt --map-file elevation=out/<hash>/net_elevation.npz \
-    --graph out/<hash>/net.draped.json --buildings
-```
-
-A graph without heights (all `Node.z = 0`, no profiles) gives exactly the
-same `.xodr` and `.json` as before.
-
-## Next steps
-
-- **Grade limits after draping.** lsystem keeps grades under `max_grade`
-  while growing, but drape does not enforce one (it logs the steepest
-  grade). Networks grown without the maps (or with `max_grade: 0`) can
-  therefore get steep roads on hilly maps.
-- **Vegetation from elevation.** In the linear pipeline, terrain can't see
-  elevation, so forests don't prefer steep or high ground. That would need
-  a post-step on the terrain after elevation.
-- **Style from the terrain.** A style map could also put suburbs on the far
-  side of water and organic streets around parks; `zones` only reads
-  density and slope.
+1. Import the module in `roadgen/maps/__init__.py`. It then shows up in
+   `maps`, `map elevation ramp` and `pipeline --elevation ramp`.
+2. Put the parameter defaults under `maps.elevation.ramp` in `defaults.yaml`.
+3. Draw all randomness from `self.rng(seed)`, or from
+   `self.seed_sequence(seed).spawn(n)` for independent features.
+4. Read upstream maps with `upstream.terrain.on_grid(grid)`. Return the
+   standalone result when they are missing.

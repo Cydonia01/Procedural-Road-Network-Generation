@@ -1,26 +1,71 @@
 # CLI reference
 
-All commands run as `python -m cli <command> [options]` from the repo root.
-Run `python -m cli <command> --help` for the authoritative list.
+Every command runs as `python -m cli <command> [options]` from the repo root.
+`python -m cli <command> --help` is the authoritative list and shows the
+defaults in effect. Exit code `0` means success, and `1` means a validation,
+check or simulation failed.
 
-Global options must come **before** the command, e.g. `python -m cli -v pipeline ...`:
+| Command | Purpose |
+|---------|---------|
+| **Generate** | |
+| [`generators`](#generators-maps) | List generators, presets and parameters |
+| [`generate`](#generate) | Generator → RoadGraph JSON |
+| [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate, plus optional maps, scene, drive-check and simulation |
+| **Input maps** | |
+| [`maps`](#generators-maps) | List map generators, presets and parameters |
+| [`map`](#map) | One input map (`.npz` + `.png`) |
+| [`plot-map`](#plot-map-plot-graph) | Map `.npz` → image |
+| **Graph steps** | |
+| [`align`](#align-drape-separate) | Cap bend radii where a fitted curve would leave legal ground |
+| [`drape`](#align-drape-separate) | Heights from an elevation map into a RoadGraph |
+| [`separate`](#align-drape-separate) | Overpasses where roads cross without a junction |
+| [`plot-graph`](#plot-map-plot-graph) | RoadGraph JSON → image |
+| **OpenDRIVE and checks** | |
+| [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
+| [`drive-check`](#drive-check) | Drive every junction movement and lane with esmini's RoadManager |
+| [`metrics`](#metrics) | Geometry and network metrics, build-failure sweep |
+| **Scene and simulation** | |
+| [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps |
+| [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
+| [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize it |
+| [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
+| **Runs** | |
+| [`history`, `replay`, `run`](#run-folders-history-replay-run) | List, rerun or define recorded runs |
+
+## Global options
+
+These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 
 | Option | Meaning |
 |--------|---------|
 | `-v, --verbose` | Debug logging |
-| `--config FILE` | YAML file overriding default parameters |
-| `--note TEXT` | Description stored in this run's [`run.yaml`](#history) |
-| `--no-history` | Don't record this run: no `out/<hash>/` folder, `-o` is a path |
+| `--config FILE` | YAML file overriding default parameters ([below](#parameters-and---config)) |
+| `--note TEXT` | Description stored in the run's `run.yaml` |
+| `--no-history` | Don't record the run: no `out/<hash>/` folder, and `-o` is a path |
 
-### Defaults and `--config`
+| Environment variable | Meaning |
+|----------------------|---------|
+| `ESMINI_HOME` | esmini root containing `bin/` (fallback `./esmini`) |
+| `OPENDRIVE_XSD` | ASAM OpenDRIVE XSD for the schema check |
+| `ROADGEN_HISTORY` | Root of the run folders (default `out`); `off` disables recording |
 
-Every default value lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml):
-generator parameters (`generators.lsystem`), map parameters (`maps`), the seed,
-`opendrive.junction_margin`, `scenario`, `buildings`, `esmini` (timestep,
-window, camera, view density), `pipeline` (`--simulate` settings) and `bench`
-(keys a sweep config leaves out). A `--config` file uses the same nesting and
-only needs the keys it changes; unknown keys are an error. A generator or
-map generator section may also name a preset. For example:
+## Parameters and `--config`
+
+Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
+one section per component. Examples: `generators.<name>`,
+`maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `scenario`,
+`buildings`, `esmini`, `pipeline`.
+
+Parameters are layered. Each layer overrides the one before it:
+
+1. `defaults.yaml`;
+2. the preset (`--preset NAME`, or `preset:` in a params or config file);
+3. the `--config FILE` given before the command;
+4. the `--params FILE.yaml` given to a generator or map;
+5. command-line flags, `--set KEY=VALUE` and `--map-set KIND.KEY=VALUE`.
+
+A `--config` file uses the nesting of `defaults.yaml` and only needs the keys
+it changes:
 
 ```yaml
 seed: 42
@@ -28,93 +73,77 @@ generators:
   lsystem:
     preset: manhattan_like
     lane_width: 3.25
+maps:
+  grid: {cell_size: 5.0}
+  terrain:
+    noise: {water_fraction: 0.25}
 scenario:
   speed_range: [5.0, 10.0]
 ```
 
-Precedence, lowest first: `defaults.yaml` < preset < `--config` file <
-`--params` file < command-line flags and `--set`. A preset is where a
-parameter section starts; anything you write wins over it. `--help` shows
-the defaults in effect, including those from `--config`.
+A `--params` file holds a generator's (or map generator's) fields directly,
+or `preset:` plus a `params:` mapping:
 
-All of these end up in one **run config**: the `config` part of the run's
-`run.yaml` (see [history](#history)), which holds only what differs from
-`defaults.yaml`. `--preset`, `--params`, `--set` and
-`--map-set` are written into the section they set
-(`generators.<name>`, `maps.<kind>.<name>`). Benchmark networks use
-`bench.network`, not `generators.lsystem`, so a sweep's config id only
-depends on the sweep settings.
+```yaml
+preset: manhattan_like
+params:
+  extent: [750, 560]
+  angle_jitter_deg: 1.5
+```
 
-The `manhattan` generator was removed in stage C (lsystem grows the same
-grids, `--preset manhattan_like`); replaying an old run of it, or a config
-with a `generators.manhattan` section, stops with a message saying so.
+- `--set` values are parsed as YAML, so `--set origin=[10,20]` works.
+- YAML lists become tuples where the dataclass expects tuples.
+- Unknown keys are an error in every layer.
 
-Exit codes: `0` on success, `1` when a validation, check or simulation failed.
+All layers end up in the run's config: the `config` part of
+[`run.yaml`](#run-folders-history-replay-run), which holds only the
+differences from `defaults.yaml`.
 
-## Overview
+The `manhattan` generator no longer exists. Use `lsystem --preset
+manhattan_like`. Replaying a run of it, or a config with a
+`generators.manhattan` section, stops with a message saying so.
 
-| Command | Purpose |
-|---------|---------|
-| [`generators`](#generators) | List generators, presets and parameters |
-| [`generate`](#generate) | Generator → RoadGraph JSON |
-| [`maps`](#maps) | List map generators, presets and parameters |
-| [`map`](#map) | Generate one input map (`.npz` + `.png`) |
-| [`plot-map`](#plot-map) | Map `.npz` → image |
-| [`align`](#align) | Cap bend radii where a fitted curve would leave legal ground |
-| [`drape`](#drape) | Heights from an elevation map into a RoadGraph |
-| [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps, levelled under a network |
-| [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate (→ buildings → drive-check → simulate) |
-| [`plot-graph`](#plot-graph) | RoadGraph JSON → image |
-| [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
-| [`drive-check`](#drive-check) | Drive every junction movement with esmini's RoadManager |
-| [`metrics`](#metrics) | Geometry metrics of `.xodr` files and a build-failure sweep |
-| [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
-| [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
-| [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize |
-| [`bench`](#bench) | Scalability sweep from a YAML config |
-| [`bench-plot`](#bench-plot) | Plot a benchmark `results.csv` |
-| [`history`](#history) | List recorded runs (hash, note, command) |
-| [`replay`](#replay) | Run a recorded command again from its hash (also `python -m cli HASH`) |
-| [`run`](#run) | Run a run config: `out/<hash>/run.yaml`, or one written by hand |
+## Outputs
 
-### Outputs
+In a recorded run (the default), every output goes into the run's folder
+`out/<hash>/`, and `-o` and the output arguments are **file names**. A path
+there is an error. With `--no-history`, no folder is made and outputs go
+where `-o` says.
 
-A recorded run (the default) writes every output into its own folder
-`out/<hash>/` ([history](#history)). There, `-o` and the output arguments
-below are only **file names**, not paths. A path is an error. Without them, the
-default names below are used. With `--no-history` (or `ROADGEN_HISTORY=off`)
-no folder is made, and outputs go where `-o` says, as paths. To read the
-output of an earlier run, give its path in its folder, e.g.
+To read an earlier run's output, give its path in that run's folder, e.g.
 `--map-file terrain=out/0bafbe99d5d4/coast_terrain.npz`.
 
-## generators
+## generators, maps
 
 ```bash
-python -m cli generators
+python -m cli generators      # road generators, presets, every parameter with its default
+python -m cli maps            # the same for map generators
 ```
 
 ## generate
 
 ```bash
-python -m cli generate <lsystem|junction> [generator options] [-o out.json]
+python -m cli generate <lsystem|junction> [options] [-o OUT.json]     # default: <name>[_<preset>]_s<seed>.json
 ```
-
-Default output: `<name>[_<preset>]_s<seed>.json`.
-
-### Options for every generator
 
 | Option | Meaning |
 |--------|---------|
 | `--seed N` | Random seed (default 0) |
 | `--preset NAME` | Start from a named parameter set |
-| `--params FILE.yaml` | Parameter file (fields, or `preset:` + `params:`) |
-| `--set KEY=VALUE` | Override one parameter. Repeatable, and the value is parsed as YAML |
-| `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`, `style`), written by `map` or a pipeline run. Repeatable. Only `lsystem` reads maps ([details](maps.md)). With an elevation map the graph also gets heights ([drape](maps.md#heights-from-the-maps-to-esmini)) |
-| `--flat` | Keep the roads flat even with an elevation map |
+| `--params FILE.yaml` | Parameter file |
+| `--set KEY=VALUE` | Override one parameter (repeatable) |
+| `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`, `style`). Repeatable. Only `lsystem` reads maps |
+| `--flat` | No heights, even with an elevation map |
 
-Generator parameters have no flags of their own: use `--set`, e.g.
-`generate lsystem --preset grid --set extent=[500,240] --set boundary=ring`
-(the [parameters](generators.md#lsystem-growth-after-parish--müller-lsystempy)).
+Generator parameters have no flags of their own. Use `--set`, e.g. `--set
+extent=[500,240] --set boundary=ring`. The parameters are listed in
+[lsystem](lsystem.md) and [Generators](generators.md).
+
+Before the graph is written, three steps run ([Heights](heights.md)):
+
+- with any maps, it is aligned;
+- with an elevation map, it is also draped (unless `--flat`);
+- roads that cross without a junction are always grade-separated.
 
 ## pipeline
 
@@ -122,34 +151,24 @@ Generator parameters have no flags of their own: use `--set`, e.g.
 python -m cli pipeline <generator> [generator options] [pipeline options] [-o PREFIX]
 ```
 
-Writes `PREFIX.json`, `.png`, `.xodr` and `.roadmap.json`, then runs all
-validators and logs the time each stage took. Default prefix:
-`<name>[_<preset>]_s<seed>`.
+Takes every `generate` option. It writes `PREFIX.json`, `.png`, `.xodr` and
+`.roadmap.json`, runs all [validators](validation.md), and logs the time of
+each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 
 | Option | Meaning |
 |--------|---------|
-| `--allow-traps` | Report traffic traps / unreachable roads as warnings instead of errors |
+| `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
-| `--junction-margin M` | Extra junction clearance [m] (default 2.0) |
-| `--buildings` | Also write `PREFIX_buildings.osgt`. With maps, buildings stand on the ground and none stand on water |
-| `--ground` | Also write `PREFIX_scene.osgt`: a ground mesh from the maps, levelled under the roads, with the `--buildings` on it. Used as SceneGraphFile by `--simulate`. Needs an elevation map |
-| `--drive-check` | Also run drive-check (only if there are no errors so far) |
-| `--simulate` | Also write `PREFIX.xosc` and run it headless (only if there are no errors so far) |
-| `--sim-vehicles N` | Vehicles for `--simulate` (default 50) |
-| `--sim-duration S` | Simulated seconds for `--simulate` (default 30) |
-| `--maps` | Generate terrain, elevation (on the terrain), population (on both) and style (on all three) maps (generators from `maps.pipeline`) first, on a grid around the generator's area, and grow the network on them. Only the kinds the generator reads are built: lsystem builds a style map only for `global_goal: field`. Written to `PREFIX_<kind>.npz` / `.png`. Generators that don't read maps get them around the finished network, for reference |
-| `--terrain`, `--elevation`, `--population`, `--style NAME` | Same for one kind, with generator `NAME` (overrides `--maps` for that kind, and always builds it) |
-| `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`, the same as `maps.terrain.<generator>.rivers` in the config. Repeatable |
-
-With an elevation map the network gets heights before it is written, unless
-`--flat` is given: nodes, profiles along the edges and bridges over water
-([details](maps.md#heights-from-the-maps-to-esmini)).
-
-## maps
-
-```bash
-python -m cli maps
-```
+| `--junction-margin M` | Extra junction clearance [m] (default 2) |
+| `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
+| `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |
+| `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
+| `--map-file KIND=FILE.npz` | Load one kind from a file; wins over a generator for that kind |
+| `--buildings` | Also write `PREFIX_buildings.osgt` ([scene](scene.md)) |
+| `--ground` | Also write `PREFIX_scene.osgt`: ground plus buildings. Needs an elevation map |
+| `--drive-check` | Also run [drive-check](#drive-check), if there are no errors so far |
+| `--simulate` | Also write `PREFIX.xosc` and run it headless, if there are no errors so far |
+| `--sim-vehicles N`, `--sim-duration S` | For `--simulate` (default 50 vehicles, 30 s; 600 s timeout) |
 
 ## map
 
@@ -158,71 +177,35 @@ python -m cli map <terrain|elevation|population|style> <generator> [options] [-o
 ```
 
 Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
-`<kind>_<name>[_<preset>]_s<seed>`. See [Input maps](maps.md).
+`<kind>_<name>[_<preset>]_s<seed>`.
 
 | Option | Meaning |
 |--------|---------|
-| `--seed N`, `--preset NAME`, `--params FILE.yaml`, `--set KEY=VALUE` | As for generators |
-| `--origin X Y` | Lower-left corner [m] (default `maps.grid.origin`) |
-| `--size W H` | Map size [m] (default `maps.grid.size`) |
-| `--cell-size M` | Cell size [m] (default `maps.grid.cell_size`) |
+| `--seed`, `--preset`, `--params`, `--set` | As for `generate` |
+| `--origin X Y`, `--size W H`, `--cell-size M` | Grid: lower-left corner, size and cell size [m] (default `maps.grid`: 0 0, 3000 3000, 10) |
+| `--on KIND=FILE.npz` | Build on an earlier kind, e.g. `map elevation fbm --on terrain=coast.npz`. Repeatable; not for `terrain`. Resampled if on another grid |
 | `--graph FILE.json` | Draw this RoadGraph on the preview |
-| `--on KIND=FILE.npz` | Build on an earlier map of the pipeline (terrain → elevation → population → style), e.g. `map elevation fbm --on terrain=out/<hash>/coast.npz`. Repeatable; not for `terrain`. The file may be on another grid; it is resampled |
 
-## align
-
-```bash
-python -m cli align NET.json --map-file terrain=T.npz [--map-file elevation=E.npz] [-o OUT.json]
-```
-
-Caps the radius of bends whose fitted curve would cross new water or climb
-steeper than `align.max_grade` (sets `Node.radius_cap`; see
-[maps](maps.md#heights-from-the-maps-to-esmini)). Default output:
-`NET.aligned.json`. `pipeline` runs it automatically when it has maps.
-
-## drape
-
-```bash
-python -m cli drape NET.json --map-file elevation=E.npz [--map-file terrain=T.npz] [-o OUT.json]
-```
-
-Gives a RoadGraph heights from an elevation map (and bridges from a terrain
-map). Default output: `NET.draped.json`. Parameters: `drape:` in the config.
-
-## separate
-
-```bash
-python -m cli separate NET.json [-o OUT.json]
-```
-
-Raises roads that cross without a junction over each other (overpasses with
-ramps and bridge spans; see [geometry](geometry.md#grade-separation)).
-Default output: `NET.separated.json`. `generate` and `pipeline` do this
-automatically after the drape. Parameters: `grade_separation:` in the config.
-
-## ground
-
-```bash
-python -m cli ground [OUT.osgt] --map-file elevation=E.npz [--map-file terrain=T.npz] \
-    [--graph NET.json [--buildings]] [--seed N] [--junction-margin M]
-```
-
-A 3D ground mesh from the maps, colored by terrain class. With `--graph` (a
-draped network), the ground is levelled under its roads; `--buildings` adds
-its buildings on top. Use the result as `scenario --scenegraph`. Default
-output: `scene.osgt`. Parameters: `ground:` in the config.
-
-## plot-map
+## plot-map, plot-graph
 
 ```bash
 python -m cli plot-map INPUT.npz [OUTPUT.png] [--graph FILE.json]     # default: <input>.png
-```
-
-## plot-graph
-
-```bash
 python -m cli plot-graph INPUT.json [OUTPUT.png] [--node-ids]          # default: <input>.png
 ```
+
+## align, drape, separate
+
+`generate` and `pipeline` run these steps automatically. The commands run
+them on an existing graph. Each step is explained in [Heights](heights.md).
+
+```bash
+python -m cli align NET.json --map-file terrain=T.npz [--map-file elevation=E.npz] [-o OUT.json]   # NET.aligned.json
+python -m cli drape NET.json --map-file elevation=E.npz [--map-file terrain=T.npz] [-o OUT.json]   # NET.draped.json
+python -m cli separate NET.json [-o OUT.json]                                                      # NET.separated.json
+```
+
+`drape` needs an elevation map. A terrain map adds bridges. Their parameters
+are the config sections `align:`, `drape:` and `grade_separation:`.
 
 ## build-xodr
 
@@ -230,34 +213,78 @@ python -m cli plot-graph INPUT.json [OUTPUT.png] [--node-ids]          # default
 python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M]   # default: <input>.xodr
 ```
 
-Traffic connectivity problems are only warnings here, since hand-made test
-graphs often have dead ends.
+Builds and validates. Traffic connectivity problems are only warnings here,
+since hand-made test graphs often have dead ends.
 
 ## drive-check
 
 ```bash
-python -m cli drive-check NETWORK.xodr      # needs NETWORK.roadmap.json
+python -m cli drive-check NETWORK.xodr      # needs NETWORK.roadmap.json next to it
 ```
+
+See [Validation → Drive-check](validation.md#drive-check).
 
 ## metrics
 
 ```bash
 python -m cli metrics A.xodr [B.xodr ...] [--graph A.json ...] [--json OUT.json]
-python -m cli metrics --sweep 20 [--first-seed 0] [--generator lsystem] [--preset city]
+python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city]
 ```
 
-Measures how drivable and smooth a network is, from the `.xodr` alone (see
-[Validation → Geometry metrics](validation.md#geometry-metrics)): lateral
-acceleration at the posted speed per road group, the share of junctions
-joining only two roads, and curvature jumps at road links and geometry
-joins. `--sweep N` also generates N networks (seeds `--first-seed` … , maps
-as `pipeline --maps`) and counts how many the OpenDRIVE builder rejects.
-`--graph NET.json` (repeatable) adds the [network metrics](validation.md#network-metrics)
-of a RoadGraph: junction legs, skew, offset T pairs, connected-node ratio,
-densities, orientation entropy, tortuosity, block areas and stage C
-features; the sweep logs their median per seed too.
+- Geometry metrics of each `.xodr`.
+- `--graph` (repeatable) adds the network metrics of a RoadGraph.
+- `--sweep N` generates N networks, as `pipeline --maps` would, and counts the
+  ones the builder rejects.
+
 The report is informational: the command succeeds whatever the numbers are.
-Thresholds are in `defaults.yaml` under `metrics` and `network_metrics`.
+Thresholds are in `defaults.yaml` under `metrics` and `network_metrics`. The
+metrics are explained in
+[Validation → Metrics](validation.md#geometry-metrics).
+
+## ground
+
+```bash
+python -m cli ground [OUT.osgt] --map-file elevation=E.npz [--map-file terrain=T.npz] \
+    [--graph NET.json [--buildings]] [--seed N] [--junction-margin M]          # default: scene.osgt
+```
+
+A ground mesh from the maps. `--graph` (a draped network) levels it under the
+roads, and `--buildings` adds that network's buildings. `--junction-margin`
+must match the `.xodr`. Parameters go in `ground:`. See [3D scene](scene.md).
+
+## scenario
+
+```bash
+python -m cli scenario NETWORK.xodr --vehicles N [options] [-o OUT.xosc]   # default: <input>.xosc
+```
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `--vehicles N` | required | Number of vehicles |
+| `--seed N` | 0 | |
+| `--duration S` | 60 | Simulated time [s] |
+| `--mode` | `random_lanes` | or `explicit_routes` ([spawn modes](scenarios-and-simulation.md#spawn-modes)) |
+| `--speed-min`, `--speed-max` | 8.0, 13.9 | Target speed range [m/s] |
+| `--min-gap M` | 10 | Minimum gap between vehicles in a lane [m] |
+| `--graph FILE` | `<input>.json` if present | RoadGraph for consistency checks |
+| `--scenegraph FILE` | – | 3D scene `.osgt` shown with the roads |
+
+## simulate
+
+```bash
+python -m cli simulate SCENARIO.xosc [options]
+```
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `--gui` | off | Show the esmini window (needs a display) |
+| `--camera MODE` | `top` | With `--gui`: `orbit`, `fixed`, `flex`, `flex-orbit`, `top`, `driver` |
+| `--timestep S` | 0.05 | Fixed timestep [s] |
+| `--no-record`, `--no-csv` | – | Skip the `.dat` recording / the `.csv` log |
+
+It logs the vehicles, simulated and wall time, real-time factor, load time,
+peak memory, and esmini errors and warnings. The `.log`, `.dat` and `.csv` go
+into the run's folder (next to the `.xosc` with `--no-history`).
 
 ## view
 
@@ -268,93 +295,25 @@ python -m cli view NETWORK.xodr [--density CARS_PER_100M] [--scenegraph FILE.osg
 | Option | Meaning |
 |--------|---------|
 | `--density` | Random cars per 100 m of lane (default 1) |
-| `--scenegraph FILE.osgt` | 3D model shown with the roads: `PREFIX_buildings.osgt`, or `PREFIX_scene.osgt` (ground + buildings) from `pipeline --buildings` / `--ground` or `ground`. odrviewer still draws the roads itself |
-| `--duration S` | Close the viewer after S seconds; by default it stays open until you close it |
+| `--scenegraph FILE.osgt` | Ground and/or buildings to show with the roads |
+| `--duration S` | Close after S seconds (default: stays open) |
 
-Needs a display. In Docker, the `dev` service has none (`odrviewer` exits
-immediately), so use the GUI service for your OS:
+Needs a display. In Docker, use the `gui` or `gui-mac` service
+([Docker](docker.md)). `view` is not recorded as a run.
 
-```bash
-docker compose run --rm gui python -m cli view NETWORK.xodr       # Linux
-docker compose run --rm gui-mac python -m cli view NETWORK.xodr   # macOS (XQuartz, see docker.md)
-```
+## Run folders (history, replay, run)
 
-The same applies to `simulate --gui`.
+Every command that **succeeds** gets its own folder `out/<hash>/` (the root
+is `history.dir`, overridden by `$ROADGEN_HISTORY`). It holds everything the
+command wrote, plus `run.yaml`:
 
-## scenario
-
-```bash
-python -m cli scenario NETWORK.xodr [-o OUT.xosc] --vehicles N [options]   # default: <input>.xosc
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--vehicles N` | required | Number of vehicles |
-| `--seed N` | 0 | |
-| `--duration S` | 60 | Simulated time [s] |
-| `--mode` | `random_lanes` | or `explicit_routes` |
-| `--speed-min`, `--speed-max` | 8.0, 13.9 | [m/s] |
-| `--min-gap M` | 10 | Minimum spawn gap within a lane [m] |
-| `--graph FILE` | `<input>.json` if present | RoadGraph used for consistency checks |
-| `--scenegraph FILE` | – | 3D model shown with the roads (e.g. buildings `.osgt`) |
-
-## simulate
-
-```bash
-python -m cli simulate SCENARIO.xosc [options]
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--gui` | off | Show the esmini window |
-| `--camera MODE` | `top` | With `--gui`: `orbit`, `fixed`, `flex`, `flex-orbit`, `top`, `driver` |
-| `--timestep S` | 0.05 | Fixed timestep |
-| `--no-record` | – | Skip the `.dat` recording |
-| `--no-csv` | – | Skip the `.csv` log |
-
-The `.dat`, `.csv` and `.log` go into the run's folder (next to the `.xosc`
-with `--no-history`).
-
-## bench
-
-```bash
-python -m cli bench CONFIG.yaml [--out-dir DIR] [--no-plot]
-```
-
-A recorded sweep writes into its run folder (`out_dir` and `--out-dir` only
-apply with `--no-history`).
-
-## bench-plot
-
-```bash
-python -m cli bench-plot RESULTS.csv [--out-dir DIR]     # default: <results dir>/plots
-```
-
-## Environment variables
-
-| Variable | Used by | Meaning |
-|----------|---------|---------|
-| `ESMINI_HOME` | everything esmini-related | esmini root containing `bin/` (falls back to `./esmini`) |
-| `OPENDRIVE_XSD` | schema check | Path to the ASAM OpenDRIVE XSD |
-| `ROADGEN_HISTORY` | every recorded command | Root of the run folders (default `out`); `off` disables recording |
-
-## history
-
-```bash
-python -m cli history [--grep TEXT]
-```
-
-Every command that **succeeds** (exit code 0) gets its own folder
-`out/<hash>/` (`history.dir` in the config; the environment variable
-`ROADGEN_HISTORY` overrides it, and `ROADGEN_HISTORY=off` turns recording
-off). The folder holds everything the command wrote, plus `run.yaml`. A
-command that fails leaves no folder and no output: it runs in a temporary
-folder, which only becomes `out/<hash>/` on success. Commands that only list
-things (`generators`, `maps`, `history`) are not recorded.
-
-`run.yaml` defines the run, with only what differs from the defaults:
+- A failing command runs in a temporary folder and leaves nothing behind.
+- Listing commands (`generators`, `maps`, `history`) and `view` are not recorded.
+- Each successful command logs its folder, e.g.
+  `INFO roadgen.cli: run 3fa2c81b9d04: out/3fa2c81b9d04`.
 
 ```yaml
+# out/3fa2c81b9d04/run.yaml
 hash: 3fa2c81b9d04
 note: my run
 recorded: '2026-10-25T18:00:00+00:00'
@@ -366,48 +325,28 @@ config:                                        # parameters that differ from def
     lsystem: {preset: city}
 ```
 
-The hash is a hash of `command`, `args` and `config`. Different ways of
-writing the same run therefore share one folder: an explicit default, flags
-in another order, `--set rotation_deg=3` or the same value in
-a `--config` file, `-v` or another `--note`. Running the same inputs again
-replaces the folder and keeps its note. A parameter file's content
-(`--params`) goes into `config`, so the run doesn't depend on the file
-afterwards.
-
-`history` lists the runs, oldest first, with their notes and command lines;
-`--grep` keeps the runs whose note or command contains TEXT. Each successful
-command also logs its folder:
-
-```
-INFO roadgen.cli: run 3fa2c81b9d04: out/3fa2c81b9d04
-```
-
-## replay
+The hash covers `command`, `args` and `config` only. The same run therefore
+always gets the same folder, however it was typed: flag order, an explicit
+default, `--set` versus `--config`, `-v` or a different `--note`. Running the
+same inputs again replaces the folder and keeps its note. A `--params` file's
+content is copied into `config`, so the run no longer depends on the file.
 
 ```bash
-python -m cli replay HASH [--show]
-python -m cli HASH                 # the same
+python -m cli history [--grep TEXT]     # runs, oldest first, with note and command
+python -m cli replay HASH [--show]      # rerun (a unique prefix of 4+ digits is enough)
+python -m cli HASH                      # the same
+python -m cli run out/HASH/run.yaml     # the same, from the file
+python -m cli run my_run.yaml           # a run file written by hand
 ```
 
-Runs a recorded run again from its `run.yaml`. A unique prefix of 4 or more
-digits is enough. It uses today's code and defaults with the run's
-non-default arguments and parameters, so the result follows the pipeline
-as it changes. The outputs replace the folder's. `--show` prints the
-command and the folder instead of running it. A command that reads files
-reads them from where they are now, so replay the runs that write them
-first. See [runs/README.md](../runs/README.md) for the example runs.
-
-## run
-
-```bash
-python -m cli run out/HASH/run.yaml     # the same as python -m cli HASH
-python -m cli run my_run.yaml           # a run config written by hand
-```
-
-Runs a file of the `run.yaml` form. Only `command` is required; `args` uses
-the argument names (as in `run.yaml`), and `config` holds parameters as in
-`defaults.yaml`. Copying a run's `run.yaml` and editing it is a way to make
-a new run; it is recorded under its own hash.
+- **Replay** uses today's code and defaults with the run's non-default
+  arguments and parameters, so its result follows the pipeline as the code
+  changes. `--show` only prints the command and the folder.
+- **Input files.** A command reads its input files from where they are now,
+  so replay the runs that write them first.
+- **Run files.** Only `command` is required. `args` uses argument names as in
+  `run.yaml`, and `config` uses the nesting of `defaults.yaml`. Copying a
+  `run.yaml` and editing it is the easiest way to make a new run:
 
 ```yaml
 command: pipeline lsystem
@@ -419,3 +358,5 @@ config:
   maps:
     terrain: {noise: {rivers: 2}}
 ```
+
+The example runs are listed in [runs/README.md](../runs/README.md).
