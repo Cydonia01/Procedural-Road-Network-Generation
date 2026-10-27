@@ -7,7 +7,7 @@ that differ from `roadgen/defaults.yaml`. The folder holds the command's
 outputs (`-o` only names them) and `run.yaml`, which shows exactly those
 non-default parameters. The same inputs, however they were typed, give the
 same hash; running them again replaces the folder. See
-[CLI reference → history](../docs/cli-reference.md#history).
+[CLI reference → history](../docs/cli-reference.md#run-folders-history-replay-run).
 
 ```bash
 python -m cli history                 # all runs: hash, note, command

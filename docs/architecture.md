@@ -1,215 +1,193 @@
 # Architecture
 
-## Goal
-
-The project generates road networks **procedurally** as training and test
-environments for autonomous driving. OpenStreetMap is not used. Networks are written as
-ASAM OpenDRIVE (`.xodr`), populated with traffic through OpenSCENARIO
-(`.xosc`), and simulated headless in [esmini](https://github.com/esmini/esmini).
-The networks scale up to grids with thousands of junctions.
+roadgen generates road networks as training and test environments for
+autonomous driving. A network starts as a generator's abstract graph and ends
+as an esmini-ready OpenDRIVE file, a traffic scenario and, optionally, a 3D
+scene.
 
 ## Pipeline
 
 ```mermaid
 flowchart LR
-    MP["Map generators<br/>(terrain, elevation,<br/>population)"] -->|MapSet| G
-    MI[(".npz<br/>--map-file")] -->|MapSet| G
-    MP --> MF[("PREFIX_kind<br/>.npz / .png")]
-    G["Generator<br/>(lsystem, junction)"] -->|RoadGraph| DR["Drape<br/>(heights, bridges)"]
-    MP -.elevation, terrain.-> DR
-    DR -->|RoadGraph| J[(".json")]
-    G --> C{"traffic<br/>connectivity"}
-    J --> B["OpenDRIVE<br/>Builder"]
-    B --> X[(".xodr")]
-    B --> M[(".roadmap.json")]
-    X --> V{"topology<br/>continuity<br/>XSD schema"}
-    X & M --> D{"drive-check<br/>(esmini RoadManager)"}
-    X & M --> S["Scenario<br/>Builder"]
-    S --> O[(".xosc")]
-    O --> E["esmini<br/>(headless)"]
-    E --> R["metrics<br/>.log / .dat / .csv"]
-    J --> BL["Ground + buildings"] --> OS[(".osgt")]
-    MP -.-> BL
+    MP["Map generators<br/>terrain → elevation →<br/>population → style"] -->|MapSet| G
+    MF[(".npz<br/>--map-file")] -->|MapSet| G
+    G["Generator<br/>lsystem, junction"] -->|RoadGraph| H["Heights<br/>align, drape,<br/>grade separation"]
+    MP -.-> H
+    H -->|RoadGraph| J[(".json")]
+    J --> B["OpenDRIVE<br/>builder"]
+    B --> X[(".xodr +<br/>.roadmap.json")]
+    X --> V{"validators<br/>drive-check"}
+    X --> S["Scenario<br/>builder"] --> O[(".xosc")] --> E["esmini"]
+    J --> SC["Ground +<br/>buildings"] --> OS[(".osgt")]
+    MP -.-> SC
     OS -.SceneGraphFile.-> O
 ```
 
-| Stage | Input → output | Module |
-|-------|----------------|--------|
-| Maps | params + grid + seed → `MapLayer` (`.npz` + `.png`) | `roadgen/maps/` |
-| Generate | params + seed (+ `MapSet`) → `RoadGraph` | `roadgen/generators/` |
-| Align | `RoadGraph` + terrain / elevation map → `RoadGraph` with bend radius caps | `roadgen/maps/align.py` |
-| Drape | `RoadGraph` + elevation (+ terrain) map → `RoadGraph` with heights and bridges | `roadgen/maps/drape.py` |
-| Check traffic | `RoadGraph` → traps / unreachable roads | `roadgen/validate/connectivity.py` |
-| Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` |
-| Validate | `.xodr` → errors | `roadgen/validate/{topology,continuity,schema}.py` |
-| Drive-check | `.xodr` + sidecar → per-movement pass/fail | `roadgen/sim/drive_check.py` |
-| Scenario | `.xodr` + sidecar → `.xosc` | `roadgen/scenario/xosc_builder.py` |
-| Simulate | `.xosc` → `SimResult` (timing, memory, errors) | `roadgen/sim/runner.py` |
-| Buildings | `RoadGraph` (+ maps) → `.osgt` / `.obj` | `roadgen/scene/buildings.py` |
-| Ground | maps (+ draped `RoadGraph`) → `.osgt` | `roadgen/scene/ground.py` |
+| Stage | Input → output | Code | Docs |
+|-------|----------------|------|------|
+| Maps | params + grid + seed → `MapLayer` (`.npz` + `.png`) | `roadgen/maps/` | [Input maps](maps.md) |
+| Generate | params + seed (+ `MapSet`) → `RoadGraph` | `roadgen/generators/` | [lsystem](lsystem.md), [Generators](generators.md) |
+| Align | `RoadGraph` + maps → bend radius caps | `roadgen/maps/align.py` | [Heights](heights.md#1-align-bends-that-leave-legal-ground) |
+| Drape | `RoadGraph` + elevation (+ terrain) → heights, bridges, tunnels | `roadgen/maps/drape.py` | [Heights](heights.md#2-drape-heights-from-the-elevation-map) |
+| Separate | `RoadGraph` → overpasses where roads cross without a junction | `roadgen/geometry/grade_separation.py` | [Heights](heights.md#3-grade-separation-overpasses) |
+| Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` (shape from `roadgen/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
+| Validate | `RoadGraph` / `.xodr` → errors | `roadgen/validate/` | [Validation](validation.md) |
+| Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
+| Scenario | `.xodr` + sidecar → `.xosc` | `roadgen/scenario/` | [Scenarios](scenarios-and-simulation.md) |
+| Simulate | `.xosc` → `SimResult` (timing, memory, errors) | `roadgen/sim/runner.py` | [Scenarios](scenarios-and-simulation.md#running-esmini) |
+| Scene | `RoadGraph` + maps → ground and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
-### Input maps and the order of stages
+`python -m cli pipeline` runs the stages in this order. Every stage also has
+its own command ([CLI reference](cli-reference.md)).
 
-Following Parish & Müller (2001), road growth can be driven by three raster
-maps: terrain (water / land / vegetation), elevation and population density
-([Input maps](maps.md)). They enter the pipeline **before** generation:
+### How maps enter
 
-```mermaid
-flowchart LR
-    P["generator params"] --> MB["map_bounds(params)<br/>area the network can occupy"]
-    MB --> GR["GridSpec<br/>(+ maps.grid.margin)"]
-    GR --> T["terrain"]
-    T --> EL["elevation<br/>(on the terrain)"]
-    T & EL --> PO["population<br/>(on both)"]
-    T & EL & PO --> MS["MapSet"]
-    MS --> GEN["generate(params, seed, maps)"]
-    GEN --> RG["RoadGraph<br/>metadata: maps, bridges"]
-```
+Maps are inputs to a generator, never to the builder:
 
-- A generator opts in with `uses_maps = True` and reports its area with
-  `map_bounds(params)`. The CLI then builds the requested maps on a grid
-  covering that area plus a margin, or loads them with `--map-file`, and
-  passes them as one `MapSet`. Only `lsystem` does this so far.
-- A generator without `uses_maps` is called exactly as before, without
-  maps. Maps requested for it are built afterwards around the finished
-  network, for reference only.
-- The maps are built as a linear pipeline, terrain → elevation →
-  population. Each map kind's generator gets the earlier maps (`upstream`),
-  so the stack agrees with itself: water lies flat in the valleys, and nobody
-  lives on water or steep slopes. A map loaded with `--map-file` is used as
-  it is, but still feeds the kinds after it. Any of them may be missing, and
-  the generator uses only what it gets. With no maps, `lsystem` produces
-  exactly the same graph as without this feature.
-- How `lsystem` uses each map:
+1. A generator that reads maps (`uses_maps = True`; only `lsystem` so far)
+   reports its area with `map_bounds(params)`.
+2. The CLI builds the requested maps on a grid covering that area plus
+   `maps.grid.margin`, or loads them with `--map-file`.
+3. The maps are built in a fixed order, terrain → elevation → population →
+   style. Each one sees the earlier ones, so the stack agrees with itself.
+4. The generator gets them as one `MapSet` (any layer may be missing).
 
-  | Map | Global goals | Local constraints |
-  |-----|--------------|-------------------|
-  | population | Highways steer towards density peaks (inverse-distance weighted rays) | Highways stop below `highway_min_density`, streets below `street_min_density` |
-  | terrain | – | Streets are pruned at water and vegetation. Highways bridge water up to `max_bridge_length` |
-  | elevation | – | No road steeper than `max_grade`. Highways detour along contours |
+A generator without `uses_maps` gets no maps. Maps requested for it are built
+afterwards around the finished network, for reference only. Without maps,
+`lsystem` produces exactly the same graph as before maps existed.
 
-  Details are in [Generators](generators.md#input-maps).
+### How heights travel
+
+The builder knows nothing about maps. Heights reach it through the RoadGraph:
+the drape writes `Node.z`, `Edge.profile`, `Edge.bridges` and `Edge.tunnels`.
+The builder fits them into `<elevationProfile>`, `<superelevation>`,
+`<bridge>` and `<tunnel>`. A graph without heights gives a flat `.xodr`.
+Details are in [Heights](heights.md).
 
 ## Design rules
 
-These rules come from `.github/copilot-instructions.md` (rule 2 was added with
-the input maps), and the code follows them throughout:
-
 1. **The RoadGraph is the only interface between generation and OpenDRIVE.**
-   Generators never touch OpenDRIVE. The builder doesn't know which generator
-   made the graph. A new generator therefore gets `.xodr` output, validation,
-   and scenarios without extra work.
-   Input maps flow the other way. They are inputs to a generator (a
-   `MapSet` of in-memory layers), never read by the builder. Bridges and map
-   files are recorded in `RoadGraph.metadata`.
+   Generators never import OpenDRIVE code. The builder doesn't know which
+   generator made the graph. A new generator therefore gets `.xodr` output,
+   validation and scenarios for free. Road *shape* lives in the neutral
+   `roadgen/geometry/` package, which both sides may use.
 2. **Map kinds form a linear pipeline and are pluggable.** A map generator
-   reads only the maps of earlier kinds (terrain → elevation → population),
-   never a RoadGraph, and gives its standalone result without them. Each
-   kind has its own registry, and an `image` generator or `--map-file` can
-   replace any procedural one.
-3. **Every stage runs from the CLI and can be tested on its own.** Each stage
-   reads and writes files (`.json`, `.xodr`, `.roadmap.json`, `.xosc`), so
-   you can rerun any stage alone.
+   reads only earlier kinds, never a RoadGraph, and gives its standalone
+   result without them. Each kind has its own registry. An `image`
+   generator or `--map-file` can replace any procedural one.
+3. **Every stage runs from the CLI and can be tested on its own.** Stages
+   exchange files (`.json`, `.npz`, `.xodr`, `.roadmap.json`, `.xosc`).
 4. **Output is deterministic.** The same parameters and seed give
-   byte-identical files. Randomness only comes from `numpy.random.default_rng(seed)`,
-   and the random draws are made in a fixed order. Timestamps that
-   scenariogeneration would normally stamp are fixed to 1970-01-01. Map
-   generators salt the seed with their kind and name, so one `--seed`
-   gives unrelated terrain, elevation and population maps.
-5. **esmini is external.** Its location comes from `ESMINI_HOME`, falling back
-   to `./esmini`, and is never hard-coded (`roadgen/sim/esmini.py`).
-6. **`scenariogeneration` is wrapped.** It's only used inside the builders, so
-   it could be replaced later. Its geometry auto-adjustment and its slow
-   minidom pretty-printer are bypassed. XML is written with `ET.indent`.
-7. **Conventions:** OpenDRIVE 1.6, right-hand traffic, SI units (m, rad, m/s),
-   lane ids negative on the right and positive on the left.
+   byte-identical files.
+   - Randomness comes only from `numpy.random.default_rng(seed)`, with draws in
+     a fixed order. Optional features draw from their own sub-streams, so
+     turning one on leaves the rest of a network unchanged.
+   - Map generators salt the seed with their kind and name.
+   - XML timestamps are fixed to 1970-01-01.
+5. **Pluggable components share one pattern:**
+   - an ABC plus a `register` decorator;
+   - a frozen params dataclass with presets, whose defaults come from
+     `roadgen/defaults.yaml`;
+   - a CLI subcommand ([Development](development.md#adding-a-component)).
+6. **External tools stay external.** esmini is found through `ESMINI_HOME`
+   (fallback `./esmini`) in `roadgen/sim/esmini.py`, never by a hard-coded
+   path. `scenariogeneration` is only used inside the builders, so it can be
+   replaced. Its geometry auto-adjustment and slow pretty-printer are
+   bypassed, and XML is indented with `ET.indent`.
+7. **Conventions:**
+   - OpenDRIVE 1.6, right-hand traffic;
+   - SI units (m, rad, m/s);
+   - lane ids negative on the right of the reference line and positive on the left;
+   - roads stop at the junction boundary, and connecting roads cover the junction interior.
 
-## Repository layout
+## Module map
 
 ```
-cli.py                     command-line entry point (python -m cli ...)
-pyproject.toml             package metadata and dependencies
-runs/                      example runs (examples.sh, README) and their inputs
+cli.py                     command-line entry point: one cmd_* per command
 roadgen/
-  history.py               run folders out/<hash>/: hashes of successful CLI runs, replay
+  defaults.yaml            every default parameter
+  config.py                loads defaults.yaml, merges --config, builds params dataclasses
+  history.py               run folders out/<hash>/, replay, run.yaml
   graph/
-    model.py               Node, Edge, RoadGraph dataclasses
-    io.py                  JSON (de)serialization, schema_version 1
-    plot.py                matplotlib top-down rendering
-  generators/
-    base.py                RoadNetworkGenerator ABC, registry, params/presets loading
-    lsystem.py             Parish & Müller style growth (grids, highways, map constraints, field goal)
-    patterns.py            street pattern fields: grid, radial, organic, contour, suburb (tensor blend)
-    junction.py            one junction per seed (3-7 legs, skew, offset pairs), JunctionArt-style
-    repair.py              post-generation repair of edges too short for their junctions
-    transforms/            graph -> graph passes: drop.py (edge drop), culdesac.py (bulbs), stagger.py
+    model.py               Node, Edge, RoadGraph
+    io.py                  JSON read/write (schema_version 1)
+    plot.py                top-down plot (matplotlib, no display needed)
   maps/
-    model.py               GridSpec, MapLayer (sampling, .npz I/O), MapSet, terrain classes
+    model.py               GridSpec, MapLayer (sampling, .npz I/O), MapSet
     base.py                MapGenerator ABC, per-kind registry, make_map
     noise.py               Perlin, fBm, ridged multifractal, domain warp
     terrain.py             water / land / vegetation (noise, image)
-    elevation.py           heightmaps (fbm + thermal erosion, image)
+    elevation.py           heightmaps (fBm + thermal erosion, image)
     population.py          density (polycentric Clark model, image)
     style.py               street pattern per district (zones, image)
-    align.py               radius caps for bends whose fitted curve leaves legal ground
-    drape.py               heights and bridges for a RoadGraph from the maps
-    image.py               reading PNG / JPEG / .npy rasters onto a grid
-    plot.py                map previews with optional roads on top
-  opendrive/
-    builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
-    junctions.py           movement planning, connecting roads, junction trims
-    lanes.py               lane sections and road marks
-  geometry/                neutral road geometry (no OpenDRIVE imports), shared by all stages
-    planar.py              poses, trimming, Hermite paramPoly3 curves
+    image.py               PNG / JPEG / .npy rasters onto a grid
+    plot.py                map previews, optionally with roads
+    align.py               radius caps for bends whose curve leaves legal ground
+    drape.py               heights, bridges and tunnels for a RoadGraph
+  generators/
+    base.py                RoadNetworkGenerator ABC, registry, params loading
+    lsystem.py             city growth after Parish & Müller (grid and field goals, maps)
+    patterns.py            street pattern fields: grid, radial, organic, contour, suburb
+    junction.py            one junction or interchange per seed
+    repair.py              fixes edges too short for their junctions
+    transforms/            graph → graph passes: drop, culdesac, stagger, roundabout, interchange
+  geometry/                neutral road shape (no OpenDRIVE imports)
+    planar.py              poses, straight segments, Hermite paramPoly3
     junction_space.py      junction trims: where roads stop at a node
     design.py              design-speed rules: radii, advisory speeds, spirals, tapers
-    primitives.py          line / arc / spiral pieces (Fresnel), alignments
-    clothoid.py            G2 clothoid transitions (pyclothoids)
-    chains.py              runs of edges through road bends: one road each
-    alignment.py           fitted reference lines: corners, room, clearance, stations
+    primitives.py          line / arc / spiral pieces, alignments
+    clothoid.py            G2 clothoid transitions
+    chains.py              runs of edges through bends: one road each
+    alignment.py           fitted reference lines (single source of road shape)
     profiles.py            lane widths and tapers, speeds, heights, bridges along a road
-    vertical.py            elevation fits (monotone cubic Hermite), junction planes, banking
+    vertical.py            elevation fits, junction planes, banking
+    grade_separation.py    overpasses where roads cross without a junction
+  opendrive/
+    builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
+    junctions.py           movement planning and connecting roads
+    lanes.py               lane sections and road marks
   validate/
-    connectivity.py        traffic traps / reachability on the RoadGraph
-    topology.py            ids and links in the .xodr
-    continuity.py          lane-center position/heading/height/grade continuity in the .xodr
+    connectivity.py        traffic traps and reachability (RoadGraph)
+    topology.py            ids and links (.xodr)
+    continuity.py          lane position, heading, height, grade, curvature continuity (.xodr)
+    dynamics.py            lateral acceleration at the posted speed (.xodr)
+    clearance.py           vertical clearance where roads cross (.xodr)
     schema.py              XSD validation (optional)
   metrics/
-    geometry.py            curvature, lateral acceleration, two-road junctions, curvature jumps of an .xodr
-    sweep.py               build-failure sweep over generator seeds
+    geometry.py            curvature and lateral-acceleration statistics of an .xodr
+    network.py             layout and junction variety of a RoadGraph
+    sweep.py               build-failure sweep over seeds
   scenario/
     xosc_builder.py        vehicle spawning, routes, .xosc writing
   sim/
     esmini.py              locating esmini binaries and libraries
-    runner.py              running esmini with timeout/memory monitoring
-    drive_check.py         driving every junction movement via esminiRMLib
+    runner.py              running esmini with timeout, memory and load-time monitoring
+    drive_check.py         driving every movement and lane with esmini's RoadManager
   scene/
-    buildings.py           extruded building blocks (.osgt / .obj)
-    ground.py              ground mesh from the maps, levelled under roads
-    osgt.py                OpenSceneGraph ASCII writer (one file, several meshes)
-tests/                     pytest suite, fixtures/ and data/ RoadGraph JSONs
-docs/                      this documentation
-Dockerfile, compose.yaml   containerized dev environment (see docker.md)
+    ground.py              ground mesh from the maps, levelled under the roads
+    buildings.py           extruded building blocks
+    osgt.py                OpenSceneGraph ASCII writer
+tests/                     pytest suite; fixtures/ and data/ hold RoadGraph JSONs
+runs/                      example runs (examples.sh, generated README) and inputs
+plans/                     plans, discussions and reviews, with the prompts behind them
 ```
 
-## Files produced
+## Output files
 
-All generated files go under `out/`, which git ignores. Each successful
-command writes into its own folder `out/<hash>/`, next to a `run.yaml` with
-the command and its non-default arguments and parameters
-([CLI reference → history](cli-reference.md#history)). For an output prefix
-`-o net` (shown as `out/net` below, which is the path with `--no-history`):
+All generated files go under `out/` (git-ignored), one folder `out/<hash>/`
+per successful command
+([run folders](cli-reference.md#run-folders-history-replay-run)). With
+`-o net`:
 
 | File | Written by | Contents |
-|------|-----------|----------|
-| `out/net.json` | `generate`, `pipeline` | RoadGraph ([format](road-graph.md#json-format)) |
-| `out/net.png` | `pipeline`, `plot-graph` | Top-down plot: highways orange, avenues red, streets blue, one-way arrows |
-| `out/net.xodr` | `build-xodr`, `pipeline` | OpenDRIVE 1.6 road network |
-| `out/net.roadmap.json` | same | Edge→road and node→junction ids, every junction movement ([details](opendrive.md#the-roadmapjson-sidecar)) |
-| `out/net_buildings.osgt` | `pipeline --buildings` | Building blocks for esmini |
-| `out/net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh (and buildings) for esmini |
-| `out/net_<kind>.npz` / `.png` | `pipeline --maps` (or `--terrain` …, `--map-file`), `map` | Input map the network was grown on, preview with roads ([details](maps.md)) |
-| `out/net.xosc` | `scenario`, `pipeline --simulate` | OpenSCENARIO traffic scenario |
-| `out/net.log` / `.stdout` | `simulate` | esmini log and console output |
-| `out/net.dat` / `.csv` | `simulate` | esmini recording (replayable) and per-step CSV |
-| `out/<hash>/run.yaml` | every recorded command | The run: command, args and parameters that differ from the defaults |
+|------|------------|----------|
+| `net.json` | `generate`, `pipeline` | RoadGraph ([format](road-graph.md#json-format)) |
+| `net.png` | `pipeline`, `plot-graph` | Top-down plot: highways orange, avenues red, streets blue, one-way arrows |
+| `net.xodr` | `build-xodr`, `pipeline` | OpenDRIVE 1.6 road network |
+| `net.roadmap.json` | same | Edge → road and node → junction ids, every junction movement ([sidecar](opendrive.md#the-roadmapjson-sidecar)) |
+| `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
+| `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
+| `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh plus buildings |
+| `net.xosc` | `scenario`, `pipeline --simulate` | OpenSCENARIO traffic scenario |
+| `net.log`, `.stdout`, `.dat`, `.csv` | `simulate` | esmini log, console output, replayable recording, per-step CSV |
+| `run.yaml` | every recorded command | The command and every parameter that differs from the defaults |

@@ -36,8 +36,13 @@ live in the Copilot instructions and apply here too:
 - lsystem is the only city generator (the `manhattan` generator was removed
   in stage C): grids, pattern fields (`patterns.py`) and graph transforms
   (`roadgen/generators/transforms/`).
-- Docs: `docs/` (index in `docs/README.md`). Update the matching page, the
-  CLI reference and the README when adding commands or modules.
+- Docs: `docs/` (index in `docs/README.md`, by task and by source folder).
+  Each topic has one home page; other pages link to it instead of repeating
+  it (parameters and run folders: `cli-reference.md`; module map and output
+  files: `architecture.md`). Update the matching page, the CLI reference and
+  the index when adding commands or modules. Keep stage labels and
+  "fixed in" notes out of the reference pages; history goes in
+  `docs/development.md#project-history` and `plans/`.
 - Reference papers: `files/*.pdf` (`file1.pdf` is Parish & Müller 2001).
 
 ## Plans and prompts (traceability)

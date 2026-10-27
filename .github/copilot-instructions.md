@@ -24,16 +24,24 @@ Tech stack:
   env var ESMINI_HOME or a config file. Never hard-code paths.
 
 Repo layout:
-  roadgen/
+  roadgen/        (full module map: docs/architecture.md#module-map)
     graph/        model.py, io.py, plot.py
-    generators/   base.py, lsystem.py, patterns.py, repair.py, transforms/
-    maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py, drape.py
-    opendrive/    builder.py, lanes.py, junctions.py, geometry.py, elevation.py
-    validate/     schema.py, topology.py, continuity.py
+    maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py,
+                  image.py, plot.py, align.py, drape.py
+    generators/   base.py, lsystem.py, patterns.py, junction.py, repair.py,
+                  transforms/ (drop, culdesac, stagger, roundabout, interchange)
+    geometry/     planar.py, junction_space.py, design.py, primitives.py, clothoid.py, chains.py,
+                  alignment.py, profiles.py, vertical.py, grade_separation.py
+    opendrive/    builder.py, lanes.py, junctions.py
+    validate/     connectivity.py, topology.py, continuity.py, dynamics.py, clearance.py, schema.py
+    metrics/      geometry.py, network.py, sweep.py
     scenario/     xosc_builder.py
-    sim/          runner.py
+    sim/          esmini.py, runner.py, drive_check.py
+    scene/        ground.py, buildings.py, osgt.py
+    config.py, history.py, defaults.yaml
   cli.py
   tests/
+  docs/
   out/            (generated files, git-ignored)
 
 OpenDRIVE conventions we follow:
