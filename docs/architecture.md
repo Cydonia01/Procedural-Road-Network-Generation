@@ -2,12 +2,11 @@
 
 ## Goal
 
-The project studies large-scale traffic simulation on road networks that are
-**generated procedurally**. OpenStreetMap is not used. Networks are written as
+The project generates road networks **procedurally** as training and test
+environments for autonomous driving. OpenStreetMap is not used. Networks are written as
 ASAM OpenDRIVE (`.xodr`), populated with traffic through OpenSCENARIO
 (`.xosc`), and simulated headless in [esmini](https://github.com/esmini/esmini).
-The networks scale up to grids with thousands of junctions, which supports the
-scalability experiments.
+The networks scale up to grids with thousands of junctions.
 
 ## Pipeline
 
@@ -48,7 +47,6 @@ flowchart LR
 | Simulate | `.xosc` → `SimResult` (timing, memory, errors) | `roadgen/sim/runner.py` |
 | Buildings | `RoadGraph` (+ maps) → `.osgt` / `.obj` | `roadgen/scene/buildings.py` |
 | Ground | maps (+ draped `RoadGraph`) → `.osgt` | `roadgen/scene/ground.py` |
-| Benchmark | YAML config → `results.csv` + plots | `roadgen/bench/` |
 
 ### Input maps and the order of stages
 
@@ -100,7 +98,7 @@ the input maps), and the code follows them throughout:
 1. **The RoadGraph is the only interface between generation and OpenDRIVE.**
    Generators never touch OpenDRIVE. The builder doesn't know which generator
    made the graph. A new generator therefore gets `.xodr` output, validation,
-   scenarios and benchmarking without extra work.
+   and scenarios without extra work.
    Input maps flow the other way. They are inputs to a generator (a
    `MapSet` of in-memory layers), never read by the builder. Bridges and map
    files are recorded in `RoadGraph.metadata`.
@@ -131,7 +129,6 @@ the input maps), and the code follows them throughout:
 ```
 cli.py                     command-line entry point (python -m cli ...)
 pyproject.toml             package metadata and dependencies
-configs/                   benchmark sweep configs (YAML)
 runs/                      example runs (examples.sh, README) and their inputs
 roadgen/
   history.py               run folders out/<hash>/: hashes of successful CLI runs, replay
@@ -190,9 +187,6 @@ roadgen/
     buildings.py           extruded building blocks (.osgt / .obj)
     ground.py              ground mesh from the maps, levelled under roads
     osgt.py                OpenSceneGraph ASCII writer (one file, several meshes)
-  bench/
-    benchmark.py           resumable scalability sweep
-    plots.py               report figures
 tests/                     pytest suite, fixtures/ and data/ RoadGraph JSONs
 docs/                      this documentation
 Dockerfile, compose.yaml   containerized dev environment (see docker.md)
@@ -218,5 +212,4 @@ the command and its non-default arguments and parameters
 | `out/net.xosc` | `scenario`, `pipeline --simulate` | OpenSCENARIO traffic scenario |
 | `out/net.log` / `.stdout` | `simulate` | esmini log and console output |
 | `out/net.dat` / `.csv` | `simulate` | esmini recording (replayable) and per-step CSV |
-| `out/bench/…` | `bench` | Cached networks, scenarios, `results.csv`, `plots/` (in the run folder when recorded) |
 | `out/<hash>/run.yaml` | every recorded command | The run: command, args and parameters that differ from the defaults |

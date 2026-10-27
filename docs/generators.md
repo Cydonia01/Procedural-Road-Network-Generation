@@ -197,8 +197,7 @@ lsystem. All are off by default, so existing networks are unchanged:
   one-way grids, is preserved. The draws come from their own random stream,
   so the roads that stay are exactly the ones grown without dropping.
 - **Sizes as counts.** `grid_extent(n_x, n_y, block_size)` gives the extent
-  of a grid of `n_x` avenues and `n_y` streets grown from `start: [0, 0]`;
-  `bench` uses it for its `grid_sizes`.
+  of a grid of `n_x` avenues and `n_y` streets grown from `start: [0, 0]`.
 
 **Preset `manhattan_like`:** Midtown-style. 10 avenues 250 m apart with 4
 one-way lanes and 30 streets 80 m apart with 2 one-way lanes, both
@@ -608,6 +607,3 @@ one on leaves the rest of the network as it was).
 
 The CLI picks the new generator up automatically: `generate <name>`,
 `pipeline <name>`, `--preset`, `--params` and `--set`.
-
-The benchmark sweeps lsystem grids sized by counts (`BenchConfig.network`
-holds lsystem params or a preset, see [benchmarking](benchmarking.md)).

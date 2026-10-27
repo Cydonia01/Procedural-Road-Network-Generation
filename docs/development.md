@@ -31,7 +31,7 @@ is on the path, and matplotlib/pyparsing deprecation noise is filtered.
 | `test_junctions.py` | Trims, movement planning, lane filling, connecting-road geometry on every fixture |
 | `test_scenario.py` | Spawning, gaps, routes, `.xosc` structure, determinism, esmini log parsing |
 | `test_buildings.py` | Blocks, footprints, triangulation, `.osgt` / `.obj` output |
-| `test_bench.py` | Config loading, resumption, statuses, process monitor, plots |
+| `test_runner.py` | Process monitor: timeout, memory cap, load-time and peak-memory measurement |
 
 Tests that need esmini (`*_runs_in_esmini`, `test_esmini_drives_*`,
 `test_tiny_real_sweep`) are marked `skipif` and skip themselves when esmini
@@ -77,7 +77,6 @@ Each phase had acceptance checks before the next one started.
 | 3 | Manhattan grid generator (removed in stage C; lsystem grows the same grids) | `generators/manhattan.py` |
 | 4 | Manhattan realism: one-way, multi-lane, presets, ring road, connectivity | `manhattan.py`, `validate/connectivity.py` |
 | 5 | Agent scenarios | `scenario/`, `sim/runner.py` |
-| 6 | Scalability experiments | `bench/` |
 | 7 (optional) | Pluggable generators and 3D | `generators/base.py`, `lsystem.py`, `scene/` |
 | 8 | Procedural input maps (terrain, elevation, population) | `maps/` |
 | 9 | Map-driven growth: highways, bridges, terrain / density / grade constraints | `lsystem.py`, `generators/base.py` |
@@ -97,5 +96,5 @@ Each phase had acceptance checks before the next one started.
 - **Hashes quoted in plans before 2026-10-25 are the old `runs/history.json`
   hashes.** The run folders (`out/<hash>/`) hash runs differently;
   `out/migration.json` maps the old hashes to the new ones for the example
-  runs. Results quoted for runs recorded before stage A (e.g. benchmark rows)
+  runs. Results quoted for runs recorded before stage A
   were measured on version 1 geometry networks.

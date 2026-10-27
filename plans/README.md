@@ -14,6 +14,7 @@ led to them, and record decisions.
 | 2026-10-26 | [Stage C: long-tail diversity, discussion and decisions](2026-10-26-stage-c-discussion.md) | decided |
 | 2026-10-26 | [Stage C: long-tail diversity, implementation plan](2026-10-26-stage-c-implementation.md) | done (C0–C10) |
 | 2026-10-27 | [Stage C: summary for presentation](2026-10-27-stage-c-summary.md) | done |
+| 2026-10-27 | [Slim down the benchmark](2026-10-27-slim-benchmark.md) | done |
 
 The review these come from is `Roadgen AV Readiness Review.pdf` in the repo
 root (written in an earlier chat; its prompts were not saved).

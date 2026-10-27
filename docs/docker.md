@@ -52,7 +52,7 @@ docker compose run --rm gui python -m cli view out/<hash>/lsystem_manhattan_like
 
 | Service | Use for | Platforms |
 |---------|---------|-----------|
-| `dev` | Tests, pipeline, `simulate`, `drive-check`, `bench`: anything without a window | Linux, macOS, Windows |
+| `dev` | Tests, pipeline, `simulate`, `drive-check`: anything without a window | Linux, macOS, Windows |
 | `gui` | `view`, `simulate --gui` on a Linux desktop (X11 or XWayland), GPU accelerated | Linux |
 | `gui-mac` | `view`, `simulate --gui` via XQuartz, software rendered | macOS |
 
@@ -86,8 +86,8 @@ Troubleshooting:
 
 **Apple Silicon.** The amd64 image runs through Rosetta. Enable *Docker
 Desktop → Settings → General → Use Rosetta for x86_64/amd64 emulation*.
-Everything works, but performance numbers differ from native runs, so run
-[benchmarks](benchmarking.md#getting-meaningful-numbers) on Linux.
+Everything works, but performance numbers differ from native runs, so take
+timing and memory measurements on Linux.
 
 GUI setup:
 

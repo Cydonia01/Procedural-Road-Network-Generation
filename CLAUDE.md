@@ -10,7 +10,7 @@ live in the Copilot instructions and apply here too:
 - The host has no Python dependencies; run everything in the dev container:
   `docker compose run --rm -T dev python -m pytest -q`
   (`-T` for non-interactive use). Same for `python -m cli ...` and `ruff check`.
-- `tests/test_bench.py::test_monitor_memory_cap_and_peak` is known to fail in
+- `tests/test_runner.py::test_monitor_memory_cap_and_peak` is known to fail in
   this environment; it is not caused by code changes.
 - Generated files go under `out/` (git-ignored).
 - Every successful CLI run gets a folder `out/<hash>/` with its outputs

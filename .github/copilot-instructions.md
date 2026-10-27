@@ -2,8 +2,8 @@
 
 We are building a Python pipeline that procedurally generates road networks,
 converts them to ASAM OpenDRIVE (.xodr), generates OpenSCENARIO (.xosc) traffic
-scenarios, and runs them in the esmini simulator for large-scale traffic and
-scalability experiments. We do NOT use OpenStreetMap; all networks are generated.
+scenarios, and runs them in the esmini simulator to train and test autonomous
+driving. We do NOT use OpenStreetMap; all networks are generated.
 
 Pipeline:
   Input maps (terrain, elevation, population) -> Generator (optional input)
@@ -32,7 +32,6 @@ Repo layout:
     validate/     schema.py, topology.py, continuity.py
     scenario/     xosc_builder.py
     sim/          runner.py
-    bench/        benchmark.py
   cli.py
   tests/
   out/            (generated files, git-ignored)

@@ -17,8 +17,7 @@ Global options must come **before** the command, e.g. `python -m cli -v pipeline
 Every default value lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml):
 generator parameters (`generators.lsystem`), map parameters (`maps`), the seed,
 `opendrive.junction_margin`, `scenario`, `buildings`, `esmini` (timestep,
-window, camera, view density), `pipeline` (`--simulate` settings) and `bench`
-(keys a sweep config leaves out). A `--config` file uses the same nesting and
+window, camera, view density), and `pipeline` (`--simulate` settings). A `--config` file uses the same nesting and
 only needs the keys it changes; unknown keys are an error. A generator or
 map generator section may also name a preset. For example:
 
@@ -41,9 +40,7 @@ All of these end up in one **run config**: the `config` part of the run's
 `run.yaml` (see [history](#history)), which holds only what differs from
 `defaults.yaml`. `--preset`, `--params`, `--set` and
 `--map-set` are written into the section they set
-(`generators.<name>`, `maps.<kind>.<name>`). Benchmark networks use
-`bench.network`, not `generators.lsystem`, so a sweep's config id only
-depends on the sweep settings.
+(`generators.<name>`, `maps.<kind>.<name>`).
 
 The `manhattan` generator was removed in stage C (lsystem grows the same
 grids, `--preset manhattan_like`); replaying an old run of it, or a config
@@ -71,8 +68,6 @@ Exit codes: `0` on success, `1` when a validation, check or simulation failed.
 | [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
 | [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
 | [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize |
-| [`bench`](#bench) | Scalability sweep from a YAML config |
-| [`bench-plot`](#bench-plot) | Plot a benchmark `results.csv` |
 | [`history`](#history) | List recorded runs (hash, note, command) |
 | [`replay`](#replay) | Run a recorded command again from its hash (also `python -m cli HASH`) |
 | [`run`](#run) | Run a run config: `out/<hash>/run.yaml`, or one written by hand |
@@ -314,21 +309,6 @@ python -m cli simulate SCENARIO.xosc [options]
 
 The `.dat`, `.csv` and `.log` go into the run's folder (next to the `.xosc`
 with `--no-history`).
-
-## bench
-
-```bash
-python -m cli bench CONFIG.yaml [--out-dir DIR] [--no-plot]
-```
-
-A recorded sweep writes into its run folder (`out_dir` and `--out-dir` only
-apply with `--no-history`).
-
-## bench-plot
-
-```bash
-python -m cli bench-plot RESULTS.csv [--out-dir DIR]     # default: <results dir>/plots
-```
 
 ## Environment variables
 

@@ -3,8 +3,8 @@
 **roadgen** is a Python pipeline that procedurally generates
 road networks, converts them to ASAM OpenDRIVE (`.xodr`), builds OpenSCENARIO
 (`.xosc`) traffic scenarios, and runs them headless in
-[esmini](https://github.com/esmini/esmini) for large-scale traffic and
-scalability experiments. All networks are generated; OpenStreetMap is not used.
+[esmini](https://github.com/esmini/esmini) to train and test autonomous
+driving. All networks are generated; OpenStreetMap is not used.
 
 ```
 Input maps (terrain, elevation, population; procedural or from images)
@@ -66,8 +66,6 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators
   (`<elevationProfile>`, `<superelevation>`, junction planes, `<bridge>` over water).
 - **3D scene:** optional buildings, one extruded block per city block, and a
   ground mesh from the maps, both standing on the terrain.
-- **Benchmark:** resumable scalability sweep measuring real-time factor, load
-  time and peak memory, with report plots.
 
 ## Quick start
 
@@ -149,10 +147,6 @@ python -m cli view out/<O>/organic.xodr --scenegraph out/<O>/organic_buildings.o
 python -m cli history                                # list runs (hash, note, command)
 python -m cli HASH                                   # run it again (or: python -m cli run out/HASH/run.yaml)
 python -m cli --note "my run" pipeline ...           # describe a run; --no-history: no folder, -o is a path
-
-# Scalability benchmark
-python -m cli bench configs/bench_smoke.yaml         # ~1 minute
-python -m cli bench configs/bench_scalability.yaml   # full, resumable sweep
 ```
 
 Generated files go in `out/<hash>/`, one folder per run, which git ignores.
@@ -162,8 +156,8 @@ differs from the defaults. Every command is documented in the
 
 ### Default parameters
 
-All default values (generator parameters, scenario, buildings, esmini, pipeline
-and benchmark settings) live in [roadgen/defaults.yaml](roadgen/defaults.yaml).
+All default values (generator parameters, scenario, buildings, esmini and pipeline
+settings) live in [roadgen/defaults.yaml](roadgen/defaults.yaml).
 To change them, write a YAML file with only the keys you want to change and pass
 it with `--config` before the command; any command-line flag still wins:
 
@@ -188,7 +182,6 @@ from `defaults.yaml`, in the run's `run.yaml`
 | [OpenDRIVE builder](docs/opendrive.md) | Roads, lanes, junction geometry, id scheme, sidecar |
 | [Validation](docs/validation.md) | Connectivity, topology, continuity, schema, drive-check |
 | [Scenarios & simulation](docs/scenarios-and-simulation.md) | `.xosc` generation, esmini runner, 3D buildings |
-| [Scalability benchmark](docs/benchmarking.md) | Sweep config, results CSV, plots |
 | [CLI reference](docs/cli-reference.md) | All commands and flags |
 | [Example runs](runs/README.md) | Examples for every phase, from input maps to the esmini GUI, replayable by hash |
 | [Docker environment](docs/docker.md) | Container setup, Linux/macOS GUI |
@@ -209,9 +202,7 @@ roadgen/
   scenario/     OpenSCENARIO builder
   sim/          esmini runner and RoadManager drive-check
   scene/        3D buildings and ground (.osgt)
-  bench/        scalability benchmark and plots
   history.py    run folders out/<hash>/: hashes of successful commands, replay
-configs/        benchmark configs
 runs/           example runs (examples.sh, README) and their inputs
 tests/          pytest suite and RoadGraph fixtures
 docs/           documentation

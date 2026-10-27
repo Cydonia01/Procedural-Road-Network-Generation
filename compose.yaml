@@ -1,5 +1,5 @@
 # Usage (see README "Development environment (Docker)"):
-#   docker compose run --rm dev        # headless shell: tests, pipeline, bench (Linux + macOS)
+#   docker compose run --rm dev        # headless shell: tests, pipeline (Linux + macOS)
 #   docker compose run --rm gui        # Linux: X11/XWayland + GPU, for `cli view` / `simulate --gui`
 #   docker compose run --rm gui-mac    # macOS: GUI through XQuartz (software rendering)
 #

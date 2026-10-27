@@ -85,4 +85,3 @@ docker compose run --rm gui-mac python -m cli view out/<hash>/first.xodr
 - **Change the network:** [Generators](generators.md)
 - **Understand the `.xodr` output:** [OpenDRIVE builder](opendrive.md)
 - **Run traffic:** [Scenarios & simulation](scenarios-and-simulation.md)
-- **Measure scalability:** [Scalability benchmark](benchmarking.md)

@@ -693,30 +693,12 @@ def cmd_simulate(args: argparse.Namespace) -> int:
         result.n_vehicles, result.sim_time, result.wall_time, result.real_time_factor,
         len(result.errors), len(result.warnings), result.asset_warnings, result.log_path,
     )
+    if result.load_time is not None:
+        log.info("load %.2f s, stepping %.2f s (%.1fx real time), peak memory %.0f MB",
+                 result.load_time, result.step_wall_time,
+                 result.sim_time / result.step_wall_time if result.step_wall_time else 0.0,
+                 result.peak_rss_mb)
     return 0 if result.ok else 1
-
-
-def cmd_bench(args: argparse.Namespace) -> int:
-    from roadgen.bench.benchmark import BenchConfig, run_sweep
-
-    cfg = BenchConfig.from_yaml(args.config, section(args.cfg, "bench"))
-    out_dir = getattr(args, "run_dir", None) or args.out_dir
-    if out_dir:
-        cfg = dataclasses.replace(cfg, out_dir=str(out_dir))
-    with timed("sweep"):
-        results = run_sweep(cfg)
-    log.info("results: %s", results)
-    if not args.no_plot:
-        cmd_bench_plot(argparse.Namespace(results=str(results), out_dir=None))
-    return 0
-
-
-def cmd_bench_plot(args: argparse.Namespace) -> int:
-    from roadgen.bench.plots import plot_all
-
-    for path in plot_all(args.results, args.out_dir):
-        log.info("wrote %s", path)
-    return 0
 
 
 def add_config_arg(parser: argparse.ArgumentParser) -> None:
@@ -930,17 +912,6 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("--no-record", action="store_true", help="skip the .dat recording")
     p.add_argument("--no-csv", action="store_true", help="skip the .csv log")
     p.set_defaults(func=cmd_simulate)
-
-    p = sub.add_parser("bench", help="run a resumable scalability sweep from a YAML config")
-    p.add_argument("config", help="YAML sweep config (see configs/)")
-    p.add_argument("--out-dir", help="override out_dir from the config (unrecorded runs only)")
-    p.add_argument("--no-plot", action="store_true", help="skip plotting after the sweep")
-    p.set_defaults(func=cmd_bench)
-
-    p = sub.add_parser("bench-plot", help="plot a benchmark results.csv (PNG + PDF)")
-    p.add_argument("results", help="results.csv written by bench")
-    p.add_argument("--out-dir", help="default: <results dir>/plots")
-    p.set_defaults(func=cmd_bench_plot)
 
     p = sub.add_parser("view", help="open an .xodr in esmini's odrviewer")
     p.add_argument("input", help=".xodr file")

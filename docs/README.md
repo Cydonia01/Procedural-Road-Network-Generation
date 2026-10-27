@@ -27,7 +27,6 @@ Read these in pipeline order:
 | [OpenDRIVE builder](opendrive.md) | RoadGraph → `.xodr`: roads, lanes, junctions, id scheme, `.roadmap.json` |
 | [Validation](validation.md) | Traffic connectivity, topology, continuity, clearance, XSD schema, esmini drive-check, geometry and network metrics |
 | [Scenarios & simulation](scenarios-and-simulation.md) | `.xosc` generation, running esmini, 3D buildings |
-| [Scalability benchmark](benchmarking.md) | Sweep config, results CSV, statuses, plots |
 
 ## Working on the project
 

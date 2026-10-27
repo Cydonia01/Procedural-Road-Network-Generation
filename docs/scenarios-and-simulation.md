@@ -76,12 +76,16 @@ Outputs go next to the scenario: `<stem>.log`, `.stdout`, `.dat`, `.csv`.
 - **samples peak RSS** (esmini plus its children) every 20 ms with `psutil`.
   It also reads the kernel's exact peak from `wait4` rusage, so even very
   short runs are measured;
-- **enforces a timeout and a memory cap** (used by the benchmark). The child
+- **enforces a timeout and a memory cap** (`pipeline --simulate` uses the timeout). The child
   is killed and the run is reported as `killed="timeout"` or `"memory"`. On
   Linux the cap is also set as a kernel `RLIMIT_AS` limit;
 - **measures load time**. The child writes to a pseudo-terminal, which makes
   its output line-buffered, and the wall-clock moment of the first
   simulation-timestamped log line (`[0.050] …`) marks the end of loading.
+
+`simulate` logs the load time, the stepping real-time factor and the peak
+memory next to the usual summary, so one run shows how a network and
+vehicle count cost esmini.
 
 ### Result (`SimResult`)
 
