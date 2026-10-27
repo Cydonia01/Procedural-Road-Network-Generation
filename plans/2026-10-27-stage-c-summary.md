@@ -91,7 +91,7 @@ Example networks, before stage C → after (from `plans/baselines/`):
 | Variety of street directions (entropy) | 1.25 (grid) – 2.68 | up to 3.52 (mixed city) |
 | Roundabouts, cul-de-sacs | none | in organic towns, suburbs and mixed cities |
 | Bridges over roads, tunnels, interchanges | none | in motorway cities |
-| Cities that cannot be built (200 tried) | 0 | SWEEP |
+| Cities that cannot be built (200 tried) | 0 | 0 (city preset; the mixed-city check is still to run) |
 
 Two honest caveats:
 
