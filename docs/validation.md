@@ -226,4 +226,20 @@ from the RoadGraph alone, for comparison with real-city statistics:
 | **Block areas** | Bounded faces of the street lines |
 | **Features** | Counts of the `metadata` lists: roundabouts, cul-de-sacs, overpasses, tunnels, interchanges, bridges |
 
+### HD-map metrics
+
+```bash
+python -m cli metrics NETWORK.xodr --hd [--json OUT.json]
+```
+
+`roadgen/metrics/hdmap.py`, from the `.xodr` (and its sidecar, if present):
+
+| Metric | Meaning |
+|---|---|
+| **Lane types** | km of lane per km of normal road, per OpenDRIVE lane type |
+| **Road marks** | `<roadMark>` count on normal roads by type and colour; marks on connecting roads counted apart (a junction interior has none) |
+| **Signals** | By `country:type[-subtype]`, dynamic ones (lights) apart, per km of road and per junction |
+| **Objects** | By object type, per km and per junction (`<bridge>` / `<tunnel>` records are not objects) |
+| **Control** | `<controller>`s and their controls, junction controllers, junction `<priority>` records; from the sidecar the junction control mix, signal plans and phases, lane-use records, banned movements |
+
 Baselines of the example networks are in `plans/baselines/`.

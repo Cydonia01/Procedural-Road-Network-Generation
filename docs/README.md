@@ -39,7 +39,7 @@ what you need.
 | `roadgen/geometry/` | [Road geometry](geometry.md); `vertical.py` and `grade_separation.py` in [Heights](heights.md) |
 | `roadgen/opendrive/` | [OpenDRIVE builder](opendrive.md) |
 | `roadgen/validate/`, `roadgen/metrics/`, `roadgen/sim/drive_check.py` | [Validation and metrics](validation.md) |
-| `roadgen/scenario/`, `roadgen/sim/runner.py`, `roadgen/sim/esmini.py` | [Scenarios and simulation](scenarios-and-simulation.md) |
+| `roadgen/scenario/`, `roadgen/sim/runner.py`, `roadgen/sim/esmini.py`, `roadgen/sim/screenshot.py` | [Scenarios and simulation](scenarios-and-simulation.md) |
 | `roadgen/scene/` | [3D scene](scene.md) |
 | `tests/` | [Development](development.md#tests) |
 | `Dockerfile`, `compose.yaml`, `docker/` | [Docker](docker.md) |

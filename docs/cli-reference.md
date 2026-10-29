@@ -227,11 +227,16 @@ See [Validation → Drive-check](validation.md#drive-check).
 ## metrics
 
 ```bash
-python -m cli metrics A.xodr [B.xodr ...] [--graph A.json ...] [--json OUT.json]
+python -m cli metrics A.xodr [B.xodr ...] [--hd] [--graph A.json ...] [--json OUT.json]
 python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city]
 ```
 
 - Geometry metrics of each `.xodr`.
+- `--hd` adds its HD-map content: lane km per road km by lane type, road
+  marks by type and colour (and any on connecting roads), signals and
+  objects by type, per km and per junction, controllers and junction
+  priority records; from the `.roadmap.json`, where present, the junction
+  control mix, signal plans, lane-use records and banned movements.
 - `--graph` (repeatable) adds the network metrics of a RoadGraph.
 - `--sweep N` generates N networks, as `pipeline --maps` would, and counts the
   ones the builder rejects.
@@ -290,6 +295,7 @@ into the run's folder (next to the `.xosc` with `--no-history`).
 
 ```bash
 python -m cli view NETWORK.xodr [--density CARS_PER_100M] [--scenegraph FILE.osgt] [--duration S]
+python -m cli view NETWORK.xodr --screenshot OUT.png [--camera X,Y,Z[,H,P]] [--at S] [--scenegraph FILE.osgt]
 ```
 
 | Option | Meaning |
@@ -297,9 +303,15 @@ python -m cli view NETWORK.xodr [--density CARS_PER_100M] [--scenegraph FILE.osg
 | `--density` | Random cars per 100 m of lane (default 1) |
 | `--scenegraph FILE.osgt` | Ground and/or buildings to show with the roads |
 | `--duration S` | Close after S seconds (default: stays open) |
+| `--screenshot OUT.png` | Render one still image instead of opening the viewer (no cars) |
+| `--camera X,Y,Z[,H,P]` | Screenshot camera position [m], heading and pitch [rad]; default straight down over the whole network |
+| `--at S` | Screenshot time [s] (default 0.3) |
 
-Needs a display. In Docker, use the `gui` or `gui-mac` service
-([Docker](docker.md)). `view` is not recorded as a run.
+The viewer needs a display. In Docker, use the `gui` or `gui-mac` service
+([Docker](docker.md)). `--screenshot` doesn't: it renders with esmini (a
+scenario without vehicles, a fixed custom camera, `--capture_screen`), under
+`xvfb-run` when there is no display, so it works in the `dev` service.
+`view` is not recorded as a run.
 
 ## Run folders (history, replay, run)
 

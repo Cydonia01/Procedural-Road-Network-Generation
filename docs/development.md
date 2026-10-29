@@ -22,14 +22,21 @@ found, so a green run without esmini doesn't cover the simulator.
 | Other generators, transforms, repair | `test_junction_generator.py`, `test_roundabout.py`, `test_interchange.py`, `test_repair.py` |
 | Road geometry | `test_geometry.py`, `test_alignment.py`, `test_chain_roads.py`, `test_turns.py` |
 | Heights | `test_align.py`, `test_elevation.py`, `test_banking.py`, `test_grade_separation.py` |
-| OpenDRIVE builder | `test_opendrive.py`, `test_junctions.py`, `test_junction_variety.py` |
-| Validators and metrics | `test_validators.py`, `test_metrics.py`, `test_network_metrics.py` |
+| OpenDRIVE builder | `test_opendrive.py`, `test_junctions.py`, `test_junction_variety.py`, `test_hdmap_identity.py` |
+| Validators and metrics | `test_validators.py`, `test_metrics.py`, `test_network_metrics.py`, `test_hdmap_metrics.py` |
 | Scenario, simulation, scene | `test_scenario.py`, `test_runner.py`, `test_buildings.py` |
 
 `test_lsystem_identity.py` guards a project rule: without maps, and with
 new features at their defaults, the existing lsystem presets must grow
 exactly the networks recorded in `tests/lsystem_identity.py`. New lsystem
 features must therefore default to off.
+
+`test_hdmap_identity.py` does the same for the OpenDRIVE builder during
+stage B (HD maps): with the HD features off, `pipeline` must write a
+byte-identical `.xodr` and `.roadmap.json` for the networks in
+`tests/hdmap_identity.py` (hashes recorded before stage B). Re-record
+(`python -m tests.hdmap_identity`) only for an intended change of the
+builder's output.
 
 ### Fixtures
 

@@ -156,6 +156,7 @@ roadgen/
   metrics/
     geometry.py            curvature and lateral-acceleration statistics of an .xodr
     network.py             layout and junction variety of a RoadGraph
+    hdmap.py               HD-map content of an .xodr: lane types, marks, signals, objects, controllers
     sweep.py               build-failure sweep over seeds
   scenario/
     xosc_builder.py        vehicle spawning, routes, .xosc writing
@@ -163,6 +164,7 @@ roadgen/
     esmini.py              locating esmini binaries and libraries
     runner.py              running esmini with timeout, memory and load-time monitoring
     drive_check.py         driving every movement and lane with esmini's RoadManager
+    screenshot.py          still images rendered by esmini (view --screenshot), headless via xvfb-run
   scene/
     ground.py              ground mesh from the maps, levelled under the roads
     buildings.py           extruded building blocks

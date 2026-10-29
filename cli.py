@@ -546,6 +546,19 @@ def cmd_generators(args: argparse.Namespace) -> int:
 
 
 def cmd_view(args: argparse.Namespace) -> int:
+    if args.screenshot:
+        from roadgen.sim.screenshot import screenshot
+
+        camera = [float(v) for v in args.camera.split(",")] if args.camera else None
+        if camera is not None and len(camera) not in (3, 5):
+            raise SystemExit("error: --camera expects x,y,z or x,y,z,heading,pitch")
+        out = artifact(args, args.screenshot, args.screenshot)
+        try:
+            screenshot(out, xodr=args.input, at=args.at, camera=camera, scenegraph=args.scenegraph)
+        except (RuntimeError, FileNotFoundError, ValueError) as e:
+            log.error("screenshot: %s", e)
+            return 1
+        return 0
     try:
         odrviewer = esmini_binary("odrviewer")
     except FileNotFoundError as e:
@@ -589,7 +602,7 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     build-failure sweep; optional JSON report."""
     import json
 
-    from roadgen.metrics import network
+    from roadgen.metrics import hdmap, network
     from roadgen.metrics.geometry import (
         GeometryMetricsParams,
         geometry_metrics,
@@ -607,6 +620,10 @@ def cmd_metrics(args: argparse.Namespace) -> int:
             m = geometry_metrics(path, params)
         for line in summary_lines(m):
             log.info("%s", line)
+        if args.hd:
+            m["hdmap"] = hdmap.hdmap_metrics(path)
+            for line in hdmap.summary_lines(m["hdmap"]):
+                log.info("%s", line)
         report["networks"].append(m)
     if args.graph:
         report["graphs"] = []
@@ -921,6 +938,13 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                                         "or <prefix>_scene.osgt (ground + buildings)")
     p.add_argument("--duration", type=float,
                    help="close the viewer after this many seconds [s] (default: when closed)")
+    p.add_argument("--screenshot", metavar="PNG",
+                   help="render one still image with esmini instead of opening the viewer "
+                        "(no window needed: uses xvfb-run without a display); no cars")
+    p.add_argument("--camera", metavar="X,Y,Z[,H,P]",
+                   help="--screenshot camera position [m] and heading, pitch [rad] "
+                        "(default: straight down over the whole network)")
+    p.add_argument("--at", type=float, default=0.3, help="--screenshot time [s] (default %(default)s)")
     p.set_defaults(func=cmd_view)
 
     p = sub.add_parser(
@@ -937,6 +961,9 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                    help="RoadGraph JSON whose network metrics (junction legs, skew, CNR, "
                         "orientation entropy, blocks) to report, repeatable")
     p.add_argument("--json", metavar="OUT", help="write the full report as JSON")
+    p.add_argument("--hd", action="store_true",
+                   help="also count the .xodr files' HD-map content: lane types, road marks, "
+                        "signals, objects, controllers (and junction control from the sidecar)")
     p.add_argument("--sweep", type=int, metavar="N",
                    help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
                         "and count how many the builder rejects")

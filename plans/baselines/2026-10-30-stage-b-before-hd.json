@@ -1,0 +1,869 @@
+{
+ "recorded": "2026-10-30",
+ "code": "main 1cc11cc + B0 (builder unchanged)",
+ "command": "bash plans/scripts/stage_b_examples.sh out/stage_b/b0",
+ "networks": [
+  {
+   "name": "grid",
+   "status": "ok",
+   "pipeline_s": 9.0,
+   "xodr_bytes": 2372312,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "grid.xodr",
+    "counts": {
+     "roads": 176,
+     "connecting_roads": 1120,
+     "junctions": 96,
+     "road_length_km": 26.43
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.4211
+    },
+    "road_marks": {
+     "broken/standard": 188,
+     "solid/standard": 552
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 176,
+     "connecting_roads": 1120,
+     "junctions": 96,
+     "two_road_junctions": 0,
+     "two_road_junction_share": 0.0,
+     "road_length_m": 26430.3
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 176,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p99": 2.3953,
+      "max": 2.3953,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 0
+     },
+     "turn": {
+      "n": 1120,
+      "p50": 0.8773,
+      "p90": 2.2317,
+      "p99": 2.2317,
+      "max": 2.2317,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "manhattan_like",
+   "status": "ok",
+   "pipeline_s": 35.1,
+   "xodr_bytes": 6522532,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "manhattan_like.xodr",
+    "counts": {
+     "roads": 720,
+     "connecting_roads": 2900,
+     "junctions": 380,
+     "road_length_km": 83.28
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.536
+    },
+    "road_marks": {
+     "broken/standard": 1420,
+     "solid/standard": 1520
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 720,
+     "connecting_roads": 2900,
+     "junctions": 380,
+     "two_road_junctions": 0,
+     "two_road_junction_share": 0.0,
+     "road_length_m": 83279.7
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 720,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p99": 0.0,
+      "max": 2.5502,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 0
+     },
+     "turn": {
+      "n": 2900,
+      "p50": 0.0,
+      "p90": 2.4029,
+      "p99": 2.8434,
+      "max": 2.8434,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "paris",
+   "status": "ok",
+   "pipeline_s": 21.1,
+   "xodr_bytes": 5316046,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "paris.xodr",
+    "counts": {
+     "roads": 400,
+     "connecting_roads": 2158,
+     "junctions": 228,
+     "road_length_km": 43.403
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.7768
+    },
+    "road_marks": {
+     "broken/standard": 458,
+     "solid/standard": 1365
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 400,
+     "connecting_roads": 2158,
+     "junctions": 228,
+     "two_road_junctions": 0,
+     "two_road_junction_share": 0.0,
+     "road_length_m": 43402.8
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 400,
+      "p50": 0.0,
+      "p90": 0.2034,
+      "p99": 2.5618,
+      "max": 2.6936,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 0
+     },
+     "turn": {
+      "n": 2158,
+      "p50": 1.5718,
+      "p90": 2.5354,
+      "p99": 2.9191,
+      "max": 2.9987,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "suburb",
+   "status": "ok",
+   "pipeline_s": 21.3,
+   "xodr_bytes": 5575937,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "suburb.xodr",
+    "counts": {
+     "roads": 481,
+     "connecting_roads": 2069,
+     "junctions": 313,
+     "road_length_km": 28.931
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.6485
+    },
+    "road_marks": {
+     "broken/standard": 570,
+     "solid/standard": 1656
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 481,
+     "connecting_roads": 2069,
+     "junctions": 313,
+     "two_road_junctions": 77,
+     "two_road_junction_share": 0.246,
+     "road_length_m": 28931.3
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 481,
+      "p50": 0.0,
+      "p90": 2.0001,
+      "p99": 2.754,
+      "max": 3.0,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 81,
+      "p50": 2.2281,
+      "p90": 2.2281,
+      "p99": 2.7522,
+      "max": 2.9095,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "turn": {
+      "n": 1988,
+      "p50": 1.8853,
+      "p90": 2.6628,
+      "p99": 2.9558,
+      "max": 2.9995,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "organic_town",
+   "status": "ok",
+   "pipeline_s": 9.3,
+   "xodr_bytes": 2377668,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "organic_town.xodr",
+    "counts": {
+     "roads": 195,
+     "connecting_roads": 940,
+     "junctions": 120,
+     "road_length_km": 19.419
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.7989
+    },
+    "road_marks": {
+     "broken/standard": 254,
+     "solid/standard": 647
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 195,
+     "connecting_roads": 940,
+     "junctions": 120,
+     "two_road_junctions": 0,
+     "two_road_junction_share": 0.0,
+     "road_length_m": 19418.6
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 195,
+      "p50": 0.0,
+      "p90": 1.4802,
+      "p99": 2.5789,
+      "max": 2.5842,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 0
+     },
+     "turn": {
+      "n": 940,
+      "p50": 1.5047,
+      "p90": 2.5154,
+      "p99": 2.9653,
+      "max": 2.9888,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "city",
+   "status": "ok",
+   "pipeline_s": 78.9,
+   "xodr_bytes": 18332892,
+   "simulate": {
+    "load_s": 17.26,
+    "stepping_rtf": 86.7,
+    "wall_s": 17.6,
+    "peak_mb": 134,
+    "errors": 0
+   },
+   "hdmap": {
+    "xodr": "city.xodr",
+    "counts": {
+     "roads": 615,
+     "connecting_roads": 3261,
+     "junctions": 352,
+     "road_length_km": 64.762
+    },
+    "lane_km_per_road_km": {
+     "driving": 3.1765
+    },
+    "road_marks": {
+     "broken/standard": 1086,
+     "solid/standard": 2418
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 615,
+     "connecting_roads": 3261,
+     "junctions": 352,
+     "two_road_junctions": 2,
+     "two_road_junction_share": 0.0057,
+     "road_length_m": 64761.8
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 615,
+      "p50": 0.0,
+      "p90": 2.2093,
+      "p99": 2.7512,
+      "max": 2.9947,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 6,
+      "p50": 1.7854,
+      "p90": 2.4783,
+      "p99": 2.7243,
+      "max": 2.7517,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "turn": {
+      "n": 3255,
+      "p50": 1.4436,
+      "p90": 2.5043,
+      "p99": 2.9524,
+      "max": 2.9996,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "mixed_city",
+   "status": "ok",
+   "pipeline_s": 170.0,
+   "xodr_bytes": 23206141,
+   "simulate": {
+    "load_s": 48.13,
+    "stepping_rtf": 64.3,
+    "wall_s": 48.6,
+    "peak_mb": 147,
+    "errors": 0
+   },
+   "hdmap": {
+    "xodr": "mixed_city.xodr",
+    "counts": {
+     "roads": 792,
+     "connecting_roads": 4207,
+     "junctions": 457,
+     "road_length_km": 67.611
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.8734
+    },
+    "road_marks": {
+     "broken/standard": 1112,
+     "solid/standard": 2935
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 792,
+     "connecting_roads": 4207,
+     "junctions": 457,
+     "two_road_junctions": 31,
+     "two_road_junction_share": 0.0678,
+     "road_length_m": 67610.8
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 792,
+      "p50": 0.0,
+      "p90": 2.1585,
+      "p99": 2.7709,
+      "max": 2.9792,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 43,
+      "p50": 2.2281,
+      "p90": 2.864,
+      "p99": 2.9572,
+      "max": 2.964,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "turn": {
+      "n": 4164,
+      "p50": 1.7616,
+      "p90": 2.6408,
+      "p99": 2.9646,
+      "max": 2.9998,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "highway_corridor",
+   "status": "ok",
+   "pipeline_s": 8.5,
+   "xodr_bytes": 7451379,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "highway_corridor.xodr",
+    "counts": {
+     "roads": 256,
+     "connecting_roads": 1241,
+     "junctions": 140,
+     "road_length_km": 32.931
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.8657
+    },
+    "road_marks": {
+     "broken/standard": 440,
+     "solid/standard": 1109
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 256,
+     "connecting_roads": 1241,
+     "junctions": 140,
+     "two_road_junctions": 1,
+     "two_road_junction_share": 0.0071,
+     "road_length_m": 32930.6
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 256,
+      "p50": 0.0,
+      "p90": 2.3216,
+      "p99": 2.7306,
+      "max": 2.9609,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 3,
+      "p50": 2.6694,
+      "p90": 2.7195,
+      "p99": 2.7308,
+      "max": 2.732,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "turn": {
+      "n": 1238,
+      "p50": 0.9421,
+      "p90": 2.4239,
+      "p99": 2.9275,
+      "max": 2.9971,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "junction_k",
+   "status": "ok",
+   "pipeline_s": 2.2,
+   "xodr_bytes": 129563,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "junction_k.xodr",
+    "counts": {
+     "roads": 26,
+     "connecting_roads": 45,
+     "junctions": 23,
+     "road_length_km": 0.679
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.3332
+    },
+    "road_marks": {
+     "broken/standard": 3,
+     "solid/standard": 56
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 26,
+     "connecting_roads": 45,
+     "junctions": 23,
+     "two_road_junctions": 18,
+     "two_road_junction_share": 0.7826,
+     "road_length_m": 679.1
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 26,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p99": 1.988,
+      "max": 1.988,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 18,
+      "p50": 2.2281,
+      "p90": 2.2281,
+      "p99": 2.2281,
+      "max": 2.2281,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "turn": {
+      "n": 27,
+      "p50": 1.8155,
+      "p90": 2.5761,
+      "p99": 2.859,
+      "max": 2.8931,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "junction_roundabout",
+   "status": "ok",
+   "pipeline_s": 2.2,
+   "xodr_bytes": 118931,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "junction_roundabout.xodr",
+    "counts": {
+     "roads": 24,
+     "connecting_roads": 38,
+     "junctions": 20,
+     "road_length_km": 0.659
+    },
+    "lane_km_per_road_km": {
+     "driving": 2.262
+    },
+    "road_marks": {
+     "broken/standard": 8,
+     "solid/standard": 51
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 24,
+     "connecting_roads": 38,
+     "junctions": 20,
+     "two_road_junctions": 13,
+     "two_road_junction_share": 0.65,
+     "road_length_m": 659.1
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 24,
+      "p50": 0.0,
+      "p90": 1.5324,
+      "p99": 1.988,
+      "max": 1.988,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 13,
+      "p50": 2.2281,
+      "p90": 2.2281,
+      "p99": 2.2281,
+      "max": 2.2281,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "turn": {
+      "n": 25,
+      "p50": 2.0576,
+      "p90": 2.7346,
+      "p99": 2.9516,
+      "max": 2.9807,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  },
+  {
+   "name": "junction_diamond",
+   "status": "ok",
+   "pipeline_s": 2.0,
+   "xodr_bytes": 148638,
+   "simulate": null,
+   "hdmap": {
+    "xodr": "junction_diamond.xodr",
+    "counts": {
+     "roads": 12,
+     "connecting_roads": 40,
+     "junctions": 6,
+     "road_length_km": 6.684
+    },
+    "lane_km_per_road_km": {
+     "driving": 3.6615
+    },
+    "road_marks": {
+     "broken/standard": 46,
+     "solid/standard": 56
+    },
+    "connecting_road_marks": 0,
+    "signals": {
+     "total": 0,
+     "dynamic": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "objects": {
+     "total": 0,
+     "per_km": 0.0,
+     "per_junction": 0.0,
+     "by_type": {}
+    },
+    "controllers": 0,
+    "controls": 0,
+    "junction_controllers": 0,
+    "junction_priorities": 0
+   },
+   "geometry": {
+    "counts": {
+     "roads": 12,
+     "connecting_roads": 40,
+     "junctions": 6,
+     "two_road_junctions": 0,
+     "two_road_junction_share": 0.0,
+     "road_length_m": 6684.4
+    },
+    "lateral_acceleration": {
+     "road": {
+      "n": 12,
+      "p50": 0.0,
+      "p90": 0.0,
+      "p99": 0.0,
+      "max": 0.0,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     },
+     "bend": {
+      "n": 0
+     },
+     "turn": {
+      "n": 40,
+      "p50": 0.0,
+      "p90": 2.7393,
+      "p99": 2.9971,
+      "max": 2.9971,
+      "over_limit": 0,
+      "over_limit_share": 0.0
+     }
+    }
+   }
+  }
+ ]
+}
