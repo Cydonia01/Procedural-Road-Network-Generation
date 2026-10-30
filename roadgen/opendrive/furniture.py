@@ -5,13 +5,15 @@ road's speed profile, records of what stands or is painted where: road,
 station s, offset t, orientation, catalogue code. The builder turns them into
 OpenDRIVE <signal> and <object> elements and numbers them.
 
-Crosswalks (B7): at the junction end of every road with sidewalks on both
-sides there, CROSSWALK_GAP before the road end, from curb to curb, 3 m deep
-on streets and 4 m on avenues and highways (crosswalk_depth). At junctions
-without lights a zebra (Z 293: 0.5 m stripes and gaps) with sign 350-10
-facing each direction of travel; at lights a Fussgaengerfurt: two solid
-lines 0.3 m wide along the crosswalk's edges, no sign. Skipped where the
-road has too little room (CROSSWALK_ROOM), and at junctions without control.
+Crosswalks (B7): at the junction end of a road with sidewalks on both sides
+there, CROSSWALK_GAP before the road end, from curb to curb, 3 m deep on
+streets and 4 m on avenues and highways (CROSSWALK_DEPTH). At lights a
+Fussgaengerfurt on every arm: two solid lines 0.3 m wide along the
+crosswalk's edges, no sign. Without lights a zebra (Z 293: 0.5 m stripes and
+gaps) with sign 350-10 facing each direction of travel, only where
+JunctionControlParams.zebra allows it (by default avenue arms in the urban
+profile). Skipped where the road has too little room (CROSSWALK_ROOM), and
+at junctions without control.
 
 Per approach (a road end with incoming lanes), by its role:
 - stop: a stop line (roadMark object "stopLine": a solid white marking

@@ -280,13 +280,19 @@ keeps them in the sidecar only).
 | `signal` | stop line | a traffic light on the roadside at the stop line, and one over the lanes on approaches with 3 or more lanes ([traffic lights](#traffic-lights-and-controllers-hd-maps)) |
 | `major` | none | 301, 30 m before the junction (at most half the road), not on roundabout rings; along a priority road through two or more priority junctions 306 / 307 instead (below) |
 
-**Crosswalks.** At the junction end of every road with sidewalks on both
-sides there (junctions with control only), 0.5 m before the road end, from
-curb to curb: 3 m deep on streets, 4 m on avenues and highways.
+**Crosswalks.** At the junction end of a road with sidewalks on both sides
+there (junctions with control only), 0.5 m before the road end, from curb to
+curb: 3 m deep on streets, 4 m on avenues and highways.
 
+- **At lights,** on every arm: two solid edge lines 0.3 m wide
+  (Fußgängerfurt), no sign.
 - **Without lights:** a zebra (Z 293: 0.5 m stripes, 0.5 m gaps) and a sign
-  350-10 facing each direction of travel.
-- **At lights:** two solid edge lines 0.3 m wide (Fußgängerfurt), no sign.
+  350-10 facing each direction of travel, only where `junction_control.zebras`
+  allows. German towns have few zebras at junctions without lights, so the
+  default `dense_avenues` puts them only on avenue arms in the `urban`
+  profile: on maps the dense areas (`annotate`, from `urban_density`),
+  without maps every avenue; never on streets. `all` puts one on every arm,
+  `none` on none.
 - The stop or yield line moves 1 m behind the crosswalk.
 - **Skipped** where the road has too little room for the crosswalk, its stop
   line and 2 m more (half the road where both ends are junctions).

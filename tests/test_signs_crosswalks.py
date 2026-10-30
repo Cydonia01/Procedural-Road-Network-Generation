@@ -53,8 +53,11 @@ def _carriageway(road: etree._Element, s: float) -> tuple[float, float]:
     return out[0], out[1]
 
 
+ALL_ZEBRAS = dataclasses.replace(HD, control=dataclasses.replace(HD.control, zebras="all"))
+
+
 def test_crosswalks_span_the_carriageway_with_stop_lines_behind(tmp_path):
-    path, root, sidecar, _ = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path)
+    path, root, sidecar, _ = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, ALL_ZEBRAS)
     assert check_hdmap(path) == []
     walks = [o for o in root.iter("object") if o.get("type") == "crosswalk"]
     assert len(walks) == 4 and sidecar["junctions"][0]["crosswalks"] == 4
@@ -79,6 +82,33 @@ def test_crosswalks_span_the_carriageway_with_stop_lines_behind(tmp_path):
     # a 350-10 per crosswalk and direction of travel
     zebra_signs = [s for s in root.iter("signal") if s.get("type") == "350"]
     assert len(zebra_signs) == 8 and {s.get("subtype") for s in zebra_signs} == {"10"}
+
+
+@pytest.mark.parametrize("zebras, profile, expected", [("dense_avenues", "urban", 2), ("dense_avenues", "suburban", 0),
+                                                      ("all", "urban", 4), ("none", "urban", 0)])
+def test_zebras_only_on_dense_avenue_arms_by_default(tmp_path, zebras, profile, expected):
+    hd = dataclasses.replace(HD, control=dataclasses.replace(HD.control, zebras=zebras),
+                             cross_section=dataclasses.replace(HD.cross_section, profile=profile))
+    path, root, sidecar, _ = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, hd)
+    assert check_hdmap(path) == []
+    walks = [o for o in root.iter("object") if o.get("type") == "crosswalk"]
+    assert len(walks) == expected
+    if zebras == "dense_avenues":
+        roads = {w.getparent().getparent() for w in walks}
+        assert all(len([lane for lane in r.find("lanes/laneSection").findall("right/lane")
+                        if lane.get("type") == "driving"]) == 2 for r in roads)  # the 2+2 avenue's arms
+    assert len([s for s in root.iter("signal") if s.get("type") == "350"]) == 2 * expected
+
+
+def test_no_zebras_at_street_junctions_and_crossings_at_every_lit_arm(tmp_path):
+    g = load_json("tests/fixtures/4way_avenue_x_street.json")
+    for e in g.edges.values():
+        e.road_class = "street"
+    _, root, _, _ = _build(g, tmp_path)
+    assert not [o for o in root.iter("object") if o.get("type") == "crosswalk"]
+    g.nodes[1].control = "signal"
+    _, root, _, _ = _build(g, tmp_path)
+    assert len([o for o in root.iter("object") if o.get("type") == "crosswalk"]) == 4
 
 
 def test_crossings_at_lights_have_two_edge_lines_and_no_sign(tmp_path):

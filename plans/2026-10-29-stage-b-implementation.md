@@ -1079,6 +1079,37 @@ With HD off nothing changes (both identity guards pass). Changes against the pla
 
 Exit of B7: full suite 704 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's `Optional[...]` / `Union` style and B008; docs updated (`opendrive.md` crosswalks, priority roads, along-road signs, pedestrian phase, corner heights; `validation.md` approach reach). Helper script: `b7_signs.py`.
 
+#### Zebra rule (prompt 10, 2026-10-31)
+
+**User decision:** zebras are rare at German junctions without lights. Crossings stay at every arm with lights. Without lights, zebras go only on avenue arms in dense areas, and none on street × street junctions; it is an option.
+
+**Implementation:** `junction_control.zebras`:
+- `dense_avenues` (default): a zebra only on avenue arms in the `urban` profile. "Dense" reuses B5's population threshold through the profile: on maps `annotate` sets `urban` from `urban_density` (3,000 people/km²); without maps every edge has the default profile `urban`, which gives "avenues only". Streets never get one, so street × street junctions have none.
+- `all`: the B7 behaviour.
+- `none`: no zebras.
+
+Junctions with lights keep a crossing on every arm with sidewalks, so the single-phase rule (prompt 9) is unchanged.
+
+**Crosswalk counts** (`b7_signs.py out/stage_b/b7 out/stage_b/b7z` → `baselines/2026-10-31-stage-b-b7-zebras.json`):
+
+| Network | crosswalks B7 → now | zebras B7 → now | at lights | 350-10 signs B7 → now | `.xodr` size |
+|---|---|---|---|---|---|
+| grid | 352 → 176 | 352 → 176 | 0 | 704 → 352 | 5.46 → 5.22 MB |
+| manhattan_like | 1,440 → 780 | 1,380 → 720 | 60 | 1,500 → 840 | 15.83 → 15.09 MB |
+| paris | 751 → 363 | 734 → 346 | 17 | 1,468 → 692 | 11.03 → 10.49 MB |
+| suburb | 603 → 288 | 598 → 283 | 5 | 1,194 → 564 | 10.44 → 10.00 MB |
+| organic_town | 321 → 173 | 317 → 169 | 4 | 634 → 338 | 4.96 → 4.75 MB |
+| city (maps) | 643 → 348 | 392 → 97 | 251 | 784 → 194 | 25.79 → 25.37 MB |
+| mixed_city (maps) | 1,079 → 483 | 770 → 174 | 309 | 1,540 → 348 | 35.59 → 34.74 MB |
+| highway_corridor (maps) | 369 → 194 | 268 → 93 | 101 | 536 → 186 | 11.97 → 11.72 MB |
+| junction_k / roundabout / diamond | 8 / 7 / 4 → 2 / 2 / 4 | 8 / 7 / 0 → 2 / 2 / 0 | 0 / 0 / 4 | 16 / 13 / 0 → 4 / 4 / 0 | |
+
+- On the networks without maps the zebras halve: only avenue arms keep theirs.
+- On the map networks a quarter remain: only avenues in `urban` areas.
+- `manhattan_like` keeps its ten pedestrian phases: their junctions have lights.
+
+All 11 examples build, validate and pass the drive-check (`out/stage_b/b7z`). Suite: 709 passed, 1 failed (the known one). Docs: `opendrive.md` (crosswalks).
+
 ### B8 · Junction realism: lane use, turn pockets, medians, banned turns
 
 - **Lane-use solver** (`opendrive/junctions.py`):

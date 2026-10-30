@@ -43,6 +43,7 @@ from roadgen.graph.model import RoadGraph
 _D = section(DEFAULTS, "junction_control")
 
 CONTROL_KINDS = ("none", "right_before_left", "yield", "stop", "signal")  # Node.control values
+ZEBRAS = ("dense_avenues", "all", "none")  # where junctions without lights get zebra crossings
 RANK = {c: k for k, c in enumerate(CLASSES)}  # street < avenue < highway
 SALT = 5  # random stream of the stop share (np.random.default_rng([seed, SALT, node]))
 OPPOSITE_TOL = math.radians(45.0)  # arms this close to opposite count as oncoming
@@ -58,12 +59,23 @@ class JunctionControlParams:
     stop_share: float = _D["stop_share"]  # ... or at this random share of priority junctions
     right_before_left: bool = _D["right_before_left"]  # street-only junctions without signs
     priorities: bool = _D["priorities"]  # write <priority> records (else only the sidecar has them)
+    zebras: str = _D["zebras"]  # zebras without lights: dense_avenues | all | none (crossings at lights always)
 
     def __post_init__(self) -> None:
         if min(self.signal_density, self.stop_density, self.stop_speed) < 0:
             raise ValueError("junction_control densities and stop_speed must be >= 0")
         if not 0 <= self.stop_share <= 1 or not 0 <= self.stop_skew_deg <= 90:
             raise ValueError("junction_control needs 0 <= stop_share <= 1 and 0 <= stop_skew_deg <= 90")
+        if self.zebras not in ZEBRAS:
+            raise ValueError(f"unknown junction_control.zebras {self.zebras!r}; available: {ZEBRAS}")
+
+    def zebra(self, road_class: str, profile: str) -> bool:
+        """Whether an arm of a junction without lights gets a zebra: in German towns only on
+        avenues in dense areas (the urban profile, which `annotate` sets from the
+        population map), never on streets (prompt 10)."""
+        if self.zebras == "all":
+            return True
+        return self.zebras == "dense_avenues" and road_class == "avenue" and profile == "urban"
 
     @classmethod
     def preset(cls, name: str, **overrides: Any) -> JunctionControlParams:

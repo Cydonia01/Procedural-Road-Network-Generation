@@ -298,6 +298,10 @@ class OpenDriveBuilder:
         crosswalks = {}
         if control.kind != "none":
             for e in ends:
+                edge = graph.edges[e.edge_id]
+                if control.kind != "signal" and not self.hd.control.zebra(
+                        edge.road_class, edge.cross_section or self.hd.cross_section.profile):
+                    continue  # crossings at every arm with lights; zebras only where the option says
                 length = lengths[e.road_id]
                 other = (e.road_id, "start" if e.contact == "end" else "end")
                 room = length / 2 if other in self._at_junction else length

@@ -294,6 +294,7 @@ junction_control:  # junction control and right of way, German rules (roadgen/op
   stop_share: 0.15          # ... or at this random share of priority junctions (seeded)
   right_before_left: true   # street-only junctions without signs
   priorities: true          # write <junction><priority> records (false: only the sidecar has them)
+  zebras: dense_avenues     # zebras at junctions without lights: dense_avenues (avenue arms in the urban profile) | all | none
 
 traffic_lights:  # fixed-time light plans at junctions with lights (roadgen/opendrive/lights.py)
   min_green: 10.0           # [s]
