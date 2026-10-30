@@ -11,6 +11,15 @@ same lane. Each gets a constant target speed.
   for the lane the vehicle is actually in (esmini's default controller never
   changes lanes on a road). Each road on the path becomes a waypoint.
 
+Traffic lights (HD maps, the sidecar's signal_plans; ScenarioParams.lights):
+each junction's fixed-time plan is written twice. As a RoadNetwork
+TrafficSignalController (phases with TrafficSignalStates, the offset as
+delay), the standard form other tools read; esmini 3.9 ignores it. And as
+storyboard events, the form esmini switches: one act, one event per state
+change up to sim_duration, with a TrafficSignalStateAction per light that
+changes (name = signal id) and a SimulationTimeCondition. Vehicles under
+esmini's default controller do not stop at red lights.
+
 The simulation stops at sim_duration. Output is deterministic for a seed.
 """
 
@@ -34,6 +43,7 @@ from scenariogeneration import xosc
 from roadgen.config import DEFAULTS, section
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.builder import sidecar_path
+from roadgen.opendrive.lights import SignalPlan, state_changes
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +71,7 @@ class ScenarioParams:
     spawn_mode: SpawnMode = _D["spawn_mode"]
     speed_range: tuple[float, float] = _D["speed_range"]  # [m/s]
     min_spawn_gap: float = _D["min_spawn_gap"]  # [m] along the lane
+    lights: bool = _D["lights"]  # switch the traffic lights of the network's signal plans
 
     def __post_init__(self) -> None:
         if self.n_vehicles < 0:
@@ -119,6 +130,7 @@ class ScenarioBuilder:
         graph: Optional[RoadGraph],
         edge_to_road_map: dict[int, int],
         movements: Optional[list[dict]] = None,
+        signal_plans: Optional[list[dict]] = None,
     ) -> None:
         self.xodr_path = Path(xodr_path)
         self.graph = graph
@@ -128,15 +140,17 @@ class ScenarioBuilder:
             if missing:
                 raise ValueError(f"edges without a road id: {sorted(missing)[:10]}")
         self.movements = movements or []
+        self.signal_plans = signal_plans or []
         self.slots = self._lane_slots()
         self.lane_graph = self._lane_graph()
         self.plans: list[VehiclePlan] = []
 
     @classmethod
     def from_files(cls, xodr_path: PathLike, graph: Optional[RoadGraph] = None) -> "ScenarioBuilder":
-        """Load the edge->road map and movements from the .roadmap.json sidecar."""
+        """Load the edge->road map, movements and signal plans from the .roadmap.json sidecar."""
         sidecar = json.loads(sidecar_path(xodr_path).read_text())
-        return cls(xodr_path, graph, sidecar["edge_to_road"], sidecar.get("movements", []))
+        return cls(xodr_path, graph, sidecar["edge_to_road"], sidecar.get("movements", []),
+                   sidecar.get("signal_plans", []))
 
     # --- network --------------------------------------------------------------------
 
@@ -296,13 +310,20 @@ class ScenarioBuilder:
             "stop_at_duration", 0, xosc.ConditionEdge.rising,
             xosc.SimulationTimeCondition(params.sim_duration, xosc.Rule.greaterThan), "stop",
         )
+        storyboard = xosc.StoryBoard(init, stop)
+        network = xosc.RoadNetwork(roadfile=roadfile, scenegraph=scenefile)
+        if params.lights and self.signal_plans:
+            plans = [_plan(p) for p in self.signal_plans]
+            for plan in plans:
+                network.add_traffic_signal_controller(_controller(plan))
+            storyboard.add_story(_light_story(plans, params.sim_duration))
         return xosc.Scenario(
             f"{self.xodr_path.stem}_{params.spawn_mode}_s{params.seed}",
             "roadgen",
             xosc.ParameterDeclarations(),
             entities,
-            xosc.StoryBoard(init, stop),
-            xosc.RoadNetwork(roadfile=roadfile, scenegraph=scenefile),
+            storyboard,
+            network,
             xosc.Catalog(),
             creation_date=FIXED_DATE,
         )
@@ -320,10 +341,50 @@ class ScenarioBuilder:
         ET.indent(root, space="    ")
         ET.ElementTree(root).write(xosc_path, encoding="utf-8", xml_declaration=True)
         log.info(
-            "wrote %s: %d vehicles, %s, %.0f s", xosc_path, len(self.plans), params.spawn_mode,
-            params.sim_duration,
+            "wrote %s: %d vehicles, %s, %.0f s, %d junctions with switching lights", xosc_path, len(self.plans),
+            params.spawn_mode, params.sim_duration, len(self.signal_plans) if params.lights else 0,
         )
         return xosc_path
+
+
+def _plan(rec: dict) -> SignalPlan:
+    return SignalPlan(rec["junction"], rec["cycle"], rec["offset"], (), tuple(rec["phases"]))
+
+
+def _controller(plan: SignalPlan) -> xosc.TrafficSignalController:
+    """The plan as a RoadNetwork controller: its phases from the start of the cycle, which
+    falls at delay = cycle - offset (the plan is offset into its cycle at time 0)."""
+    ctrl = xosc.TrafficSignalController(f"lights_j{plan.junction}", delay=round((plan.cycle - plan.offset)
+                                                                                % plan.cycle, 3))
+    for k, p in enumerate(plan.phases):
+        phase = xosc.Phase(f"j{plan.junction}_{k}_{p['kind']}", p["duration"])
+        for sid, state in sorted(p["states"].items(), key=lambda kv: int(kv[0])):
+            phase.add_signal_state(sid, state)
+        ctrl.add_phase(phase)
+    return ctrl
+
+
+def _light_story(plans: list[SignalPlan], duration: float) -> xosc.Story:
+    """One act with an event per light state change (TrafficSignalStateAction per light)."""
+    maneuver = xosc.Maneuver("lights")
+    for plan in plans:
+        for k, (at, states) in enumerate(state_changes(plan, duration)):
+            name = f"j{plan.junction}_{k}"
+            event = xosc.Event(name, xosc.Priority.parallel)
+            for sid, state in sorted(states.items(), key=lambda kv: int(kv[0])):
+                event.add_action(f"{name}_{sid}", xosc.TrafficSignalStateAction(sid, state))
+            rule = xosc.Rule.greaterOrEqual if at == 0.0 else xosc.Rule.greaterThan
+            event.add_trigger(xosc.ValueTrigger(f"{name}_t", 0, xosc.ConditionEdge.none,
+                                                xosc.SimulationTimeCondition(at, rule)))
+            maneuver.add_event(event)
+    group = xosc.ManeuverGroup("lights")
+    group.add_maneuver(maneuver)
+    act = xosc.Act("lights", xosc.ValueTrigger("lights_start", 0, xosc.ConditionEdge.none,
+                                               xosc.SimulationTimeCondition(0, xosc.Rule.greaterOrEqual)))
+    act.add_maneuver_group(group)
+    story = xosc.Story("lights")
+    story.add_act(act)
+    return story
 
 
 def _full_width(lane: etree._Element) -> bool:

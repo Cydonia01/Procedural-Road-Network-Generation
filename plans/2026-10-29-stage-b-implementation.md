@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B5 and the lane-section merge (moved from B9) done (2026-10-30), B6 next.** Discussion,
+Status: **approved 2026-10-30; B0–B6 and the lane-section merge (moved from B9) done (2026-10-30), B7 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -214,6 +214,12 @@ The user's answers to the four questions of the discussion (also in its
 > 2. Option (a): require yield, stop and right-before-left together on mixed_city only. Also record in the plan, as an item for stage D, that city has no street × street junctions at all (a diversity gap of the generator, not of stage B).
 > 3. 301 alone is fine for now. In B7, add 306/307 along priority roads if the road can be traced through consecutive junctions with the existing chain data at reasonable cost; otherwise leave it as an open item.
 > Record these decisions in the plan, commit, then implement B6. Stop after B6 and report.
+
+**2026-10-30, prompt 9** (answers to the B6 report)
+
+> 1. Yes, commit B6 as one commit.
+> 2. Single-phase light junctions: combine (a) and (b). In B7, where such a junction gets crosswalks, keep the lights and make the extra phase the pedestrian phase; where it gets none, annotate demotes it from lights to priority control. Record this in the plan.
+> Then implement B7. Stop after B7 and report.
 
 ## Context
 
@@ -913,6 +919,64 @@ Exit of B5: full suite 676 passed, 1 failed (the known `test_monitor_memory_cap_
   - an esmini run where a light changes state (marked slow like the other esmini tests).
 - **Docs:** `docs/opendrive.md` (lights and controllers), `docs/scenarios-and-simulation.md` (lights in the `.xosc`, what esmini does with them).
 
+#### B6 result (done 2026-10-30)
+
+Delivered as planned:
+- `opendrive/lights.py`: `TrafficLightParams` (section `traffic_lights`), phase groups, fixed-time plans, state changes;
+- lights from `furniture.py`: OpenDRIVE 1000001 on the roadside at the stop line, plus one over the lanes on approaches with 3 or more lanes;
+- a top-level `<controller>` per junction with lights, and a `<junction><controller>` naming it;
+- sidecar `signal_plans`;
+- in `scenario`: a RoadNetwork `TrafficSignalController` per junction and storyboard events (`--no-lights` leaves both out);
+- validator checks, light markers in `plot-xodr`.
+
+With HD off nothing changes (both identity guards pass). Changes against the plan, and choices it left open:
+
+- **Opposite arms share a phase only if their movements are compatible** (found by the new validator on `paris`, `city`, `mixed_city`). At skewed and Y-shaped junctions, two arms within 180 ± 30° can have crossing left turns (41° and 97°) or crossing straight movements. The B5 rule (a left turn yields to oncoming straight and right turns) gives them no priority record, so one phase would show both green. Approaches with a non-permissive conflict now get separate phases (`clash` in `phase_groups`).
+- **Timing details the plan left open:**
+  - cycle 60 s for two phases, plus 15 s per further phase, within [60, 90] s;
+  - greens to 0.1 s, the group with the most lanes taking the rounding rest, so the cycle hits its target;
+  - `min_green` may stretch the cycle past 90 s (not on the examples);
+  - yellow 3.3 s at 13.9 m/s, 3.8 s at 16.7 m/s;
+  - offsets are whole seconds.
+- **Plan records:** each group gives three phases in the sidecar (`kind` green / yellow / all_red, with `group`, `duration`, `states`). The plan also carries `min_green` and the junction's `conflicts` and `permissive` pairs, so the validator can check it without the geometry.
+- **One controller per junction** (`type="0"`, `sequence="0"`), between the last road and the first junction (OpenDRIVE 1.6 element order).
+- **`delay` of the `TrafficSignalController`** = cycle − offset, where the cycle starts. The storyboard's first event, at 0 s, sets every light.
+- **Two scenariogeneration quirks:**
+  - **Upper-cased country:** it writes `country="OPENDRIVE"`; the builder restores `OpenDRIVE`.
+  - **Silent renumbering of ids:** it keeps the signal and object ids it has seen for the whole process, and renumbers any repeat (with a `print`). One CLI build was unaffected. A second build in the same process (tests, sweeps) got shifted ids, so controllers named the wrong signals, and B5's line objects were renumbered too, unnoticed until now. The builder now resets that registry before numbering; test `test_ids_stay_the_same_when_a_process_builds_twice`.
+- **Light heads:** 0.8 × 0.3 m, 3 m high on the roadside and 5.5 m over the lanes. esmini logs "1000001 ... no OSI type defined" at info level. Lights are OSI traffic lights, not signs (B0).
+
+**Lights on the examples** (`b6_lights.py` → `baselines/2026-10-30-stage-b-after-b6-hd.json`):
+
+| Network | junctions with lights | lights (overhead) | phase groups 1 / 2 / 3 / 4 / 5 | cycle min / median / max [s] | `.xodr` growth over B5 |
+|---|---|---|---|---|---|
+| manhattan_like | 20 | 60 (10) | 10 / 10 / – / – / – | 60 / 60 / 60 | +0.17 % |
+| paris | 4 | 19 | – / – / 2 / 2 / – | 75 / 82.5 / 90 | +0.07 % |
+| suburb, organic_town | 1 each | 4, 5 | three phases | 75 | +0.02 %, +0.04 % |
+| city (maps) | 151 | 500 | – / 133 / 13 / 4 / 1 | 60 / 60 / 90 | +0.80 % |
+| mixed_city (maps) | 118 | 421 | – / 93 / 22 / 3 / – | 60 / 60 / 90 | +0.48 % |
+| highway_corridor (maps) | 33 | 108 | – / 32 / 1 / – / – | 60 / 60 / 75 | +0.37 % |
+| junction_diamond | 2 | 6 | – / 2 / – / – / – | 60 | +1.4 % |
+
+`grid`, `junction_k` and `junction_roundabout` have no lights. The `city` scenario of the example set (50 cars, 30 s) has 151 controllers and 613 light events with 1,220 actions; it is 1.53 MB.
+
+**esmini check** (`b6_light_check.py`, `city`, 50 cars, 120 s): 0 errors, load 55.3 s, stepping 65.5× real time. Light 1 at junction 608 is red at 5.7 s and green at 48 s: `out/stage_b/b6/closeups/city_light_1_5.7s_red.png`, `..._48s_green.png`; another light in the first frame shows yellow. Vehicles do not stop at red (esmini's default controller), as documented.
+
+**Open point: single-phase plans.** 10 of `manhattan_like`'s 20 junctions with lights have one phase group. Only one opposite pair arrives there, and the third arm is an outgoing one-way avenue. The lights then show green except for a 5.3 s yellow and all-red per cycle, with nothing to give way to. They become the pedestrian phase once B7 adds crosswalks; otherwise such junctions could drop their lights. **User decision (prompt 9):** both. In B7, a single-phase junction with crosswalks keeps its lights, and the extra phase becomes the pedestrian phase; one without crosswalks is demoted from lights to priority control.
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b6 --hd`): all 11 networks build and pass every validator (the light checks included) and the drive-check wherever it runs. esmini simulates `city` and `mixed_city` with 0 errors and the same run-time warnings as in B5 (3 and 4 "no connecting lane"). Repaired edges are unchanged.
+
+| | B5 | B6 |
+|---|---|---|
+| `.xodr` size, manhattan_like / city / mixed_city | 14.16 / 24.49 / 33.73 MB | 14.18 / 24.69 / 33.89 MB |
+| pipeline (incl. drive-check), city / mixed_city | 197 / 447 s | 197 / 444 s |
+| esmini load (`esmini_load.py`, back to back), manhattan_like / city | 35.4 / 47.9 s | 35.0 / 40.9 s |
+| simulate wall time, 50 cars, 30 s, city / mixed_city | 48.7 / 144 s | 47.7 / 132 s |
+
+The load and simulate differences are within the run-to-run spread.
+
+Exit of B6: full suite 693 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's `Optional[...]` / `Union` style and B008; docs updated (`opendrive.md` traffic lights and controllers, sidecar `signal_plans`; `scenarios-and-simulation.md` traffic lights; `validation.md`; `cli-reference.md`; `architecture.md`). Helper scripts: `b6_lights.py`, `b6_light_check.py`.
+
 ### B7 · Crosswalks, speed and curve signs
 
 - **Crosswalks:**
@@ -921,6 +985,7 @@ Exit of B5: full suite 676 passed, 1 failed (the known `test_monitor_memory_cap_
   - at the junction border of every arm with sidewalks on both sides;
   - the stop line moves 1 m behind the crosswalk;
   - skipped where the approach is shorter than crosswalk + stop line + 2 m.
+- **Single-phase light junctions** *(added by prompt 9)*: where a junction with lights has one phase group (B6), it keeps its lights if it gets crosswalks, with a pedestrian phase (all vehicle lights red while pedestrians cross) as its second phase; without crosswalks it is demoted from lights to priority control.
 - **306 / 307 along priority roads** *(added by prompt 8)*: where the priority road can be traced through consecutive priority junctions with the existing chain data (`junctions` records: priority roads per junction, roads shared by neighbouring junctions) at reasonable cost, 306 after the first junction of the run and 307 before it ends, replacing the 301s inside the run. Otherwise this stays an open item.
 - **Speed signs:**
   - 274 (value in km/h, rounded down to 10) at every change of the `<type>` speed in its travel direction;

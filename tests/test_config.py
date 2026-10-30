@@ -19,6 +19,7 @@ from roadgen.metrics.geometry import GeometryMetricsParams
 from roadgen.metrics.network import NetworkMetricsParams
 from roadgen.opendrive.control import JunctionControlParams
 from roadgen.opendrive.hdmap import HdMapParams
+from roadgen.opendrive.lights import TrafficLightParams
 from roadgen.opendrive.marks import RoadMarkParams
 from roadgen.scenario.xosc_builder import ScenarioParams
 from roadgen.scene.buildings import BuildingParams
@@ -40,6 +41,7 @@ from roadgen.scene.ground import GroundParams
     (RoadMarkParams, ("road_marks",)),
     (JunctionControlParams, ("junction_control",)),
     (AnnotateParams, ("annotate",)),
+    (TrafficLightParams, ("traffic_lights",)),
 ])
 def test_dataclass_defaults_come_from_defaults_yaml(params_type, keys):
     defaults = section(DEFAULTS, *keys)

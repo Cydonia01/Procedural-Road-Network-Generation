@@ -3,8 +3,8 @@
 One bundle the builder takes next to DesignParams and JunctionParams. With
 enabled off, the builder writes exactly what it wrote before stage B (the
 builder identity guard, tests/test_hdmap_identity.py). It holds the
-cross-section, the road marks and junction control; later phases add lights
-and turn lanes here.
+cross-section, the road marks, junction control and traffic lights; later
+phases add turn lanes here.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from typing import Optional
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.cross_section import CrossSectionParams
 from roadgen.opendrive.control import JunctionControlParams
+from roadgen.opendrive.lights import TrafficLightParams
 from roadgen.opendrive.marks import RoadMarkParams
 
 _D = section(DEFAULTS, "hdmap")
@@ -27,6 +28,7 @@ class HdMapParams:
     cross_section: CrossSectionParams = field(default_factory=CrossSectionParams)
     marks: RoadMarkParams = field(default_factory=RoadMarkParams)
     control: JunctionControlParams = field(default_factory=JunctionControlParams)
+    lights: TrafficLightParams = field(default_factory=TrafficLightParams)
 
     @property
     def active_cross_section(self) -> Optional[CrossSectionParams]:
@@ -40,11 +42,12 @@ class HdMapParams:
 
     @classmethod
     def from_config(cls, cfg: dict, seed: Optional[int] = None, enabled: Optional[bool] = None) -> HdMapParams:
-        """From a config's hdmap, cross_section, road_marks and junction_control sections; enabled (e.g. --hd / --no-hd)
+        """From a config's hdmap, cross_section, road_marks, junction_control and traffic_lights sections; enabled (e.g. --hd / --no-hd)
         overrides hdmap.enabled when given."""
         on = section(cfg, "hdmap")["enabled"] if enabled is None else enabled
         return cls(enabled=on, seed=cfg["seed"] if seed is None else seed,
                    cross_section=CrossSectionParams(**section(cfg, "cross_section")),
                    marks=RoadMarkParams(**section(cfg, "road_marks")),
                    control=JunctionControlParams.preset(cfg["junction_control"].get("preset", "default"),
-                                                        **section(cfg, "junction_control")))
+                                                        **section(cfg, "junction_control")),
+                   lights=TrafficLightParams(**section(cfg, "traffic_lights")))

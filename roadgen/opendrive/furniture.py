@@ -11,7 +11,9 @@ Per approach (a road end with incoming lanes), by its role:
   and sign 206;
 - yield: a yield line (Z 341, "yieldLine": 0.5 m dashes, 0.25 m gaps,
   0.3 m deep) and sign 205; at roundabout entries also 215;
-- signal: a stop line (the lights come with B6);
+- signal: a stop line and a traffic light (OpenDRIVE 1000001, dynamic) on
+  the right roadside at it, plus one over the middle of the approach lanes
+  (OVERHEAD_Z) where the approach has overhead_min_lanes or more;
 - major: sign 301 (priority at the next junction), PRIORITY_SIGN_DISTANCE
   before the road end (at most half the road), except on roundabout rings.
 Right before left and uncontrolled approaches get nothing.
@@ -36,6 +38,9 @@ LINE_SETBACK = 1.0  # stop and yield lines this far before the road end [m]
 SIGN_OFFSET = 0.5  # signs this far outside the carriageway edge [m]
 PRIORITY_SIGN_DISTANCE = 30.0  # sign 301 this far before the junction (towns) [m]
 SIGN_SIZE = 0.6  # sign face [m]
+LIGHT_Z, OVERHEAD_Z = 3.0, 5.5  # light heads above the road: roadside and over the lanes [m]
+LIGHT_SIZE = (0.8, 0.3)  # light head height and width [m]
+LIGHT_TYPE = "1000001"  # OpenDRIVE three-lamp vehicle light (country "OpenDRIVE")
 STACK = 0.7  # a second sign on the same post sits this much higher [m]
 CARRIAGEWAY = frozenset({"driving", "parking", "biking", "shoulder", "median"})
 
@@ -52,6 +57,12 @@ class SignalRecord:
     z: float = 2.0  # sign centre above the road [m]
     country: str = "DE"
     subtype: str = "-1"
+    dynamic: bool = False  # a light
+
+    @property
+    def contact(self) -> str:
+        """The road end the signal serves: "+" faces traffic towards the road's end."""
+        return "end" if self.orientation == "+" else "start"
 
 
 @dataclass(frozen=True)
@@ -113,9 +124,10 @@ def end_geometry(end, length: float, lanes_at: Callable[[float], list]) -> Optio
                        edges, carriageway_edge)
 
 
-def approach_furniture(junction_id: int, control: Control, geom: EndGeometry, roundabout: bool
-                       ) -> tuple[list[SignalRecord], list[ObjectRecord]]:
-    """Signs and lines of one approach (see the module docstring)."""
+def approach_furniture(junction_id: int, control: Control, geom: EndGeometry, roundabout: bool,
+                       overhead_min_lanes: Optional[int] = None) -> tuple[list[SignalRecord], list[ObjectRecord]]:
+    """Signs, lights and lines of one approach (see the module docstring); overhead_min_lanes:
+    the lane count from which an approach also gets a light over its lanes (None: never)."""
     role = control.role((geom.road, geom.contact))
     signals: list[SignalRecord] = []
     objects: list[ObjectRecord] = []
@@ -144,6 +156,13 @@ def approach_furniture(junction_id: int, control: Control, geom: EndGeometry, ro
         sign("205", s_line)
         if roundabout:
             sign("215", s_line, 2.0 + STACK)  # above the 205, on its post
+    elif role == "signal":
+        signals.append(SignalRecord(geom.road, s_line, side * (geom.carriageway_edge(s_line) + SIGN_OFFSET),
+                                    orientation, LIGHT_TYPE, validity, junction_id, LIGHT_Z, "OpenDRIVE",
+                                    dynamic=True))
+        if overhead_min_lanes is not None and len(geom.in_lanes) >= overhead_min_lanes:
+            signals.append(SignalRecord(geom.road, s_line, line.t, orientation, LIGHT_TYPE, validity, junction_id,
+                                        OVERHEAD_Z, "OpenDRIVE", dynamic=True))
     elif role == "major" and not roundabout:
         sign("301", geom.back(min(PRIORITY_SIGN_DISTANCE, geom.length / 2)))
     return signals, objects

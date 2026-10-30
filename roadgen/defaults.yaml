@@ -295,6 +295,15 @@ junction_control:  # junction control and right of way, German rules (roadgen/op
   right_before_left: true   # street-only junctions without signs
   priorities: true          # write <junction><priority> records (false: only the sidecar has them)
 
+traffic_lights:  # fixed-time light plans at junctions with lights (roadgen/opendrive/lights.py)
+  min_green: 10.0           # [s]
+  min_yellow: 3.0           # yellow = reaction_time + v / (2 deceleration), at least this (DE 3 s at 50 km/h) [s]
+  reaction_time: 1.0        # [s]
+  deceleration: 3.0         # [m/s^2]
+  all_red: 2.0              # every light red between two phases [s]
+  cycle: [60.0, 90.0]       # shortest and longest cycle [s]
+  overhead_min_lanes: 3     # approaches with this many lanes also get a light over the lanes
+
 annotate:  # `annotate` step: cross-section profiles and junction control from the maps (roadgen/maps/annotate.py)
   urban_density: 3000.0     # urban profile from this density [people/km^2]
   suburban_density: 1500.0  # suburban from this one (and in style-map suburb districts), rural below [people/km^2]
@@ -335,6 +344,7 @@ scenario:
   spawn_mode: random_lanes  # random_lanes | explicit_routes
   speed_range: [8.0, 13.9]  # [m/s]
   min_spawn_gap: 10.0       # min spawn gap in a lane [m]
+  lights: true              # switch the network's traffic lights (sidecar signal_plans); scenario --no-lights
 
 buildings:
   setback: 3.0              # sidewalk between road edge and building [m]

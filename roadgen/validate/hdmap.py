@@ -14,6 +14,17 @@ Signals, objects and junction control (B5):
   lanes has a stop or yield line within APPROACH_REACH of the road end, and
   every stop and yield approach a facing 206 / 205 sign there;
 - every <priority> record names two connecting roads of its own junction.
+
+Traffic lights (B6):
+- every light (dynamic signal) is in exactly one <controller>, every
+  controlled signal exists, and every <junction><controller> names an
+  existing controller;
+- with the sidecar: every signal approach with incoming lanes has a facing
+  light within APPROACH_REACH of the road end; every plan's junction has a
+  controller holding exactly the plan's lights; every phase sets every light
+  of its plan, every light turns green once per cycle, every green lasts at
+  least the plan's min_green; and no two conflicting movements are green in
+  one phase, unless one yields to the other (a permissive left turn).
 """
 
 from __future__ import annotations
@@ -34,6 +45,8 @@ EDGE_TOL = 0.01  # objects may reach this far past the outer edge [m]
 SIGN_MARGIN = 2.0  # signs may stand this far outside the outer edge [m]
 APPROACH_REACH = 5.0  # stop / yield lines and their signs within this of the road end [m]
 LINE_NAMES = ("stopLine", "yieldLine")
+LIGHT_TYPE = "1000001"
+GREEN = "off;off;on"
 SIGNS = {"stop": "206", "yield": "205"}
 
 
@@ -52,6 +65,9 @@ def check_hdmap_tree(tree: etree._ElementTree, sidecar: Optional[dict] = None) -
     if sidecar is not None:
         errors += _check_approaches(root, sidecar)
     errors += _check_priorities(root)
+    errors += _check_controllers(root)
+    if sidecar is not None:
+        errors += _check_plans(root, sidecar)
     for road in root.findall("road"):
         rid = road.get("id")
         if road.get("junction", "-1") != "-1":
@@ -147,12 +163,79 @@ def _check_approaches(root: etree._Element, sidecar: dict) -> list[str]:
             where = f"junction {j['junction']}: {role} approach road {a['road']} ({a['contact']})"
             if not any(near(o) for o in road.findall("objects/object") if o.get("name") in LINE_NAMES):
                 errors.append(f"{where}: no stop or yield line within {APPROACH_REACH:g} m of the road end")
+            if role == "signal" and not any(near(s) and s.get("type") == LIGHT_TYPE
+                                            and s.get("orientation") == ("+" if a["contact"] == "end" else "-")
+                                            for s in road.findall("signals/signal")):
+                errors.append(f"{where}: no facing light within {APPROACH_REACH:g} m of the road end")
             if role in SIGNS:
                 facing = "+" if a["contact"] == "end" else "-"
                 if not any(near(s) and s.get("type") == SIGNS[role] and s.get("orientation") == facing
                            for s in road.findall("signals/signal")):
                     errors.append(f"{where}: no facing {SIGNS[role]} sign within {APPROACH_REACH:g} m of the road end")
     return errors
+
+
+def _check_controllers(root: etree._Element) -> list[str]:
+    errors = []
+    lights = {s.get("id") for s in root.iter("signal") if s.get("dynamic") == "yes"}
+    signals = {s.get("id") for s in root.iter("signal")}
+    controlled: Counter = Counter()
+    controllers = {c.get("id") for c in root.findall("controller")}
+    for c in root.findall("controller"):
+        for ctl in c.findall("control"):
+            controlled[ctl.get("signalId")] += 1
+            if ctl.get("signalId") not in signals:
+                errors.append(f"controller {c.get('id')}: controls missing signal {ctl.get('signalId')}")
+    for sid in sorted(lights, key=int):
+        if controlled[sid] != 1:
+            errors.append(f"light {sid} is in {controlled[sid]} controllers (needs exactly one)")
+    for j in root.findall("junction"):
+        for c in j.findall("controller"):
+            if c.get("id") not in controllers:
+                errors.append(f"junction {j.get('id')}: names missing controller {c.get('id')}")
+    return errors
+
+
+def _check_plans(root: etree._Element, sidecar: dict) -> list[str]:
+    errors = []
+    junctions = {j.get("id"): j for j in root.findall("junction")}
+    controls = {c.get("id"): {ctl.get("signalId") for ctl in c.findall("control")} for c in root.findall("controller")}
+    movements = [m for m in sidecar.get("movements", [])]
+    for plan in sidecar.get("signal_plans", []):
+        where = f"signal plan of junction {plan['junction']}"
+        lights = set(plan["lights"])
+        junction = junctions.get(str(plan["junction"]))
+        ids = [c.get("id") for c in junction.findall("controller")] if junction is not None else []
+        if not ids or controls.get(ids[0]) != lights:
+            errors.append(f"{where}: its junction has no controller holding exactly its lights")
+        green_once = set()
+        approach_of = {sid: tuple(key) for sid, key in plan["lights"].items()}
+        permissive = {tuple(sorted(p)) for p in plan.get("permissive", [])}
+        conflicts = [tuple(p) for p in plan.get("conflicts", [])]
+        moves = {m["connecting_road"]: m for m in movements if m["junction_id"] == plan["junction"]}
+        for k, phase in enumerate(plan["phases"]):
+            if set(phase["states"]) != lights:
+                errors.append(f"{where}: phase {k} does not set exactly the plan's lights")
+            green = {sid for sid, st in phase["states"].items() if st == GREEN}
+            green_once |= green
+            if green and phase["duration"] < plan.get("min_green", 0.0) - EPS:
+                errors.append(f"{where}: phase {k} green for {phase['duration']} s, below min_green")
+            open_ = {approach_of[s] for s in green}
+            for a, b in conflicts:
+                ma, mb = moves.get(a), moves.get(b)
+                if ma is None or mb is None:
+                    continue
+                if _approach(ma) in open_ and _approach(mb) in open_ and tuple(sorted((a, b))) not in permissive:
+                    errors.append(f"{where}: phase {k} gives green to conflicting movements {a} and {b}")
+        missing = lights - green_once
+        if missing:
+            errors.append(f"{where}: lights {sorted(missing, key=int)} never turn green")
+    return errors
+
+
+def _approach(m: dict) -> tuple[int, str]:
+    """(road, contact) of the approach a movement arrives on: right lanes arrive at the road's end."""
+    return m["from_road"], "end" if m["from_lane"] < 0 else "start"
 
 
 def _check_priorities(root: etree._Element) -> list[str]:

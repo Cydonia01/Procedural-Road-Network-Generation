@@ -151,7 +151,8 @@ roadgen/
     lanes.py               lane sections (lane types, heights) and road marks
     marks.py               HD road marks: German catalogue, no-lane-change zones (stage B)
     control.py             junction control kinds, approach roles, conflicts and right of way (stage B)
-    furniture.py           stop and yield lines, signs at junction approaches (stage B)
+    furniture.py           stop and yield lines, signs and lights at junction approaches (stage B)
+    lights.py              traffic-light phase groups and fixed-time plans (stage B)
     hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
     plot.py                plot-xodr: a built .xodr's lanes coloured by type, and its marks
   validate/
@@ -160,7 +161,7 @@ roadgen/
     continuity.py          lane position, heading, height, grade, curvature continuity (.xodr)
     dynamics.py            lateral acceleration at the posted speed (.xodr)
     clearance.py           vertical clearance where roads cross (.xodr)
-    hdmap.py               HD-map content: marks, signals and objects, controlled approaches, priorities (.xodr)
+    hdmap.py               HD-map content: marks, signals, objects, approaches, priorities, lights (.xodr)
     schema.py              XSD validation (optional)
   metrics/
     geometry.py            curvature and lateral-acceleration statistics of an .xodr

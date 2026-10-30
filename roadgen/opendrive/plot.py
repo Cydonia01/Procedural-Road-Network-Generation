@@ -8,7 +8,8 @@ marks are drawn on the lane borders, broken ones dash by dash, double ones
 thicker; curb marks are left out, since the curb lane itself is drawn.
 Stop and yield lines (roadMark objects) are drawn across their outline,
 signs as markers by code, and, from the sidecar next to the file, a glyph
-per junction for its control kind. Later stage B phases add lights here.
+per junction for its control kind; traffic lights are signals like the
+signs (code 1000001).
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ OTHER_COLOR = "#b04fb0"  # lane types without a colour above
 MARK_COLOR = "#ffffff"
 SIGN_STYLE = {  # DE code -> (marker, face colour)
     "206": ("8", "#d62728"), "205": ("v", "#ffffff"), "301": ("D", "#f2c40f"), "215": ("o", "#1f77b4"),
+    "1000001": ("s", "#2ca02c"),  # traffic light
 }
 OTHER_SIGN = ("s", "#999999")
 CONTROL_STYLE = {  # junction control -> (marker, colour)
@@ -207,7 +209,7 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
         marker, color = SIGN_STYLE.get(code, OTHER_SIGN)
         xy = np.array([(x, y) for c, x, y in signs if c == code])
         ax.scatter(xy[:, 0], xy[:, 1], s=12, marker=marker, c=color, edgecolors="black", linewidths=0.3,
-                   zorder=4, label=f"sign {code}")
+                   zorder=4, label="traffic light" if code == "1000001" else f"sign {code}")
     _plot_control(ax, Path(xodr_path), starts)
     ax.set_xlim(x0, x1)
     ax.set_ylim(y0, y1)

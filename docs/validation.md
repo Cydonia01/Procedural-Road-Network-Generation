@@ -146,6 +146,15 @@ with HD maps on.
   within 5 m of the road end, and every `stop` and `yield` approach a 206 /
   205 sign there, facing its traffic.
 - **Priority records** name two connecting roads of their own junction.
+- **Lights and controllers:** every light is in exactly one `<controller>`,
+  every controlled signal exists, and every `<junction><controller>` names an
+  existing controller. Every `signal` approach has a facing light within 5 m
+  of the road end.
+- **Signal plans** (sidecar): the junction's controller holds exactly the
+  plan's lights; every phase sets every light, every light turns green once
+  per cycle, every green lasts at least `min_green`, and no two conflicting
+  movements are green in one phase unless one yields to the other (a
+  permissive left turn).
 
 ### XSD schema
 

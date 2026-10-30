@@ -43,6 +43,24 @@ from the lane the vehicle is actually in. With `explicit_routes`, vehicles
 spawn only on lanes that run the whole road and have a way on, since esmini's
 route planner reports errors for lanes missing in some lane section.
 
+### Traffic lights
+
+With a network built with HD maps, the sidecar's `signal_plans`
+([lights](opendrive.md#traffic-lights-and-controllers-hd-maps)) go into the
+`.xosc` twice (`--no-lights` leaves both out):
+
+- **RoadNetwork `TrafficSignalController`** per junction: the plan's phases
+  with a `TrafficSignalState` per light, `delay` = where the cycle starts.
+  This is the standard form other tools read. **esmini 3.9 ignores it.**
+- **Storyboard events**, the form esmini switches: one act, one event per
+  state change up to `--duration`, with a `TrafficSignalStateAction` per
+  light that changes (`name` = signal id) and a `SimulationTimeCondition`.
+  The first event, at 0 s, sets every light.
+
+esmini's default controller does not stop vehicles at red lights; they drive
+through. The lights are there for the HD map, for rendering and for
+controllers that read them.
+
 The storyboard stops when simulation time exceeds `--duration`. The output is
 deterministic for a seed, and the header date is fixed. `--scenegraph`
 attaches a [3D scene](scene.md).

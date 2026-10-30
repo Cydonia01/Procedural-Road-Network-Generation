@@ -16,8 +16,11 @@ roads lie flat at it), and Edge.bridges as <objects><bridge> records.
 With HD maps on (stage B): side lanes and medians, road marks, and per
 junction a control kind (roadgen.opendrive.control) with <priority> records
 between conflicting movements, stop and yield lines as roadMark objects and
-signs as <signal>s (roadgen.opendrive.furniture). Signals are numbered 1..N;
-furniture objects from (C + 1) * 1000 on, above every bridge and tunnel id.
+signs and traffic lights as <signal>s (roadgen.opendrive.furniture), and
+per junction with lights a fixed-time plan (roadgen.opendrive.lights) with a
+top-level <controller> and a <junction><controller>. Signals are numbered
+1..N; furniture objects from (C + 1) * 1000 on, above every bridge and
+tunnel id.
 
 Id scheme: chain roads get ids 1..C in chain order (by smallest edge id);
 then, per junction node in node-id order, the junction gets the next id and
@@ -73,6 +76,7 @@ from roadgen.opendrive.control import (
     yields_to,
 )
 from roadgen.opendrive.furniture import (
+    LIGHT_SIZE,
     SIGN_SIZE,
     ObjectRecord,
     SignalRecord,
@@ -90,6 +94,7 @@ from roadgen.opendrive.junctions import (
     piece_geometry,
 )
 from roadgen.opendrive.lanes import make_lane_sections
+from roadgen.opendrive.lights import signal_plan
 from roadgen.opendrive.marks import RoadMarkParams, road_marks
 
 log = logging.getLogger(__name__)
@@ -151,6 +156,7 @@ class OpenDriveBuilder:
         self.conflicts: dict[int, list[tuple[int, int]]] = {}  # junction id -> conflicting connecting roads
         self.signals: list[SignalRecord] = []
         self.objects: list[ObjectRecord] = []
+        self.signal_plans: list[dict] = []  # fixed-time light plans per junction with lights
 
     def build(self, graph: RoadGraph) -> xodr.OpenDrive:
         errors = graph.validate()
@@ -195,6 +201,8 @@ class OpenDriveBuilder:
         corners: list[CornerRoad] = []
         self.junction_records, self.movement_control, self.priorities, self.conflicts = [], {}, {}, {}
         self.signals, self.objects = [], []
+        self._signal_junctions: list[tuple] = []
+        self.signal_plans: list[dict] = []
         lengths = {road_id: ca.length for road_id, ca in enumerate(na.chains, 1)}
         layouts = self._layouts
         for node_id in na.junctions:
@@ -273,19 +281,55 @@ class OpenDriveBuilder:
             geom = end_geometry(e, lengths[e.road_id], layouts[e.road_id].lanes_at)
             if geom is None:
                 continue
-            sigs, objs = approach_furniture(junction_id, control, geom, control.kind == "roundabout")
+            sigs, objs = approach_furniture(junction_id, control, geom, control.kind == "roundabout",
+                                            self.hd.lights.overhead_min_lanes)
             self.signals += sigs
             self.objects += objs
+        if control.kind == "signal":
+            lanes = {(e.road_id, e.contact): len(e.in_lanes) for e in ends}
+            permissive = {frozenset(p) for p in prio}
+            clash = {frozenset((approach_of[a].key, approach_of[b].key)) for a, b in pairs
+                     if frozenset((a, b)) not in permissive}
+            self._signal_junctions.append((junction_id, node_id, approaches, lanes, pairs, prio, clash))
+
+    def _signal_plans(self, light_ids: dict[tuple[int, int, str], list[str]]) -> None:
+        """Fixed-time plans of the junctions with lights, once the lights are numbered;
+        light_ids: (junction, road, contact) -> signal ids."""
+        self.signal_plans = []
+        for controller, (jid, node_id, approaches, lanes, pairs, prio, clash) in enumerate(self._signal_junctions, 1):
+            lights = {a.key: light_ids[(jid, *a.key)] for a in approaches if (jid, *a.key) in light_ids}
+            if not lights:
+                continue
+            plan = signal_plan(jid, node_id, approaches, lanes, lights, self.hd.lights, self.hd.seed, clash)
+            self.signal_plans.append({
+                "junction": jid, "node": node_id, "controller": controller, "cycle": plan.cycle,
+                "offset": plan.offset, "min_green": self.hd.lights.min_green,
+                "groups": [[list(k) for k in g] for g in plan.groups],
+                "lights": {s: list(key) for key, ids in sorted(lights.items()) for s in ids},
+                "phases": list(plan.phases),
+                "conflicts": [list(p) for p in pairs], "permissive": [list(p) for p in prio]})
 
     def _add_furniture(self, odr: xodr.OpenDrive, n_roads: int) -> None:
-        """Signals and line objects into their roads, numbered (see the module docstring)."""
+        """Signals and line objects into their roads, numbered (see the module docstring);
+        then the light plans."""
+        light_ids: dict[tuple[int, int, str], list[str]] = {}
+        # scenariogeneration keeps the ids it has seen per class for the whole process and
+        # renumbers any repeat; every build numbers its own signals and objects from scratch.
+        for cls in ("Signal", "Object"):
+            xodr.Signal._usedIDs.pop(cls, None)
+            xodr.Signal._IDCounter.pop(cls, None)
         for k, rec in enumerate(self.signals, 1):
+            height, width = LIGHT_SIZE if rec.dynamic else (SIGN_SIZE, SIGN_SIZE)
             sig = xodr.Signal(round(rec.s, 6), round(rec.t, 6), rec.country, rec.type, subtype=rec.subtype,
-                              id=str(k), name=f"{rec.type}_{k}", zOffset=rec.z,
+                              id=str(k), name=f"{'light' if rec.dynamic else rec.type}_{k}", zOffset=rec.z,
+                              dynamic=xodr.Dynamic.yes if rec.dynamic else xodr.Dynamic.no,
                               orientation=xodr.Orientation.positive if rec.orientation == "+"
-                              else xodr.Orientation.negative, height=SIGN_SIZE, width=SIGN_SIZE)
+                              else xodr.Orientation.negative, height=height, width=width)
             sig.add_validity(*rec.validity)
             odr.roads[str(rec.road)].add_signal(sig)
+            if rec.dynamic:
+                light_ids.setdefault((rec.junction, rec.road, rec.contact), []).append(str(k))
+        self._signal_plans(light_ids)
         base = (n_roads + 1) * 1000
         for k, rec in enumerate(self.objects):
             obj = xodr.Object(round(rec.s, 6), round(rec.t, 6), xodr.ObjectType.roadMark, subtype="-1",
@@ -294,8 +338,8 @@ class OpenDriveBuilder:
             # the right), so a line across a banked road end stays on its surface.
             slope = math.tan(_cubic_at(self._roll.get(rec.road, []), rec.s))
             outline = xodr.Outline(closed=False)
-            for k, v in enumerate((-rec.half_span, rec.half_span)):
-                outline.add_corner(xodr.CornerLocal(0.0, v, round(v * slope, 6), 0.0, id=k))
+            for corner, v in enumerate((-rec.half_span, rec.half_span)):
+                outline.add_corner(xodr.CornerLocal(0.0, v, round(v * slope, 6), 0.0, id=corner))
             obj.add_outline(outline)
             marking = xodr.Marking(xodr.RoadMarkColor.white, rec.line or 2 * rec.half_span, xodr.SideType.front,
                                    rec.space, 0.0, 0.0, width=rec.depth, zOffset=0.01)
@@ -315,8 +359,12 @@ class OpenDriveBuilder:
         root.find("header").set("date", HEADER_DATE)
         self._add_structures(root, "bridge", self.bridges, BRIDGE_TYPE)
         self._add_structures(root, "tunnel", self.tunnels, TUNNEL_TYPE)
+        for sig in root.iter("signal"):  # scenariogeneration upper-cases the country code
+            if sig.get("country") == "OPENDRIVE":
+                sig.set("country", "OpenDRIVE")
         if self.hd.control.priorities:
             self._add_priorities(root)
+        self._add_controllers(root)
         # scenariogeneration's prettyprint round-trips through minidom, which
         # dominates write time on large networks; ET.indent is equivalent and fast.
         ET.indent(root, space="    ")
@@ -340,6 +388,7 @@ class OpenDriveBuilder:
                     **({"cross_sections": {str(e): p for e, p in self.cross_sections.items()}}
                        if self.cross_sections else {}),
                     **({"corner_roads": [asdict(c) for c in self.corner_roads]} if self.corner_roads else {}),
+                    **({"signal_plans": self.signal_plans} if self.signal_plans else {}),
                     **({"junctions": self.junction_records,
                         "movement_control": {str(r): c for r, c in sorted(self.movement_control.items())}}
                        if self.junction_records else {}),
@@ -365,6 +414,23 @@ class OpenDriveBuilder:
                     "advisory_speed": None if c.advisory_speed is None else round(c.advisory_speed, 6),
                 })
         return out
+
+    def _add_controllers(self, root: ET.Element) -> None:
+        """A top-level <controller> per junction with lights, controlling its lights, and a
+        <junction><controller> pointing to it (scenariogeneration has neither). Controllers
+        go after the last road, before the junctions (OpenDRIVE 1.6 element order)."""
+        if not self.signal_plans:
+            return
+        last_road = max(i for i, el in enumerate(root) if el.tag == "road")
+        junctions = {j.get("id"): j for j in root.findall("junction")}
+        for k, plan in enumerate(self.signal_plans, 1):
+            ctrl = ET.Element("controller", {"id": str(plan["controller"]), "name": f"lights_j{plan['junction']}",
+                                             "sequence": "0"})
+            for sid in sorted(plan["lights"], key=int):
+                ET.SubElement(ctrl, "control", {"signalId": sid, "type": "0"})
+            root.insert(last_road + k, ctrl)
+            ET.SubElement(junctions[str(plan["junction"])], "controller",
+                          {"id": str(plan["controller"]), "type": "0", "sequence": "0"})
 
     def _add_priorities(self, root: ET.Element) -> None:
         """<priority high low> per conflicting pair, after the junction's connections

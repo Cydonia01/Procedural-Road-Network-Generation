@@ -277,7 +277,7 @@ keeps them in the sidecar only).
 |---|---|---|
 | `stop` | stop line: white, 0.5 m deep, solid | 206 |
 | `yield` | yield line (Z 341): 0.5 m dashes, 0.25 m gaps, 0.3 m deep | 205; at roundabout entries also 215, above it |
-| `signal` | stop line | none yet (lights) |
+| `signal` | stop line | a traffic light on the roadside at the stop line, and one over the lanes on approaches with 3 or more lanes ([traffic lights](#traffic-lights-and-controllers-hd-maps)) |
 | `major` | none | 301, 30 m before the junction (at most half the road), not on roundabout rings |
 
 Lines are `roadMark` objects (`stopLine`, `yieldLine`) with an open outline
@@ -289,6 +289,36 @@ OSI type for it and CARLA does not know it. Signs are `<signal country="DE"
 subtype="-1">` with a `<validity>` over the approach lanes; esmini types
 205, 206, 215 and 301 for OSI. Signals are numbered 1, 2, …; line objects
 from (C + 1) · 1000 on (C chain roads), above every bridge and tunnel id.
+
+### Traffic lights and controllers (HD maps)
+
+`lights.py` (`traffic_lights` section). Every approach of a junction with
+lights gets a light: `<signal country="OpenDRIVE" type="1000001"
+dynamic="yes">` (three lamps), 3 m high on the right roadside at the stop
+line, plus one 5.5 m high over the middle of the approach lanes where the
+approach has `overhead_min_lanes` (3) or more lanes. The junction's fixed-time
+plan:
+
+- **Phase groups:** approaches arriving from roughly opposite directions
+  (within 180 ± 30°) share a phase, the highest-ranked first; the rest get a
+  phase each. Left turns are permissive: they yield to the oncoming traffic
+  of their phase (the junction's `<priority>` records).
+- **Each phase:** green, yellow, then all-red (`all_red`, 2 s). Yellow
+  follows ITE: `reaction_time + v / (2 deceleration)` (1 s, 3 m/s²), at
+  least `min_yellow` (3 s), for the group's fastest approach: 3.3 s at
+  50 km/h, 3.8 s at 60 km/h.
+- **Cycle:** 60 s for two phases plus 15 s per further one, within `cycle`
+  ([60, 90] s). The green time left after yellow and all-red is split by the
+  groups' incoming lane counts, each at least `min_green` (10 s, which may
+  stretch the cycle).
+- **Offset:** seeded per junction, a whole second within the cycle, so
+  neighbouring junctions do not switch together.
+
+In the `.xodr`: a top-level `<controller>` per junction with lights, with a
+`<control signalId>` per light (between the roads and the junctions), and a
+`<junction><controller>` naming it. The plans themselves go to the sidecar
+(`signal_plans`); [`scenario`](scenarios-and-simulation.md#traffic-lights)
+turns them into OpenSCENARIO.
 
 ## The `.roadmap.json` sidecar
 
@@ -329,6 +359,7 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `corners` | Every fitted bend: `road`, `node`, `s_start`, `s_end`, reference `radius`, innermost `lane_radius`, `design_speed`, `max_speed`, `advisory_speed` (null at design radius), in m and m/s |
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
 | `cross_sections` | HD maps on only: each edge's cross-section profile |
+| `signal_plans` | HD maps on only, per junction with lights: `junction`, `node`, `controller`, `cycle` and `offset` [s], `min_green`, `groups` (`[road, contact]` per phase), `lights` (signal id → its approach), `phases` (`group`, `kind` green / yellow / all_red, `duration`, `states`: signal id → `"on;off;off"` red, `"off;on;off"` yellow, `"off;off;on"` green), and the junction's `conflicts` and `permissive` (high, low) connecting-road pairs |
 | `junctions` | HD maps on only: per junction its `control` kind, `priority_roads` (`[road, contact]`), `approaches` (`road`, `contact`, `role`), and its numbers of `conflicts` and `priorities` |
 | `movement_control` | HD maps on only: per connecting road its approach's `control` role, `priority` (on the priority road) and `yields_to` (connecting roads) |
 | `corner_roads` | HD maps on only: each corner road's `junction_id`, `road`, `from_road`, `to_road`, lane `kinds`, `path` and `closes` (a movement drives the turn it follows) |

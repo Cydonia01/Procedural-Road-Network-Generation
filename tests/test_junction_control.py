@@ -292,7 +292,8 @@ def test_two_avenues_get_stop_lines_and_left_turn_priorities(tmp_path):
     j = _junction(sidecar)
     assert j["control"] == "signal" and {a["role"] for a in j["approaches"]} == {"signal"}
     assert len([o for o in root.iter("object") if o.get("name") == "stopLine"]) == 4
-    assert not list(root.iter("signal"))  # the lights come with B6
+    lights = [s for s in root.iter("signal") if s.get("dynamic") == "yes"]
+    assert len(lights) == 4 and {s.get("type") for s in root.iter("signal")} == {"1000001"}  # lights, no signs
     moves = {m["connecting_road"]: m for m in sidecar["movements"]}
     mc = sidecar["movement_control"]
     lefts = [m for m in moves.values() if m["kind"] == "left"]

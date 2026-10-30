@@ -761,6 +761,7 @@ def cmd_scenario(args: argparse.Namespace) -> int:
         spawn_mode=args.mode,
         speed_range=(args.speed_min, args.speed_max),
         min_spawn_gap=args.min_gap,
+        lights=args.lights,
     )
     try:
         builder = ScenarioBuilder.from_files(xodr, graph)
@@ -1035,6 +1036,8 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("--min-gap", type=float, default=scenario["min_spawn_gap"],
                    help="min spawn gap in a lane [m] (default %(default)s)")
     p.add_argument("--graph", help="RoadGraph JSON (default: <input>.json if present)")
+    p.add_argument("--lights", action=argparse.BooleanOptionalAction, default=scenario["lights"],
+                   help="switch the traffic lights of the sidecar's signal plans (default %(default)s)")
     p.add_argument("--scenegraph", help="3D model to show with the roads, e.g. <prefix>_buildings.osgt")
     p.set_defaults(func=cmd_scenario)
 
