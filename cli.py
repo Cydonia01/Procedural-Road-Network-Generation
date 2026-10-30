@@ -253,13 +253,15 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
         layers = input_maps(args, GridSpec.around(graph, margin, cell), chosen, files)
     if layers:
         graph = align_graph(graph, layers, args.cfg)
+    cross_section = hd_params(args).active_cross_section
     if "elevation" in layers and not args.flat:
-        graph = drape_graph(graph, layers, args.cfg)
-    return separate_graph(graph, args.cfg), layers
+        graph = drape_graph(graph, layers, args.cfg, cross_section)
+    return separate_graph(graph, args.cfg, cross_section), layers
 
 
-def separate_graph(graph: RoadGraph, cfg: dict) -> RoadGraph:
-    """Roads crossing without a junction raised over each other (unchanged if none do)."""
+def separate_graph(graph: RoadGraph, cfg: dict, cross_section=None) -> RoadGraph:
+    """Roads crossing without a junction raised over each other (unchanged if none do);
+    with a cross-section (HD maps) the overpass spans the lower road's side lanes."""
     from roadgen.geometry.grade_separation import (
         GradeSeparationParams,
         find_crossings,
@@ -270,7 +272,8 @@ def separate_graph(graph: RoadGraph, cfg: dict) -> RoadGraph:
         return graph
     with timed("grade separation"):
         return separate(graph, GradeSeparationParams(**section(cfg, "grade_separation")),
-                        DesignParams(**section(cfg, "design")), cfg["opendrive"]["junction_margin"])
+                        DesignParams(**section(cfg, "design")), cfg["opendrive"]["junction_margin"],
+                        cross_section)
 
 
 def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
@@ -283,14 +286,15 @@ def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> Roa
                      cfg["opendrive"]["junction_margin"])
 
 
-def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
-    """Heights from the elevation (and terrain) map into the graph."""
+def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict, cross_section=None) -> RoadGraph:
+    """Heights from the elevation (and terrain) map into the graph; with a cross-section
+    (HD maps) bridges span the roads' full width."""
     from roadgen.maps.drape import DrapeParams, drape
 
     with timed("drape"):
         return drape(graph, layers["elevation"], layers.get("terrain"),
                      DrapeParams(**section(cfg, "drape")), DesignParams(**section(cfg, "design")),
-                     cfg["opendrive"]["junction_margin"])
+                     cfg["opendrive"]["junction_margin"], cross_section)
 
 
 def map_requests(args: argparse.Namespace, kinds: Optional[Sequence[str]] = None
@@ -393,7 +397,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
             raise SystemExit("error: --ground needs an elevation map (--maps, --elevation or --map-file)")
         scenegraph = Path(f"{prefix}_scene.osgt")
         write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
-                    args.junction_margin)
+                    args.junction_margin, hd.active_cross_section)
     elif args.buildings:
         from roadgen.scene.buildings import BuildingParams, export_buildings
 
@@ -402,7 +406,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         ground = layers.get("elevation") if graph.has_elevation else None
         with timed("buildings"):
             params = BuildingParams(seed=args.seed, **section(args.cfg, "buildings"))
-            n = export_buildings(graph, scenegraph, params, ground, layers.get("terrain"))
+            n = export_buildings(graph, scenegraph, params, ground, layers.get("terrain"),
+                                 hd.active_cross_section)
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
         errors += ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
@@ -413,8 +418,9 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
 
 
 def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
-                seed: int, buildings: bool, junction_margin: float) -> None:
-    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile."""
+                seed: int, buildings: bool, junction_margin: float, cross_section=None) -> None:
+    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile; with a
+    cross-section (HD maps) levelled under the side lanes, buildings behind them."""
     from roadgen.scene.buildings import BuildingParams, building_mesh
     from roadgen.scene.ground import GroundParams, ground_mesh
     from roadgen.scene.osgt import Mesh, write_osgt
@@ -422,11 +428,11 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
     elevation, terrain = layers["elevation"], layers.get("terrain")
     with timed("scene"):
         meshes = [ground_mesh(elevation, terrain, graph, GroundParams(**section(cfg, "ground")),
-                              junction_margin, DesignParams(**section(cfg, "design")))]
+                              junction_margin, DesignParams(**section(cfg, "design")), cross_section)]
         n = 0
         if buildings:
             params = BuildingParams(seed=seed, **section(cfg, "buildings"))
-            tris, normals, n = building_mesh(graph, params, elevation, terrain)
+            tris, normals, n = building_mesh(graph, params, elevation, terrain, cross_section)
             meshes.append(Mesh("buildings", tris, normals, tuple(params.color)))
         write_osgt(path, meshes)
     log.info("wrote %s (ground%s)", path, f" + {n} buildings" if buildings else "")
