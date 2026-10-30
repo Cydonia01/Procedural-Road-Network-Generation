@@ -64,7 +64,12 @@ reference line, and left lanes (positive ids) drive against it.
   reference line.
 - **Lane sections** (`make_lane_sections`, from the
   [lane layout](geometry.md#along-road-profiles)). A new section starts
-  wherever the lane count or width changes.
+  wherever a driving lane's count or width changes. Side lanes and medians
+  run the whole road, 0 m wide where they are absent, and keep their own
+  width changes (curb extensions, tapers) inside a section as several
+  `<width>` records, so they add no sections. Driving lanes keep one width
+  record per section, which the drive-check and the scenario's lane slots
+  rely on.
   - Lanes are linked by **role** across section boundaries: the same kind and
     position in the [lane layout](geometry.md#along-road-profiles). A side lane
     outside a driving lane that ends keeps its links while its id shifts
@@ -91,8 +96,28 @@ reference line, and left lanes (positive ids) drive against it.
   keep their ids (−2, −3, … and 2, 3, …) along the road. Anything that
   follows a lane by id (esmini's drive-check, the scenario's routes) thus
   stays on the same lane. Junction connections start from the driving lanes.
-- Only **driving** lanes get junction connections, scenario spawn slots and
-  routes; esmini's own traffic (odrviewer) also keeps to driving-type lanes.
+- Only **driving** lanes get movements, scenario spawn slots and routes;
+  esmini's own traffic (odrviewer) also keeps to driving-type lanes.
+- **Corner roads** (`junctions.py::corner_roads`). Where two neighbouring arms
+  of a junction both have side lanes at the junction, a connecting road with
+  only those lanes (bike lane, curb, sidewalk, shoulder) runs around the
+  corner and links to them.
+  - **Reference line:** the right turn from the first arm's outermost
+    incoming lane to the next arm's outermost outgoing lane (the same path as
+    that movement), with a `laneOffset` of half the turn lane's width. The
+    curb starts exactly at the turn lane's outer edge, so the junction
+    surface has no stretch without a lane, which CARLA and OSI would see as
+    a hole.
+  - **Widths** blend smoothly (zero slope at both ends) from one arm's side
+    lanes to the other's. A lane only one arm has narrows to 0 m and has no
+    link at that end.
+  - **Without that turn** (no incoming lanes on the first arm or no outgoing
+    lanes on the next, as between one-way roads) the path joins the two
+    carriageway edges. The surface between the curb and the movements then
+    stays without a lane.
+  - The sidecar lists them under `corner_roads`, with `closes` true where a
+    movement drives the turn. They are not movements: drive-check, scenarios
+    and esmini's traffic never use them.
 - **Road marks.** On driving lanes only, until the HD road marks (B4).
 - **Road marks** (without HD maps). A solid centre line, broken lines between
   lanes (3 m dash, 9 m gap), and a solid line on the outermost driving lane's
@@ -227,3 +252,4 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `corners` | Every fitted bend: `road`, `node`, `s_start`, `s_end`, reference `radius`, innermost `lane_radius`, `design_speed`, `max_speed`, `advisory_speed` (null at design radius), in m and m/s |
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
 | `cross_sections` | HD maps on only: each edge's cross-section profile |
+| `corner_roads` | HD maps on only: each corner road's `junction_id`, `road`, `from_road`, `to_road`, lane `kinds`, `path` and `closes` (a movement drives the turn it follows) |
