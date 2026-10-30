@@ -252,6 +252,30 @@ opendrive:
   u_turns: false        # U-turn movements at junctions where the road is wide enough
   u_turn_radius: 5.0    # tightest U-turn [m]: in and out lane centres at least 2x this apart
 
+hdmap:  # HD-map content of the built roads (stage B): side lanes, ...; pipeline / build-xodr --hd, --no-hd
+  enabled: false            # off: the builder writes exactly what it wrote before stage B
+
+cross_section:  # lanes beside the driving lanes, per profile and road class (roadgen/geometry/cross_section.py)
+  profile: urban            # profile of edges without Edge.cross_section: urban | suburban | rural | none
+  # Side lanes on each side of the road, from the driving lanes outward, as [kind, width [m], height [m]];
+  # kinds: parking, biking, curb, sidewalk, shoulder, border. The height raises curbs and sidewalks.
+  urban_street: [[parking, 2.2, 0.0], [curb, 0.15, 0.15], [sidewalk, 2.0, 0.15]]
+  urban_avenue: [[biking, 1.5, 0.0], [parking, 2.4, 0.0], [curb, 0.15, 0.15], [sidewalk, 3.0, 0.15]]
+  urban_highway: [[shoulder, 3.0, 0.0]]
+  suburban_street: [[curb, 0.15, 0.15], [sidewalk, 1.8, 0.15]]
+  suburban_avenue: [[biking, 1.5, 0.0], [curb, 0.15, 0.15], [sidewalk, 2.0, 0.15]]
+  suburban_highway: [[shoulder, 3.0, 0.0]]
+  rural_street: [[shoulder, 1.0, 0.0]]
+  rural_avenue: [[shoulder, 1.5, 0.0]]
+  rural_highway: [[shoulder, 3.0, 0.0]]
+  median: [0.0, 0.0, 2.0]   # street, avenue, highway: total median width on two-way roads [m]
+  median_min_lanes: 2       # ... with at least this many lanes each way
+  parking_clear: 10.0       # parking lanes end this far before a junction [m]
+  side_taper: 5.0           # side lanes that end narrow over this length [m]
+  tunnel_shoulder: 1.0      # shoulders inside tunnels [m]
+  corner_radius: [3.0, 4.9, 7.6]  # curb return at a junction, street, avenue, highway (StreetGen) [m]
+  max_corner_share: 0.3     # a curb return takes at most this share of the shorter arm (else its radius shrinks)
+
 design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AASHTO, MUTCD)
   e_max_street: 0.04        # max superelevation of street curves, rise / run
   e_max_avenue: 0.04

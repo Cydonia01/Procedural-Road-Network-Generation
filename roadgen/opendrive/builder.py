@@ -38,7 +38,12 @@ from roadgen.geometry.alignment import (
     network_alignment,
 )
 from roadgen.geometry.design import DesignParams
-from roadgen.geometry.profiles import bridge_spans, lane_layout, speed_profile, tunnel_spans
+from roadgen.geometry.profiles import (
+    bridge_spans,
+    lane_layout,
+    speed_profile,
+    tunnel_spans,
+)
 from roadgen.geometry.vertical import (
     JunctionPlane,
     chain_elevation,
@@ -46,6 +51,7 @@ from roadgen.geometry.vertical import (
     junction_planes,
 )
 from roadgen.graph.model import RoadGraph
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import (
     JunctionParams,
     Movement,
@@ -79,11 +85,13 @@ class OpenDriveBuilder:
     def __init__(
         self, name: str = "roadgen", junction_margin: float = DEFAULT_JUNCTION_MARGIN,
         design: DesignParams = DesignParams(), junctions: JunctionParams = JunctionParams(),
+        hd: HdMapParams = HdMapParams(),
     ) -> None:
         self.name = name
         self.junction_margin = junction_margin
         self.design = design
         self.junction_params = junctions
+        self.hd = hd
         self.odr: Optional[xodr.OpenDrive] = None
         self.alignment: Optional[NetworkAlignment] = None
         self.edge_to_road: dict[int, int] = {}
@@ -97,7 +105,8 @@ class OpenDriveBuilder:
         errors = graph.validate()
         if errors:
             raise ValueError("invalid RoadGraph: " + "; ".join(errors))
-        na = network_alignment(graph, self.design, self.junction_margin)
+        na = network_alignment(graph, self.design, self.junction_margin,
+                               cross_section=self.hd.active_cross_section)
 
         odr = xodr.OpenDrive(self.name, ODR_REV_MAJOR, ODR_REV_MINOR)
         heights = graph.has_elevation
@@ -241,7 +250,8 @@ class OpenDriveBuilder:
             planview.add_fixed_geometry(piece_geometry(piece), piece.start.x, piece.start.y, piece.start.hdg)
         ids = ca.chain.edge_ids
         name = f"edge_{ids[0]}" if len(ids) == 1 else "edges_" + "_".join(map(str, ids))
-        road = xodr.Road(road_id, planview, make_lane_sections(lane_layout(graph, ca)), name=name)
+        layout = lane_layout(graph, ca)
+        road = xodr.Road(road_id, planview, make_lane_sections(layout), name=name)
         for s, speed in speed_profile(graph, ca):
             road.add_type(ROAD_TYPE, s=round(s, 6), speed=speed, speed_unit="m/s")
 
@@ -261,9 +271,14 @@ class OpenDriveBuilder:
                 continue
             edge = graph.edges[ids[k]]
             right, left = ca.chain.edges[k].lanes(edge)
+            # Explicit driving lanes only where other lanes are present (stage B): plain
+            # roads keep the count x width offsets, bit for bit.
+            plain = all(kind == "driving" for side in ("right", "left") for kind in layout.kinds(side))
+            lane_t = () if plain else tuple(sorted(
+                layout.driving_offsets(0.0 if contact == "start" else ca.length).items()))
             ends.append((node_id, RoadEnd(
                 edge_id=edge.id, road_id=road_id, contact=contact, pose=pose,
                 right_lanes=right, left_lanes=left, lane_width=edge.lane_width,
-                speed_limit=edge.speed_limit,
+                speed_limit=edge.speed_limit, lane_t=lane_t,
             )))
         return road, ends, bridge_spans(graph, ca)

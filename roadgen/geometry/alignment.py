@@ -38,6 +38,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from functools import partial
 from typing import Callable, Mapping, Optional
 
 import numpy as np
@@ -47,6 +48,11 @@ from shapely.geometry.base import BaseGeometry
 
 from roadgen.geometry import design
 from roadgen.geometry.chains import Chain, find_chains, junction_nodes
+from roadgen.geometry.cross_section import (
+    CrossSectionParams,
+    loop_edges,
+    outer_half_width,
+)
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN, node_trims
 from roadgen.geometry.planar import Pose, wrap_angle
@@ -216,6 +222,14 @@ class NetworkAlignment:
         return pts
 
 
+class ShortEdgeError(ValueError):
+    """An edge is too short for the junction trims at its ends."""
+
+    def __init__(self, edge_id: int, message: str) -> None:
+        super().__init__(message)
+        self.edge_id = edge_id
+
+
 def half_width(edge: Edge) -> float:
     """Widest side of the road from its reference line [m]."""
     return max(edge.lanes_forward, edge.lanes_backward) * edge.lane_width
@@ -233,13 +247,18 @@ def _class_of(a: Edge, b: Edge) -> str:
 
 def network_alignment(graph: RoadGraph, params: DesignParams = DesignParams(),
                       junction_margin: float = DEFAULT_MARGIN,
-                      radius_caps: Optional[Mapping[int, float]] = None) -> NetworkAlignment:
+                      radius_caps: Optional[Mapping[int, float]] = None,
+                      cross_section: Optional[CrossSectionParams] = None) -> NetworkAlignment:
     """Chains, junction trims and fitted reference lines of the whole network.
 
     radius_caps: node id -> largest allowed corner radius [m], on top of
-    Node.radius_cap.
+    Node.radius_cap. cross_section: roads with their side lanes (stage B):
+    wider junction trims with curb returns, and fitted curves kept clear of
+    other roads' sidewalks too.
     """
     caps = dict(radius_caps or {})
+    extent = (half_width if cross_section is None
+              else partial(_outer, params=cross_section, loops=loop_edges(graph)))
     for n in graph.nodes.values():
         if n.radius_cap is not None:
             caps[n.id] = min(n.radius_cap, caps.get(n.id, math.inf))
@@ -247,9 +266,9 @@ def network_alignment(graph: RoadGraph, params: DesignParams = DesignParams(),
     while True:
         chains = find_chains(graph, params.max_merge_deflection_deg, forced)
         junctions = junction_nodes(graph, chains)
-        trims = {n: node_trims(graph, n, junction_margin) for n in junctions}
-        check = _clearance_check(graph, trims, params.road_clearance)
-        fitted = tuple(align_chain(graph, c, trims, params, caps, check) for c in chains)
+        trims = {n: node_trims(graph, n, junction_margin, cross_section) for n in junctions}
+        check = _clearance_check(graph, trims, params.road_clearance, extent)
+        fitted = tuple(align_chain(graph, c, trims, params, caps, check, extent) for c in chains)
         # A bend too tight for its innermost lane stays a junction (one lane-centre
         # turn per lane), which may change the room of its neighbours: refit.
         tight = {c.node for ca in fitted for c in ca.corners if c.lane_radius < params.min_lane_radius}
@@ -272,8 +291,12 @@ def _trimmed_body(graph: RoadGraph, edge: Edge, trims: Mapping[int, Mapping[int,
     return LineString([(a.x + ux * t0, a.y + uy * t0), (b.x - ux * t1, b.y - uy * t1)])
 
 
+def _outer(edge: Edge, params: CrossSectionParams, loops: frozenset[int]) -> float:
+    return outer_half_width(edge, params, edge.id in loops)
+
+
 def _clearance_check(graph: RoadGraph, trims: Mapping[int, Mapping[int, float]],
-                     clearance: float) -> ClearanceCheck:
+                     clearance: float, extent: Callable[[Edge], float] = half_width) -> ClearanceCheck:
     """check(chain, curve pieces, straight corner polyline, half width) -> curve is clear.
 
     The curve may not touch, within clearance, any other road (straight and
@@ -282,14 +305,15 @@ def _clearance_check(graph: RoadGraph, trims: Mapping[int, Mapping[int, float]],
     cross another road's centre line that the straight polyline doesn't cross:
     a polyline passing close by a road would otherwise let the curve cut
     across it (two roads crossing at one height; found by the clearance
-    validator in stage C).
+    validator in stage C). extent: an edge's half width for this (side lanes
+    included with a cross-section).
     """
     ids, bodies, lines = [], [], []
     for eid, e in sorted(graph.edges.items()):
         line = _trimmed_body(graph, e, trims)
         if line is not None:
             ids.append(eid)
-            bodies.append(line.buffer(half_width(e)))
+            bodies.append(line.buffer(extent(e)))
             lines.append(line)
     tree = STRtree(bodies)
     line_tree = STRtree(lines)
@@ -315,7 +339,8 @@ def _clearance_check(graph: RoadGraph, trims: Mapping[int, Mapping[int, float]],
 
 def align_chain(graph: RoadGraph, c: Chain, trims: Mapping[int, Mapping[int, float]],
                 params: DesignParams = DesignParams(), radius_caps: Optional[Mapping[int, float]] = None,
-                clearance: Optional[ClearanceCheck] = None) -> ChainAlignment:
+                clearance: Optional[ClearanceCheck] = None,
+                extent: Callable[[Edge], float] = half_width) -> ChainAlignment:
     caps = radius_caps or {}
     edges = [graph.edges[ce.edge_id] for ce in c.edges]
     pts = np.array([(graph.nodes[n].x, graph.nodes[n].y) for n in c.nodes])
@@ -330,7 +355,7 @@ def align_chain(graph: RoadGraph, c: Chain, trims: Mapping[int, Mapping[int, flo
     usable[-1] -= trim_end
     for k in (0, n - 1):
         if usable[k] <= LENGTH_EPS:
-            raise ValueError(
+            raise ShortEdgeError(edges[k].id,
                 f"edge {edges[k].id} is too short for its junctions: trims {trim_start:.3f} + "
                 f"{trim_end:.3f} exceed segment length {lengths[k]:.3f}" if n == 1 else
                 f"edge {edges[k].id} is too short for its junction: trim "
@@ -381,7 +406,7 @@ def align_chain(graph: RoadGraph, c: Chain, trims: Mapping[int, Mapping[int, flo
     # Keep clear of other roads.
     if clearance is not None:
         for i, shape in shapes.items():
-            width = max(half_width(edges[i - 1]), half_width(edges[i]))
+            width = max(extent(edges[i - 1]), extent(edges[i]))
             ok = _corner_check(clearance, c, pts[i], float(headings[i - 1]), float(headings[i]), shape, width)
             if ok(scale[i]):
                 continue

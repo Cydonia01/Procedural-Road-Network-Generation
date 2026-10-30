@@ -13,6 +13,7 @@ information on its edges. Units are metres, radians and m/s.
 | `kind` | `"junction"` / `"dead_end"` / `"auto"` / `"ramp"` | Set by `assign_node_kinds` from the degree (1 → `dead_end`, ≥3 → `junction`, else `auto`). `"junction"` on a two-road node keeps it a junction instead of a bend. `"ramp"` marks a highway node where interchange ramps leave or join ([movement rules](opendrive.md#ramp-nodes)) |
 | `radius_cap` | float or null | Largest corner radius [m] at a bend, set by [align](heights.md#1-align-bends-that-leave-legal-ground) |
 | `z` | float, default 0 | Height [m]; at a junction, the height of the junction area. Set by [drape](heights.md#2-drape-heights-from-the-elevation-map) |
+| `control` | string or null | Junction control (HD maps); null = the builder derives it from the roads |
 
 **What a node becomes** in OpenDRIVE depends on its degree:
 
@@ -37,6 +38,7 @@ A road between two nodes. **Forward lanes run `from_node → to_node`.**
 | `profile` | `[]` | Heights [m] at evenly spaced points strictly between the nodes: point k of n lies `k · length / (n + 1)` from `from_node`. Empty means straight between the node heights |
 | `bridges` | `[]` | Stretches over water or another road, as `(start, end)` distances [m] from `from_node` |
 | `tunnels` | `[]` | Stretches under ground, same form |
+| `cross_section` | null | [Cross-section](geometry.md#cross-sections) profile (`urban`, `suburban`, `rural`, `none`) with HD maps on; null = the default profile |
 
 - `total_lanes` gives the sum of both directions.
 - `is_one_way` is true when exactly one of the lane counts is 0.

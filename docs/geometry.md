@@ -17,7 +17,8 @@ are in
 | `primitives.py` | `Piece` (line / arc / spiral) and `Alignment` (a chain of pieces) |
 | `clothoid.py` | `g2_hermite`: curvature-continuous transitions of three clothoids |
 | `planar.py` | `Pose`, `wrap_angle`, straight segments and trimming, Hermite `paramPoly3` |
-| `junction_space.py` | `junction_trims`, `node_trims`: where roads stop at a node |
+| `junction_space.py` | `junction_trims`, `node_trims`: where roads stop at a node; curb returns |
+| `cross_section.py` | Side lanes, medians and corner radii per profile and road class |
 | `chains.py` | Chains: runs of edges through two-road nodes that become one road |
 | `alignment.py` | `network_alignment`: the fitted reference line of every chain |
 | `profiles.py` | Lane widths and tapers, speeds, heights and bridges along a chain road |
@@ -76,8 +77,9 @@ The three spiral lengths are:
 far from the node its road must stop. `node_trims` builds the arms from the
 graph and calls it.
 
-- **Baseline:** the widest half cross-section at the node, which is enough
-  for right-angle crossings.
+- **Baseline:** the widest half carriageway (driving lanes and the paved side
+  lanes inside the curb) at the node, which is enough for right-angle
+  crossings.
 - **Acute arms.** For each pair of neighbouring arms *θ* apart, with facing
   road-edge widths *a* and *b*, the edges cross at *(b + a cos θ)/sin θ*
   along the first arm and *(a + b cos θ)/sin θ* along the second.
@@ -86,11 +88,60 @@ graph and calls it.
   - A crossing counts only if it lies on both arms (both distances positive).
     Otherwise near-straight arms of different widths would get trims of
     hundreds of metres.
+- **Curb returns** (with [cross-sections](#cross-sections) only). The curb
+  lines of neighbouring arms *θ* apart are joined by an arc of radius *r*,
+  the smaller of the two roads' class radii (StreetGen: 3 / 4.9 / 7.6 m for
+  street / avenue / highway). Each arm is trimmed past its tangent point,
+  *r / tan(θ/2)* beyond the crossing of the curb lines. The radius shrinks so
+  that this tangent length takes at most `max_corner_share` (0.3) of the
+  shorter arm (StreetGen §2.5). There are no curb returns where only two
+  roads meet (a bend or a lane-count change kept as a junction), nor where a
+  roundabout ring or cul-de-sac loop starts (its transform designed those
+  corners). The outer edges (sidewalks) of neighbouring arms only must not
+  overlap.
 - **Margin.** `junction_margin` (default 2 m, `--junction-margin`) is added as
   clearance.
 - **Errors.** Arms closer than **10°** raise an error. So does an edge too
   short for the trims at both its ends; generators avoid this with the
   [repair](generators.md#repair-edges-too-short-for-their-junctions).
+
+## Cross-sections
+
+With HD maps on (`--hd`, `hdmap.enabled`), roads have lanes beside their
+driving lanes. `cross_section.py` (`CrossSectionParams`, section
+`cross_section` in `defaults.yaml`) gives them per **profile** and road
+class, on each side from the driving lanes outward, as *(kind, width,
+height)*. An edge uses `Edge.cross_section`, or the default `profile`.
+
+| Profile | street (per side) | avenue (per side) | highway (per side) |
+|---|---|---|---|
+| `urban` | parking 2.2, curb 0.15, sidewalk 2.0 | bike 1.5, parking 2.4, curb 0.15, sidewalk 3.0 | shoulder 3.0 |
+| `suburban` | curb 0.15, sidewalk 1.8 | bike 1.5, curb 0.15, sidewalk 2.0 | shoulder 3.0 |
+| `rural` | shoulder 1.0 | shoulder 1.5 | shoulder 3.0 |
+| `none` | – | – | – |
+
+Widths in metres; curbs and sidewalks are 0.15 m high.
+
+- **Medians** (`median`: 0 / 0 / 2 m for street / avenue / highway) sit at
+  the centre line of two-way roads with at least `median_min_lanes` (2) lanes
+  each way.
+- **One-way roads** have the side lanes on both edges.
+- **Loops** (roundabout rings and cul-de-sac bulbs, from the graph metadata)
+  keep only curb and sidewalk outside, and a curb on the island side.
+- **At a junction** a road is narrower:
+  - parking ends `parking_clear` (10 m) before it, as a curb extension;
+  - shoulders end before it in the `urban` and `suburban` profiles, and before
+    ramp nodes in every profile (`rural` roads keep them through the corner);
+  - bike lanes end before roundabout entries;
+  - medians end.
+
+  The [junction trims](#junction-trims) use these widths.
+- **Too-short edges.** Wider trims leave some edges too short, which
+  generators (unaware of cross-sections) can't foresee. With HD maps on,
+  `pipeline` and `build-xodr` run the
+  [repair](generators.md#repair-edges-too-short-for-their-junctions) again
+  with the cross-sections before the build. It fixes only what the side lanes
+  make too short, and records `metadata.fit` in the graph.
 
 ## Chains
 

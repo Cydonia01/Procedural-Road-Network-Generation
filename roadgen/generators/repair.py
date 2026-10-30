@@ -18,6 +18,10 @@ that could be built before is returned unchanged:
 3. otherwise leave it (the builder will report it).
 
 Repeated in edge-id order until no edge is too short. Deterministic.
+
+With a cross-section (stage B) the trims are those of roads with their side
+lanes and curb returns; the pipeline runs this pass again with it before the
+build (cli.fit_graph), so generators stay unaware of cross-sections.
 """
 
 from __future__ import annotations
@@ -27,8 +31,9 @@ from typing import Optional
 
 import networkx as nx
 
+from roadgen.geometry.alignment import ShortEdgeError, network_alignment
 from roadgen.geometry.chains import find_chains, junction_nodes
-from roadgen.geometry.alignment import network_alignment
+from roadgen.geometry.cross_section import CrossSectionParams
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN, node_trims
 from roadgen.graph.model import RoadGraph
@@ -41,13 +46,14 @@ MIN_ROAD_LENGTH = 5.0  # [m] least road an edge between two junctions keeps afte
 
 
 def short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
-                junction_margin: float = DEFAULT_MARGIN) -> list[int]:
+                junction_margin: float = DEFAULT_MARGIN,
+                cross_section: Optional[CrossSectionParams] = None) -> list[int]:
     """Edges the builder would reject as too short for their junction trims, by id."""
     chains = find_chains(graph, design.max_merge_deflection_deg)
     trims = {}
     for n in junction_nodes(graph, chains):
         try:
-            trims[n] = node_trims(graph, n, junction_margin)
+            trims[n] = node_trims(graph, n, junction_margin, cross_section)
         except ValueError:
             trims[n] = {}  # arms too close: not a length problem
     out = set()
@@ -67,33 +73,46 @@ def short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
 
 
 def stub_roads(graph: RoadGraph, design: DesignParams = DesignParams(),
-                junction_margin: float = DEFAULT_MARGIN) -> list[int]:
+                junction_margin: float = DEFAULT_MARGIN,
+                cross_section: Optional[CrossSectionParams] = None, dead_ends: bool = False) -> list[int]:
     """Single-edge roads between two junctions that keep less than MIN_ROAD_LENGTH
     after both trims, by edge id. Uses the builder's own alignment, which also
-    keeps bends too tight for their inner lane as junctions."""
+    keeps bends too tight for their inner lane as junctions: an edge too short
+    for such a junction is returned alone. dead_ends: also single-edge roads from
+    a junction to a dead end (the wider trims of cross-sections can leave them
+    under a metre)."""
     try:
-        na = network_alignment(graph, design, junction_margin)
+        na = network_alignment(graph, design, junction_margin, cross_section=cross_section)
+    except ShortEdgeError as err:
+        return [err.edge_id]
     except ValueError:
         return []  # too-short edges first (short_edges)
     junctions = set(na.junctions)
+    ends_ok = junctions | ({n for n in graph.nodes if graph.degree(n) == 1} if dead_ends else set())
     return sorted(ca.chain.edge_ids[0] for ca in na.chains
-                  if len(ca.chain.edges) == 1 and ca.chain.start in junctions
-                  and ca.chain.end in junctions and ca.length < MIN_ROAD_LENGTH)
+                  if len(ca.chain.edges) == 1 and ca.length < MIN_ROAD_LENGTH
+                  and {ca.chain.start, ca.chain.end} <= ends_ok
+                  and (ca.chain.start in junctions or ca.chain.end in junctions))
 
 
 def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
-                       junction_margin: float = DEFAULT_MARGIN, max_degree: int = MAX_DEGREE) -> int:
-    """Fix too-short edges in place; return how many were collapsed or removed."""
+                       junction_margin: float = DEFAULT_MARGIN, max_degree: int = MAX_DEGREE,
+                       cross_section: Optional[CrossSectionParams] = None,
+                       keep_stubs: frozenset[int] = frozenset(), dead_ends: bool = False) -> int:
+    """Fix too-short edges in place; return how many were collapsed or removed.
+    keep_stubs: stub roads to leave alone (they build, only too short to change
+    slope between their junctions); dead_ends: dead-end roads count as stubs too."""
     fixed = 0
     tried: set[int] = set()
     while True:
-        todo = [e for e in short_edges(graph, design, junction_margin) if e not in tried]
+        todo = [e for e in short_edges(graph, design, junction_margin, cross_section) if e not in tried]
         if not todo:  # only once every edge fits: the alignment needs that
-            todo = [e for e in stub_roads(graph, design, junction_margin) if e not in tried]
+            todo = [e for e in stub_roads(graph, design, junction_margin, cross_section, dead_ends)
+                    if e not in tried and e not in keep_stubs]
         if not todo:
             break
         eid = todo[0]
-        if _collapse(graph, eid, junction_margin, max_degree) or _remove(graph, eid):
+        if _collapse(graph, eid, junction_margin, max_degree, cross_section) or _remove(graph, eid):
             fixed += 1
         else:
             tried.add(eid)
@@ -103,7 +122,8 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
     return fixed
 
 
-def _collapse(graph: RoadGraph, eid: int, margin: float, max_degree: int) -> bool:
+def _collapse(graph: RoadGraph, eid: int, margin: float, max_degree: int,
+              cross_section: Optional[CrossSectionParams] = None) -> bool:
     e = graph.edges[eid]
     keep, gone = sorted((e.from_node, e.to_node))
     others = [x for x in graph.incident_edges(gone) if x.id != eid]
@@ -125,7 +145,7 @@ def _collapse(graph: RoadGraph, eid: int, margin: float, max_degree: int) -> boo
         else:
             x.to_node = keep
     try:
-        node_trims(graph, keep, margin)  # raises if two arms are now too close
+        node_trims(graph, keep, margin, cross_section)  # raises if two arms are now too close
         ok = all(graph.edge_length(x.id) > LENGTH_EPS for x in graph.incident_edges(keep))
     except ValueError:
         ok = False

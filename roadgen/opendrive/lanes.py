@@ -65,28 +65,32 @@ def make_lane_sections(layout: LaneLayout) -> xodr.Lanes:
     """Lane sections of a chain road from its lane layout.
 
     Each section's lanes get polynomial widths (tapers included) and lane
-    links to the same position in the neighbouring sections where that lane
-    exists on both sides of the boundary; a lane that narrows to 0 at a section
-    end, or widens from 0 at a section start, has no link there.
+    links to the lane with the same role (kind and layout position) in the
+    neighbouring sections where that lane exists on both sides of the
+    boundary; a lane that narrows to 0 at a section end, or widens from 0 at
+    a section start, has no link there. Linking by role keeps a side lane
+    linked to itself when a driving lane inside it ends and its id shifts.
     """
     lanes = xodr.Lanes()
-    previous: dict[str, list[xodr.Lane]] = {"right": [], "left": []}
+    previous: dict[str, dict] = {"right": {}, "left": {}}
     for section in layout.sections():
         center = xodr.Lane()
         center.add_roadmark(solid_mark())
         ls = xodr.LaneSection(section.s0, center)
-        current: dict[str, list[xodr.Lane]] = {"right": [], "left": []}
+        current: dict[str, dict] = {"right": {}, "left": {}}
         for side, pieces, add in (("right", section.right, ls.add_right_lane),
                                   ("left", section.left, ls.add_left_lane)):
             sign = -1 if side == "right" else 1
-            for pos, piece in enumerate(pieces, 1):
-                lane = _section_lane(piece, section.s0, outermost=pos == len(pieces))
-                before = previous[side]
-                if pos <= len(before) and _continues(piece, section.s0):
-                    lane.add_link("predecessor", sign * pos)
-                    before[pos - 1].add_link("successor", sign * pos)
+            roles = section.roles(side)
+            n_driving = sum(kind == "driving" for kind, _ in roles)
+            for pos, (piece, role) in enumerate(zip(pieces, roles), 1):
+                lane = _section_lane(piece, section.s0, outermost=pos == n_driving)
+                before = previous[side].get(role)
+                if before is not None and _continues(piece, section.s0):
+                    lane.add_link("predecessor", before[1])
+                    before[0].add_link("successor", sign * pos)
                 add(lane)
-                current[side].append(lane)
+                current[side][role] = (lane, sign * pos)
         lanes.add_lanesection(ls)
         previous = current
     return lanes

@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0 done (2026-10-30), B1 next.** Discussion,
+Status: **approved 2026-10-30; B0 and B1 done (2026-10-30), B2 in progress.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -132,6 +132,10 @@ The user's answers to the four questions of the discussion (also in its
 **2026-10-30, prompt 3**
 
 > Good. Before B1: does the junction corner gap stay open in the .xodr itself (for CARLA/OSI), or do the sidewalk corner roads fully close it? Answer that, then commit B0 and implement B1. Stop after B1 and report.
+
+**2026-10-30, prompt 4**
+
+> Shoulders: end them before junctions in the urban and suburban profiles (like parking), keep them through the corner in the rural profile. Record this decision in the plan. Then commit B1 and implement B2. Stop after B2 and report.
 
 ## Context
 
@@ -384,6 +388,59 @@ Exit of B0: full suite 570 passed, 1 failed (the known `test_monitor_memory_cap_
   - `docs/geometry.md` (cross-sections, trims, corner radii);
   - `docs/road-graph.md` (the new fields);
   - `docs/cli-reference.md` (`cross_section` parameters, `--hd`).
+
+#### B1 result (done 2026-10-30)
+
+Delivered as planned (`geometry/cross_section.py`, `Edge.cross_section`, `Node.control`, lane roles, trims with curb returns, the cross-section-aware fit, `--hd` / `--no-hd`, `HdMapParams` in `roadgen/opendrive/hdmap.py`). It needed these changes, each found on the example networks:
+
+- **Trim baseline on curb lines.** The baseline (every arm trimmed to the widest half cross-section at the node) now uses the curb lines, not the outer edges. With sidewalks in it, every roundabout ring arc lost the approaching avenue's full 11.65 m at its entry, and its bend became too tight. Sidewalks now only must not overlap, which the pairwise outer-edge check covers.
+- **No curb returns at two-road nodes or where a loop starts.** A bend or lane-count change kept as a junction is a road continuing, not a street corner. At roundabout entries and cul-de-sac stems, the stage C transforms designed the corners and sized the rings for today's trims. Bike lanes end before a loop starts (FHWA roundabout guide), like parking before every junction.
+- **Loops in B1, not B2.** Ring and cul-de-sac loop edges (from the graph metadata) keep only curb and sidewalk outside and a curb on the island side. Their widths feed the trims and the alignment's clearance, so this could not wait for B2. `EdgeCrossSection` therefore holds the two sides separately.
+- **The fit repairs only what the side lanes make worse:**
+  - it leaves the stub roads the network already has (`keep_stubs`); today's `suburb` has 90, mostly cul-de-sac loop arcs, and the first version collapsed 96 edges there;
+  - it also treats a dead-end road with less than 5 m left as a stub (`dead_ends`; `city` had one 0.52 m long that broke the continuity check);
+  - an edge the alignment finds too short for a bend it keeps as a junction counts as too short (`ShortEdgeError`);
+  - it never joins more roads at a node than the network already does (at least 5);
+  - it records `metadata.fit`.
+
+  The generators' own repair is unchanged (the lsystem fingerprints hold).
+- `RoadEnd.lane_t` (explicit driving lanes) is passed only where a road has non-driving lanes, so plain roads keep their `count × width` offsets bit for bit (the builder guard holds).
+- `--cross-section PROFILE` stays in B2, as planned.
+
+**Shoulders at junctions (user decision, prompt 4):** in the `urban` and `suburban` profiles shoulders end before every junction, like parking; in the `rural` profile they run through the corner (and still end before ramp nodes in every profile). This was the open question of the first B1 report: highway shoulders reaching at-grade junctions caused most of `city`'s too-short edges (`b1_short_causes.py`: 16 too short with them, 3 without).
+
+**Measurement** (`b1_trims.py` → `baselines/2026-10-30-stage-b-b1-trims.json`, after the shoulder rule): every network builds with every profile. Repaired edges as a share of junction road ends:
+
+| Network | Today's mean trim [m] | `urban`: too short / repaired / share / mean trim [m] | `suburban` repaired | `rural` repaired |
+|---|---|---|---|---|
+| grid | 9.0 | 0 / 0 / 0 % / 12.1 | 0 | 0 |
+| manhattan_like | 15.1 | 0 / 0 / 0 % / 17.5 | 0 | 0 |
+| grid_organic | 9.2 | 0 / 0 / 0 % / 12.7 | 0 | 0 |
+| organic_town | 9.2 | 0 / 0 / 0 % / 12.0 | 0 | 0 |
+| paris | 9.4 | 0 / 2 / 0.3 % / 13.3 | 2 | 3 |
+| suburb | 8.5 | 0 / 12 / 1.3 % / 11.1 | 10 (1.1 %) | 19 (2.0 %) |
+| city (maps) | 10.1 | 3 / 10 / 0.9 % / 14.7 | 10 | 23 (2.0 %) |
+| mixed_city (maps) | 9.8 | 3 / 11 / 0.7 % / 13.7 | 11 | 16 (1.1 %) |
+| highway_corridor (maps) | 9.3 | 0 / 2 / 0.4 % / 13.0 | 2 | 2 |
+
+Curb returns were shrunk to fit at 4 of about 900 corners (`city`). Before the shoulder rule `city` needed 23 repairs (2.0 %) with `urban`, `mixed_city` 12.
+
+- **Target** (≤ 1 % repaired) met with `urban` everywhere but `suburb` (1.3 %), and with `suburban` everywhere but `suburb` (1.1 %).
+- `suburb` has no highways, so its repairs come from short streets between its many T junctions and loops.
+- `rural` keeps shoulders through corners by decision, so its 2.0 % on `city` and `suburb` is the price of that.
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b1 --hd`, run before the shoulder rule): all 11 networks build and validate; the drive-check passes everywhere it ran (`city` 3,151 movements and 1,882 lanes; `mixed_city` 4,170 and 2,222); esmini simulates `city` and `mixed_city` with 0 errors. Screenshots: `out/stage_b/b1/*.view.png`.
+
+| | B0 | B1 with `--hd` |
+|---|---|---|
+| `city` esmini load | 17.3 s | 19.4 s |
+| `mixed_city` esmini load | 48.1 s | 60.0 s |
+| `city` / `mixed_city` / `suburb` fit | — | 18.6 / 26.6 / 20.0 s |
+
+- **Fit cost:** each repair step re-aligns the whole network.
+- **Slow machine late in the phase:** run alone, the drive-check of `mixed_city` took about 1.5 h, for both the B1 file and the unchanged B0 file (under 170 s this morning). So this is the machine, not B1. The measurement fits of 1,000–1,900 s in the table's JSON (`suburban` and `rural` on `suburb`, `city`, `mixed_city`) come from the same slowdown; the `urban` fits of the same networks took 18–126 s.
+
+Exit of B1: full suite 587 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); both identity guards (lsystem, builder) pass; ruff clean on touched files apart from the project's `Optional[...]` style and the existing B008 params defaults; docs updated (`geometry.md` cross-sections and curb returns, `road-graph.md`, `generators.md`, `cli-reference.md`). Helper scripts: `b1_trims.py`, `b1_short_causes.py`, `b1_stubs.py`.
 
 ### B2 · Side lanes and medians in the builder; `plot-xodr`
 

@@ -53,8 +53,8 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 
 Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
-`maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `scenario`,
-`buildings`, `esmini`, `pipeline`.
+`maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
+`cross_section`, `scenario`, `buildings`, `esmini`, `pipeline`.
 
 Parameters are layered. Each layer overrides the one before it:
 
@@ -160,6 +160,7 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2) |
+| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), and edges too short for the wider junctions are repaired before the build |
 | `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
 | `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |
 | `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
@@ -210,8 +211,10 @@ are the config sections `align:`, `drape:` and `grade_separation:`.
 ## build-xodr
 
 ```bash
-python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M]   # default: <input>.xodr
+python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd]   # default: <input>.xodr
 ```
+
+`--hd` / `--no-hd` as for [pipeline](#pipeline).
 
 Builds and validates. Traffic connectivity problems are only warnings here,
 since hand-made test graphs often have dead ends.

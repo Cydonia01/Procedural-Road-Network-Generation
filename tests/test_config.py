@@ -9,12 +9,14 @@ from cli import build_parser, main
 from roadgen.config import DEFAULTS, load_config, merge, section
 from roadgen.generators.base import load_params
 from roadgen.generators.lsystem import LSystemParams
+from roadgen.geometry.cross_section import CrossSectionParams
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json
 from roadgen.maps.align import AlignParams
 from roadgen.maps.drape import DrapeParams
 from roadgen.metrics.geometry import GeometryMetricsParams
 from roadgen.metrics.network import NetworkMetricsParams
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.scenario.xosc_builder import ScenarioParams
 from roadgen.scene.buildings import BuildingParams
 from roadgen.scene.ground import GroundParams
@@ -30,6 +32,8 @@ from roadgen.scene.ground import GroundParams
     (NetworkMetricsParams, ("network_metrics",)),
     (DesignParams, ("design",)),
     (AlignParams, ("align",)),
+    (CrossSectionParams, ("cross_section",)),
+    (HdMapParams, ("hdmap",)),
 ])
 def test_dataclass_defaults_come_from_defaults_yaml(params_type, keys):
     defaults = section(DEFAULTS, *keys)

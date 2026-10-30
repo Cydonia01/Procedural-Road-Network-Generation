@@ -118,6 +118,12 @@ Each is fixed by the first option that works:
 Over 200 lsystem `city` networks on maps (`metrics --sweep 200`), 9 failed to
 build before the repair and 0 after.
 
+With HD maps on, the pipeline runs the same repair once more before the
+build, with the roads' [side lanes](geometry.md#cross-sections) in the trims.
+That pass leaves the stubs the network already had alone. An edge the
+builder's alignment finds too short for a bend it keeps as a junction counts
+as too short too.
+
 ## Graph transforms
 
 `roadgen/generators/transforms/` holds passes from RoadGraph to RoadGraph

@@ -31,6 +31,7 @@ from roadgen.history import RunStore, diff, load_spec, plain, run_hash
 from roadgen.maps.base import get_map_generator, make_map, map_generator_names
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.clearance import check_clearance
 from roadgen.validate.connectivity import check_traffic_connectivity
@@ -81,15 +82,42 @@ def junction_params(cfg: dict):
     return JunctionParams(**{k: v for k, v in section(cfg, "opendrive").items() if k != "junction_margin"})
 
 
+def hd_params(args: argparse.Namespace) -> HdMapParams:
+    """HD-map settings of a build: the config, with --hd / --no-hd and the run's seed."""
+    return HdMapParams.from_config(args.cfg, getattr(args, "seed", None), getattr(args, "hd", None))
+
+
+def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: float) -> RoadGraph:
+    """With HD maps on, repair the edges too short for the junction trims of roads with
+    their side lanes (generators only know the driving lanes); unchanged otherwise."""
+    from roadgen.generators.repair import MAX_DEGREE, repair_short_edges, stub_roads
+
+    cross_section = hd.active_cross_section
+    if cross_section is None or not graph.edges:
+        return graph
+    design = DesignParams(**section(cfg, "design"))
+    # Never join more roads at a node than the generator already does (at least MAX_DEGREE),
+    # and leave the stub roads the network already has (they build): fix only what the
+    # side lanes make too short.
+    max_degree = max([MAX_DEGREE] + [graph.degree(n) for n in graph.nodes])
+    with timed("fit cross-sections"):
+        known = frozenset(stub_roads(graph, design, junction_margin, dead_ends=True))
+        n = repair_short_edges(graph, design, junction_margin, max_degree, cross_section, known,
+                               dead_ends=True)
+    if n:
+        graph.metadata["fit"] = {"repaired_edges": n, "profile": cross_section.profile}
+    return graph
+
+
 def build_and_validate(
     graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str],
-    cfg: Optional[dict] = None,
+    cfg: Optional[dict] = None, hd: HdMapParams = HdMapParams(),
 ) -> list[str]:
     """Build and write the .xodr, then run every file validator; return all errors."""
     builder = OpenDriveBuilder(
         name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
         design=DesignParams(**section(cfg or DEFAULTS, "design")),
-        junctions=junction_params(cfg or DEFAULTS),
+        junctions=junction_params(cfg or DEFAULTS), hd=hd,
     )
     with timed("build xodr"):
         try:
@@ -129,7 +157,9 @@ def cmd_build_xodr(args: argparse.Namespace) -> int:
     graph = load_json(args.input)
     check_traffic(graph, allow_traps=True)  # informational for hand-made graphs
     output = artifact(args, args.output, Path(args.input).with_suffix(".xodr"))
-    errors = build_and_validate(graph, output, args.junction_margin, args.xsd, args.cfg)
+    hd = hd_params(args)
+    graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
+    errors = build_and_validate(graph, output, args.junction_margin, args.xsd, args.cfg, hd)
     return 1 if errors else 0
 
 
@@ -216,7 +246,11 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
 
 def separate_graph(graph: RoadGraph, cfg: dict) -> RoadGraph:
     """Roads crossing without a junction raised over each other (unchanged if none do)."""
-    from roadgen.geometry.grade_separation import GradeSeparationParams, find_crossings, separate
+    from roadgen.geometry.grade_separation import (
+        GradeSeparationParams,
+        find_crossings,
+        separate,
+    )
 
     if not find_crossings(graph):
         return graph
@@ -319,6 +353,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     """Generate, then write <prefix>.json/.png/.xodr and run all validators."""
     prefix = artifact(args, args.output, default_output(args))
     graph, layers = generate_graph(args)
+    hd = hd_params(args)
+    graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
     errors = graph.validate()
     for err in errors:
         log.error("graph: %s", err)
@@ -331,7 +367,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     with timed("plot"):
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
-    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg)
+    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd)
     scenegraph = None
     if args.ground:
         if "elevation" not in layers:
@@ -769,6 +805,10 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         "--junction-margin", type=float, default=margin,
         help="extra clearance [m] between junction center region and roads (default %(default)s)",
     )
+    p.add_argument(
+        "--hd", action=argparse.BooleanOptionalAction, default=None,
+        help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
+    )
     p.set_defaults(func=cmd_build_xodr)
 
     p = sub.add_parser("generators", help="list registered generators, presets and parameters")
@@ -800,6 +840,10 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g.add_argument(
             "--junction-margin", type=float, default=margin,
             help="extra clearance [m] between junction center region and roads (default %(default)s)",
+        )
+        g.add_argument(
+            "--hd", action=argparse.BooleanOptionalAction, default=None,
+            help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
         )
         g.add_argument(
             "--drive-check", action="store_true",

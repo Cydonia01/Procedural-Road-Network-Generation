@@ -833,3 +833,4 @@ The user's answers to the four questions, verbatim (2026-10-29):
 | 11 | Plots | New `plot-xodr` command | Claude |
 | 12 | Randomness | Builder gets the pipeline seed; salted sub-streams per feature | Claude |
 | 13 | Speed signs | DE 274 at every speed change and after junctions on roads > 100 m; curve warnings 103 / 105 before advisory corners, with a 274 rounded down to 10 km/h where the advisory is at least 10 km/h below the limit | Claude |
+| 14 | Shoulders at junctions (B1, 2026-10-30) | End before every junction in the `urban` and `suburban` profiles, like parking; run through the corner in `rural`; end before ramp nodes in every profile | user |

@@ -86,7 +86,13 @@ _CONTACT = {"start": xodr.ContactPoint.start, "end": xodr.ContactPoint.end}
 
 @dataclass(frozen=True)
 class RoadEnd:
-    """One normal road's end at a junction."""
+    """One normal road's end at a junction.
+
+    Its driving lanes are -1 .. -right_lanes and 1 .. left_lanes at lane_width
+    each, unless lane_t gives them explicitly (stage B: a median or a turn
+    pocket shifts the ids, and widths may differ): driving lane id -> its
+    centre's offset t from the reference line at the contact point.
+    """
 
     edge_id: int
     road_id: int
@@ -96,18 +102,26 @@ class RoadEnd:
     left_lanes: int
     lane_width: float
     speed_limit: float
+    lane_t: tuple[tuple[int, float], ...] = ()
+
+    def _ids(self, right: bool) -> list[int]:
+        if self.lane_t:
+            return sorted((lane for lane, _ in self.lane_t if (lane < 0) == right), key=abs)
+        return [-i for i in range(1, self.right_lanes + 1)] if right else list(range(1, self.left_lanes + 1))
 
     @property
     def in_lanes(self) -> list[int]:
-        if self.contact == "end":
-            return [-i for i in range(1, self.right_lanes + 1)]
-        return list(range(1, self.left_lanes + 1))
+        return self._ids(right=self.contact == "end")
 
     @property
     def out_lanes(self) -> list[int]:
-        if self.contact == "end":
-            return list(range(1, self.left_lanes + 1))
-        return [-i for i in range(1, self.right_lanes + 1)]
+        return self._ids(right=self.contact != "end")
+
+    def lane_offset(self, lane_id: int) -> float:
+        """Offset t [m] of a driving lane's centre from the reference line (left positive)."""
+        if self.lane_t:
+            return dict(self.lane_t)[lane_id]
+        return math.copysign((abs(lane_id) - 0.5) * self.lane_width, lane_id)
 
     @property
     def heading_in(self) -> float:
@@ -121,8 +135,7 @@ class RoadEnd:
 
     def lane_pose(self, lane_id: int, incoming: bool) -> Pose:
         """Lane center at the contact point, heading in the travel direction."""
-        t = math.copysign((abs(lane_id) - 0.5) * self.lane_width, lane_id)
-        x, y = offset_point(self.pose, t)
+        x, y = offset_point(self.pose, self.lane_offset(lane_id))
         return Pose(x, y, self.heading_in if incoming else self.heading_out)
 
 
@@ -236,7 +249,7 @@ def u_turn_lane(a: RoadEnd, radius: float) -> Optional[tuple[int, int]]:
         return None
     lane = a.in_lanes[0]
     for out in a.out_lanes:
-        if (abs(lane) - 0.5 + abs(out) - 0.5) * a.lane_width >= 2 * radius - 1e-9:
+        if abs(a.lane_offset(lane) - a.lane_offset(out)) >= 2 * radius - 1e-9:
             return lane, out
     return None
 

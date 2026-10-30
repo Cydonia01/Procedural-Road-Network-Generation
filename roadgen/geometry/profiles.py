@@ -11,6 +11,12 @@ w0 + (w1 - w0)(3u^2 - 2u^3) over the MUTCD taper length, so lane edges stay
 tangent-continuous. A change of lane width on continuing lanes uses the same
 transition after the node. Tapers are at most half of their edge's length.
 
+Lane roles: every lane position of a layout has a kind (driving; side lanes
+from stage B) and keeps its position as its role. A lane section holds the
+lanes present over it, outward from the centre, with their roles, so a side
+lane outside a dropped driving lane keeps its role (and its links) while its
+lane id shifts inward.
+
 Speeds: each edge's limit over its range, lowered to a corner's advisory speed
 from a deceleration lead before the corner (at ADVISORY_DECEL) to its end.
 """
@@ -67,12 +73,21 @@ class WidthPiece:
                 -2 * dw / l3)
 
 
+Role = tuple[str, int]  # (lane kind, position in the layout: 1 = next to the centre)
+
+
 @dataclass(frozen=True)
 class LaneSection:
     s0: float
     s1: float
     right: tuple[WidthPiece, ...]  # lanes from the centre outward
     left: tuple[WidthPiece, ...]
+    right_roles: tuple[Role, ...] = ()  # role of each lane in right; () = driving lanes 1, 2, ...
+    left_roles: tuple[Role, ...] = ()
+
+    def roles(self, side: Side) -> tuple[Role, ...]:
+        pieces, roles = (self.right, self.right_roles) if side == "right" else (self.left, self.left_roles)
+        return roles or tuple(("driving", k) for k in range(1, len(pieces) + 1))
 
 
 @dataclass(frozen=True)
@@ -80,6 +95,8 @@ class LaneLayout:
     length: float
     right: tuple[tuple[WidthPiece, ...], ...]  # per lane position (1 = next to the centre), its pieces
     left: tuple[tuple[WidthPiece, ...], ...]
+    right_kinds: tuple[str, ...] = ()  # kind of each position; () = all driving
+    left_kinds: tuple[str, ...] = ()
 
     def breakpoints(self) -> list[float]:
         pts = {0.0, self.length}
@@ -94,19 +111,49 @@ class LaneLayout:
         out[-1] = self.length
         return out
 
+    def kinds(self, side: Side) -> tuple[str, ...]:
+        positions, kinds = (self.right, self.right_kinds) if side == "right" else (self.left, self.left_kinds)
+        return kinds or ("driving",) * len(positions)
+
     def sections(self) -> list[LaneSection]:
+        """Lane sections between breakpoints. Driving lanes must be contiguous from the
+        centre; other lanes close up inward where a lane between them is absent."""
         bps = self.breakpoints()
         out = []
         for s0, s1 in pairwise(bps):
             mid = 0.5 * (s0 + s1)
             sides = []
-            for side in (self.right, self.left):
-                present = [_covering(pieces, mid) for pieces in side]
-                n = sum(p is not None for p in present)
-                if any(p is None for p in present[:n]):
-                    raise ValueError(f"lanes are not contiguous from the centre at s={mid:.2f}")
-                sides.append(tuple(p for p in present[:n] if p is not None))
-            out.append(LaneSection(s0, s1, sides[0], sides[1]))
+            for side, positions in (("right", self.right), ("left", self.left)):
+                present, roles, gap = [], [], False
+                for pos, (pieces, kind) in enumerate(zip(positions, self.kinds(side)), 1):
+                    p = _covering(pieces, mid)
+                    if p is None:
+                        gap = gap or kind == "driving"
+                        continue
+                    if gap and kind == "driving":
+                        raise ValueError(f"lanes are not contiguous from the centre at s={mid:.2f}")
+                    present.append(p)
+                    roles.append((kind, pos))
+                sides.append((tuple(present), tuple(roles)))
+            (right, rr), (left, lr) = sides
+            plain = all(k == "driving" for k, _ in rr + lr)
+            out.append(LaneSection(s0, s1, right, left, () if plain else rr, () if plain else lr))
+        return out
+
+    def driving_offsets(self, s: float) -> dict[int, float]:
+        """Lane id -> lane-centre offset t from the reference line [m] of every driving lane
+        at station s (left positive); for road ends at junctions."""
+        sec = next((x for x in self.sections() if x.s0 - STATION_EPS <= s <= x.s1 + STATION_EPS), None)
+        if sec is None:
+            raise ValueError(f"station {s:.3f} outside the road (length {self.length:.3f})")
+        out: dict[int, float] = {}
+        for side, sign in (("right", -1), ("left", 1)):
+            t = 0.0
+            for k, (piece, (kind, _)) in enumerate(zip(getattr(sec, side), sec.roles(side)), 1):
+                w = piece.width(s)
+                if kind == "driving":
+                    out[sign * k] = sign * (t + w / 2)
+                t += w
         return out
 
     def half_widths(self, s: float) -> tuple[float, float]:
