@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B2 done (2026-10-30), B3 next.** Discussion,
+Status: **approved 2026-10-30; B0–B3 and the lane-section merge (moved from B9) done (2026-10-30), B4 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -137,6 +137,10 @@ The user's answers to the four questions of the discussion (also in its
 
 > Shoulders: end them before junctions in the urban and suburban profiles (like parking), keep them through the corner in the rural profile. Record this decision in the plan. Then commit B1 and implement B2. Stop after B2 and report.
 
+**2026-10-30, prompt 5**
+
+> Commit B2, then implement B3 (close the junction corner gaps in the .xodr). After B3, before B4, do the lane-section merge from B9 (align parking/shoulder taper start and end points) so later phases build on smaller files; record the move in the plan. Stop after that and report sizes and load times against the B2 numbers.
+
 ## Context
 
 Stage A (geometry) and stage C (diversity) of `Roadgen AV Readiness
@@ -217,6 +221,7 @@ phase; light phase plans also in OpenSCENARIO; all of item 4.
 | B1 | Cross-section core: params, lane roles, trims with corner radii, cross-section-aware repair | 1, 4 | 3.5 d | B0 |
 | B2 | Side lanes and medians in the builder; `plot-xodr` | 1 | 3.5 d | B1 |
 | B3 | Knock-on: buildings, ground, drape, grade separation; streetscape mesh; sidewalk corners | 1 | 2.5 d | B2 |
+| B3½ | Lane-section merge (moved here from B9 by prompt 5) | 1 | 0.5 d | B3 |
 | B4 | Road marks (DE) | 2 | 1.5 d | B2 |
 | B5 | Junction control, right of way, signs, stop and yield lines; `annotate` step | 3 | 4 d | B2, B4 |
 | B6 | Traffic lights, controllers, phase plans, OpenSCENARIO controllers | 3 | 3 d | B5 |
@@ -534,6 +539,99 @@ Exit of B2: full suite 604 passed, 1 failed (the known `test_monitor_memory_cap_
   - drive-check unchanged.
 - **Docs:** `docs/scene.md`, `docs/heights.md` (drape), `docs/geometry.md` (grade separation), `docs/opendrive.md` (sidewalk corners).
 
+#### B3 result (done 2026-10-30)
+
+- **Corner roads** close the junction corners in the `.xodr`, as planned (`junctions.py::corner_roads`, sidecar `corner_roads`):
+  - **reference line:** the right-turn path, with a `laneOffset` of half the turn lane's width;
+  - **lanes:** bike lane, curb and sidewalk (shoulder in rural profiles), blended between the two arms;
+  - **links:** to both arms' side lanes.
+
+  On the B0 spike junction the four 53.5 m² corner holes are gone. Changes against the plan:
+  - **Smooth blends.** Widths and the lane offset blend with a smoothstep (zero slope at both ends), not linearly. A linear blend tilted the offset lanes at the joins and the continuity check reported heading mismatches up to 0.15 rad.
+  - **Link rule relaxed.** A lane only one arm has (a bike lane) narrows to 0 m and has no link at that end. The continuity validator now accepts a connecting-road lane without a link where it is 0 m wide.
+  - **`closes` per corner road:** whether a movement drives the turn its curb follows. Where none does, mostly between two one-way roads in the same direction, surface between the curb and the movements stays without a lane: the remaining gap the plan foresaw, measured below.
+  - **Not "sidewalk-only":** a corner road carries every side lane the arms have at the junction (bike, curb, sidewalk, shoulder).
+- **Knock-on** (pipeline with `--hd`; the stand-alone `drape`, `separate` and `ground` commands have no `--hd` yet):
+  - **buildings** stand `setback` behind the sidewalks;
+  - **ground** is levelled to the roads' outer edges;
+  - **drape** makes a bridge wherever any part of the road's width is over water;
+  - **grade separation** spans the overpass's flat top over the lower road's side lanes.
+
+  All use the cross-section's trims.
+- **Clearance validator: no change needed.** It never reads widths: it checks the vertical gap where two reference lines cross, which side lanes do not change. The planned test "it reads the side lanes" rested on a wrong assumption (discussion, section 2) and was dropped.
+- **Repair fix** found on `mixed_city`: the fit runs after drape, and a collapse that moved a node left an edge 16 m shorter than its bridge ("bridge outside the edge"). Bridges and tunnels of the edges whose length changes now keep their share of the edge.
+- **No streetscape mesh:** nothing in the screenshots needed it.
+
+**Junction surface without a lane** (`b3_gaps.py` → `baselines/2026-10-30-stage-b-b3-gaps.json`; holes in the union of all lane polygons inside a junction's hull):
+
+| Network | Corner roads (closing) | By a closing corner | By a non-closing corner | Slivers between turning lanes (B0 for comparison) |
+|---|---|---|---|---|
+| grid | 352 (352) | 0 | 0 | 32 holes, 137 m² (32, 31 m²) |
+| manhattan_like | 1,440 (460) | 0 | 980, 8,322 m², max 19 m² | 390, 2,206 m² (320, 1,296 m²) |
+| paris | 726 (726) | 0 | 0 | 198, 943 m² (184, 200 m²) |
+| suburb | 604 (569) | 6, 8 m², max 2.5 m² | 2, 19 m² | 146, 1,201 m² |
+| city | 596 (595) | 0 | 1, 23 m² | 332, 3,125 m² (228, 343 m²) |
+| mixed_city | 1,131 (1,107) | 1, 1.1 m² | 5, 90 m² | 311, 2,388 m² (209, 673 m²) |
+| highway_corridor | 402 (401) | 0 | 1, 25 m² | 105, 461 m² |
+
+- **Every corner whose right turn is driven is closed,** apart from a few seams up to 2.5 m² (`suburb`, `mixed_city`).
+- **Open: one-way corners.** In the one-way Manhattan grid two thirds of the corners have no turn along them, and each leaves about 8.5 m².
+- **Open: slivers between turning lanes.** These were there before stage B, but wider junctions make them 2–9 times larger.
+
+Both are junction surface between connecting roads, not corner gaps. Closing them needs a junction-surface step (a filler lane, or an outline OpenDRIVE does not have in 1.6), proposed for B8 (junction realism).
+
+Example set with `--hd` (`out/stage_b/b3`): all networks build and validate (`mixed_city` after the repair fix). The sizes and load times are reported with the lane-section merge below, which also fixed folding corner sidewalks found then.
+
+Exit of B3: full suite 615 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's style; docs updated (`opendrive.md` corner roads and sidecar, `validation.md` continuity, `scene.md`, `heights.md`).
+
+### Lane-section merge (moved from B9 by prompt 5; done 2026-10-30)
+
+**Why moved:** B2 made files 1.5–3× larger, and every later phase builds on them.
+
+**What was asked:** align the parking and shoulder tapers' start and end points, so fewer lane sections are needed.
+
+**What was done instead,** and why:
+- **Counting the boundaries** in B2's `city` showed why alignment alone would not help. Of 2,605 sections, 1,272 boundaries came from parking alone: two per road end with parking, at the start of its 5 m taper and of its 10 m gap. Shoulders caused at most ~320, and on the grids (`grid`, `manhattan_like`) parking was everything. Aligning shoulders to parking would have removed under an eighth of `city`'s boundaries and nothing on the grids.
+- **One section can hold several widths.** OpenDRIVE allows several `<width>` records per lane in one lane section. So side lanes and medians now run the whole road, 0 m wide where they are absent, like the median since B2. Their tapers, curb extensions, bridge and tunnel cuts stay inside a section as several width records (`WidthPieces`).
+- **Sections now break only where a driving lane changes, or where a lane starts or ends.** A road with parking at both ends has one section instead of five.
+- **Driving lanes keep one width record per section,** which the drive-check's full-width runs and the scenario's lane slots rely on.
+- `metrics --hd` counts lane-km only where a lane's width records are not all zero.
+
+**Also found and fixed on the merged examples: folding corner sidewalks.** The side lanes of a corner road lie on the inside of the right turn, towards its centre of curvature. At tight turns they reached past it, and the sidewalk's outer edge folded over itself: 141 of `city`'s 596 corner roads (24 %, `corner_folds.py`). CARLA's mesh and OSI's lane boundaries would get self-intersecting sidewalks there. Now the outermost corner lane narrows where needed, so the lanes reach at most `CORNER_REACH` (85 %) of the way to the centre of curvature. It is a cubic Hermite chain of width records through 17 stations, flat at both ends. The curb and bike lane stay at the turn lane's edge, so the corner stays closed. Folds afterwards: 0. Test: `test_corner_lanes_never_fold_inside_tight_turns`.
+
+**Sizes** (`.xodr`, MB; B3 before the merge where it was built):
+
+| Example | B0 | B2 | B3 | merged |
+|---|---|---|---|---|
+| grid | 2.4 | 5.8 | 6.8 | 4.6 |
+| manhattan_like | 6.5 | 19.9 | 23.9 | 13.2 |
+| paris | 5.3 | 11.6 | 13.6 | 9.2 |
+| suburb | 5.6 | 9.8 | 11.5 | 8.9 |
+| organic_town | 2.4 | 5.2 | 6.2 | 4.2 |
+| city | 18.3 | 27.2 | 30.7 | 23.9 |
+| mixed_city | 23.2 | 34.3 | — | 33.1 |
+| highway_corridor | 7.5 | 12.1 | 14.5 | 11.2 |
+
+The merge saves 23–45 % against B3 and leaves every file 3–34 % smaller than in B2, despite the corner roads added since.
+
+**esmini load times** (`esmini_load.py`: esmini headless on a scenario without vehicles, best of 3, B2 and merged files timed back to back in one container):
+
+| Example | B2 | merged |
+|---|---|---|
+| grid | 2.4 s | 3.5 s |
+| manhattan_like | 13.1 s | 32.8 s |
+| city | 26.2 s | 52.3 s |
+| mixed_city | 68.1 s | 72.5 s (runs 72–142 s) |
+
+- **The merge does not change load time.** The merged `city` without its corner roads loads in 25.9 s, the same as B2. esmini samples every lane along its length (OSI points, 1 m steps), whatever the sections.
+- **The extra time is the corner roads' (B3).** Seven variants of the merged `city` (`esmini_load.py --variants`, `RM_Init` only: 28.7 s without corner roads, 53.1 s with) rule out curb heights, width blends and lane offset, lane links (still ≥ 40 s), the junction connections (40.5 s without; they explain about 10 s), lane count (one lane each: 43.9 s) and curve shape (straight lines: 45.6 s). Narrowing the sidewalks further did not change it either.
+- **The cost per corner road is uneven:** about 44 ms on `city`, 14 ms on `manhattan_like`, 3 ms on `grid`. The cause lies in esmini's RoadManager (it always computes OSI points at load) and was not found without a profiler, which the container does not have.
+- **Open, for B9's performance check** (or a report to esmini), with three options: profile esmini's load; a switch to leave corner roads out of throughput benchmarks; accept the cost. Stepping speed is not affected (B2: 74× real time on `city`; the load is a one-off per run).
+
+**Example set** (`out/stage_b/merge`, final code): all 11 networks build and validate. The drive-check passes on every network where it runs (18 runs, movements and whole lanes). esmini simulates `city` and `mixed_city` with 0 errors. The junction gaps are unchanged by the merge (`baselines/2026-10-30-stage-b-b3-gaps.json`, the B3 table above).
+
+**Exit:** full suite 616 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's style; docs updated (`opendrive.md`, `geometry.md`). Helper scripts: `esmini_load.py`, `corner_folds.py`.
+
 ### B4 · Road marks (DE)
 
 - **Catalogue in `opendrive/lanes.py`** (or a new `marks.py` if it gets long). `RoadMarkParams` in the `road_marks` section. All marks are white:
@@ -730,7 +828,7 @@ Exit of B2: full suite 604 passed, 1 failed (the known `test_monitor_memory_cap_
   - no junction connection starts or ends in a non-driving lane;
   - every check from B4–B8.
 - **`metrics --hd`** completed. `metrics --sweep 200` builds with HD on and counts failures for `city` and `mixed_city` (target 0).
-- **Performance against B0:** build and validation time, `.xodr` size, esmini load time and real-time factor on `city` and `mixed_city`.
+- **Performance against B0:** build and validation time, `.xodr` size, esmini load time and real-time factor on `city` and `mixed_city`. *(The lane-section merge planned here was moved before B4, see its result; the corner roads' esmini load cost found there is open for this phase.)*
 - **Modules:** `roadgen/validate/hdmap.py`, `roadgen/metrics/hdmap.py`, `roadgen/metrics/sweep.py`, `cli.py`.
 - **Tests:** each validator check on a broken fixture (a sign outside the road, a missing stop line, a sidewalk linked to a driving lane, conflicting greens).
 - **Docs:** `docs/validation.md`, `docs/cli-reference.md`.
