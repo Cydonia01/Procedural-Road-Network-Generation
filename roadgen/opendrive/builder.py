@@ -37,6 +37,11 @@ from roadgen.geometry.alignment import (
     NetworkAlignment,
     network_alignment,
 )
+from roadgen.geometry.cross_section import (
+    CrossSectionParams,
+    edge_cross_section,
+    loop_edges,
+)
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.profiles import (
     bridge_spans,
@@ -100,6 +105,7 @@ class OpenDriveBuilder:
         self.movements: list[Movement] = []
         self.bridges: dict[int, list[tuple[float, float]]] = {}  # road id -> (s, length)
         self.tunnels: dict[int, list[tuple[float, float]]] = {}  # road id -> (s, length)
+        self.cross_sections: dict[int, str] = {}  # edge id -> cross-section profile (HD maps on)
 
     def build(self, graph: RoadGraph) -> xodr.OpenDrive:
         errors = graph.validate()
@@ -116,9 +122,11 @@ class OpenDriveBuilder:
         tunnels: dict[int, list[tuple[float, float]]] = {}
         ends: dict[int, list[RoadEnd]] = {n: [] for n in na.junctions}
         junctions = set(na.junctions)
+        loops = loop_edges(graph) if self.hd.enabled else frozenset()
         planes = junction_planes(graph, na, self.design) if heights else None
         for road_id, ca in enumerate(na.chains, 1):
-            road, road_ends, spans = self._make_road(graph, ca, road_id, junctions, planes, self.design)
+            road, road_ends, spans = self._make_road(graph, ca, road_id, junctions, planes, self.design,
+                                                     self.hd.active_cross_section, loops)
             if spans:
                 bridges[road_id] = spans
             if tunnel_spans(graph, ca):
@@ -162,6 +170,9 @@ class OpenDriveBuilder:
         self.movements = movements
         self.bridges = bridges
         self.tunnels = tunnels
+        cs = self.hd.active_cross_section
+        self.cross_sections = {} if cs is None else {
+            eid: edge_cross_section(e, cs, eid in loops).profile for eid, e in sorted(graph.edges.items())}
         return odr
 
     def write(self, path: PathLike) -> Path:
@@ -194,6 +205,8 @@ class OpenDriveBuilder:
                         for e, (r, s0, s1) in sorted(self.edge_s_range.items())
                     },
                     "corners": self._corner_records(),
+                    **({"cross_sections": {str(e): p for e, p in self.cross_sections.items()}}
+                       if self.cross_sections else {}),
                 },
                 indent=2,
             )
@@ -243,6 +256,7 @@ class OpenDriveBuilder:
     def _make_road(
         graph: RoadGraph, ca: ChainAlignment, road_id: int, junctions: set[int],
         planes: Optional[dict[int, JunctionPlane]] = None, design: DesignParams = DesignParams(),
+        cross_section: Optional[CrossSectionParams] = None, loops: frozenset[int] = frozenset(),
     ) -> tuple[xodr.Road, list[tuple[int, RoadEnd]], list[tuple[float, float]]]:
         """The chain's road, its ends at junctions, and its bridges as (s, length)."""
         planview = xodr.PlanView()
@@ -250,7 +264,7 @@ class OpenDriveBuilder:
             planview.add_fixed_geometry(piece_geometry(piece), piece.start.x, piece.start.y, piece.start.hdg)
         ids = ca.chain.edge_ids
         name = f"edge_{ids[0]}" if len(ids) == 1 else "edges_" + "_".join(map(str, ids))
-        layout = lane_layout(graph, ca)
+        layout = lane_layout(graph, ca, cross_section, frozenset(junctions), loops)
         road = xodr.Road(road_id, planview, make_lane_sections(layout), name=name)
         for s, speed in speed_profile(graph, ca):
             road.add_type(ROAD_TYPE, s=round(s, 6), speed=speed, speed_unit="m/s")

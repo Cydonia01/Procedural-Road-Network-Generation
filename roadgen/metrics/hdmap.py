@@ -3,7 +3,8 @@
 Works on the OpenDRIVE file alone (plus its .roadmap.json sidecar, where
 there is one), so it counts any network the same way:
 
-- lane length per lane type, as km of lane per km of normal road;
+- lane length per lane type, as km of lane per km of normal road (lanes 0 m wide
+  over a whole section left out);
 - road marks on normal roads by type and colour, and marks on connecting
   roads (a junction interior should have none);
 - signals by country and type(-subtype), dynamic ones (lights) apart, and
@@ -43,6 +44,13 @@ def _section_spans(road: etree._Element) -> list[tuple[etree._Element, float]]:
     return [(sec, max(starts[k + 1] - starts[k], 0.0)) for k, sec in enumerate(sections)]
 
 
+def _zero_width(lane: etree._Element) -> bool:
+    """Whether a lane is 0 m wide over its whole section (a median lane where there is
+    no median keeps the driving lanes' ids)."""
+    widths = lane.findall("width")
+    return bool(widths) and all(abs(float(w.get(k, 0))) < 1e-9 for w in widths for k in "abcd")
+
+
 def _sign_key(sig: etree._Element) -> str:
     subtype = sig.get("subtype", "-1")
     key = f"{sig.get('country', '?')}:{sig.get('type', '?')}"
@@ -68,7 +76,7 @@ def hdmap_metrics(xodr_path: PathLike) -> dict[str, Any]:
     for road in normal:
         for sec, length in _section_spans(road):
             for lane in sec.iter("lane"):
-                if lane.get("id") != "0":
+                if lane.get("id") != "0" and not _zero_width(lane):
                     lane_km[lane.get("type", "none")] += length / 1000.0
                 for mark in lane.findall("roadMark"):
                     marks[f"{mark.get('type', '?')}/{mark.get('color', 'standard')}"] += 1

@@ -133,7 +133,8 @@ roadgen/
     transforms/            graph → graph passes: drop, culdesac, stagger, roundabout, interchange
   geometry/                neutral road shape (no OpenDRIVE imports)
     planar.py              poses, straight segments, Hermite paramPoly3
-    junction_space.py      junction trims: where roads stop at a node
+    junction_space.py      junction trims: where roads stop at a node; curb returns
+    cross_section.py       side lanes, medians, corner radii per profile and road class
     design.py              design-speed rules: radii, advisory speeds, spirals, tapers
     primitives.py          line / arc / spiral pieces, alignments
     clothoid.py            G2 clothoid transitions
@@ -145,7 +146,9 @@ roadgen/
   opendrive/
     builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
     junctions.py           movement planning and connecting roads
-    lanes.py               lane sections and road marks
+    lanes.py               lane sections (lane types, heights) and road marks
+    hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
+    plot.py                plot-xodr: a built .xodr's lanes coloured by type
   validate/
     connectivity.py        traffic traps and reachability (RoadGraph)
     topology.py            ids and links (.xodr)

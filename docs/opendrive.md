@@ -65,10 +65,38 @@ reference line, and left lanes (positive ids) drive against it.
 - **Lane sections** (`make_lane_sections`, from the
   [lane layout](geometry.md#along-road-profiles)). A new section starts
   wherever the lane count or width changes.
-  - Lanes are linked by position across section boundaries.
+  - Lanes are linked by **role** across section boundaries: the same kind and
+    position in the [lane layout](geometry.md#along-road-profiles). A side lane
+    outside a driving lane that ends keeps its links while its id shifts
+    inward.
   - A lane that narrows to 0 or widens from 0 at a boundary has no link there.
-- **Road marks.** A solid centre line, broken lines between lanes (3 m dash,
-  9 m gap), and a solid line on the outermost edge.
+- **Side lanes** (HD maps on, [cross-sections](geometry.md#cross-sections)).
+  Outside the driving lanes, as OpenDRIVE lane types `biking`, `parking`,
+  `shoulder`, `curb`, `sidewalk` and `border`. Curbs and sidewalks are raised
+  0.15 m with `<height>`, which esmini draws as a curb face.
+  - **Ending before junctions:** parking tapers out (5 m) to end 10 m before
+    a junction (a curb extension); shoulders (urban and suburban profiles,
+    and at ramp nodes) and bike lanes before a roundabout entry narrow to
+    0 m at the road's end.
+  - **Bridges and tunnels:** parking stops over bridges; shoulders narrow to
+    1 m in tunnels.
+  - **One-way roads** have them on both edges: those on the reference line's
+    left edge are positive lanes.
+  - **Loops** (roundabout rings, cul-de-sac bulbs) have only curb and
+    sidewalk outside and a curb on the island side.
+- **Medians** (`median` lanes) sit next to the centre line on two-way roads
+  with 2 or more lanes each way (2 m on highways). They taper out
+  (MUTCD shift taper) to end 5 m before every junction. The median lane runs
+  the whole road, 0 m wide where there is no median, so the driving lanes
+  keep their ids (−2, −3, … and 2, 3, …) along the road. Anything that
+  follows a lane by id (esmini's drive-check, the scenario's routes) thus
+  stays on the same lane. Junction connections start from the driving lanes.
+- Only **driving** lanes get junction connections, scenario spawn slots and
+  routes; esmini's own traffic (odrviewer) also keeps to driving-type lanes.
+- **Road marks.** On driving lanes only, until the HD road marks (B4).
+- **Road marks** (without HD maps). A solid centre line, broken lines between
+  lanes (3 m dash, 9 m gap), and a solid line on the outermost driving lane's
+  edge.
 
 **At a contact point.** A road whose reference line **ends** at a junction
 (contact `end`) brings traffic in on its right lanes and takes it out on its
@@ -198,3 +226,4 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `movements` | Every connecting road: kind, `turn_angle` (radians, counter-clockwise positive, in (−π, π]), `path`, and from / to edge, road and lane |
 | `corners` | Every fitted bend: `road`, `node`, `s_start`, `s_end`, reference `radius`, innermost `lane_radius`, `design_speed`, `max_speed`, `advisory_speed` (null at design radius), in m and m/s |
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
+| `cross_sections` | HD maps on only: each edge's cross-section profile |

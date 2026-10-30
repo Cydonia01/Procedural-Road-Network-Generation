@@ -23,6 +23,7 @@ from roadgen.generators.base import (
     get_generator,
     presets_of,
 )
+from roadgen.geometry.cross_section import PROFILES
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
@@ -57,6 +58,14 @@ def cmd_plot_graph(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plot_xodr(args: argparse.Namespace) -> int:
+    from roadgen.opendrive.plot import plot_xodr
+
+    output = artifact(args, args.output, Path(args.input).with_suffix(".lanes.png"))
+    plot_xodr(args.input, output, args.step)
+    return 0
+
+
 @contextmanager
 def timed(label: str) -> Iterator[None]:
     start = time.perf_counter()
@@ -83,8 +92,13 @@ def junction_params(cfg: dict):
 
 
 def hd_params(args: argparse.Namespace) -> HdMapParams:
-    """HD-map settings of a build: the config, with --hd / --no-hd and the run's seed."""
-    return HdMapParams.from_config(args.cfg, getattr(args, "seed", None), getattr(args, "hd", None))
+    """HD-map settings of a build: the config, with --hd / --no-hd, --cross-section and the
+    run's seed."""
+    hd = HdMapParams.from_config(args.cfg, getattr(args, "seed", None), getattr(args, "hd", None))
+    profile = getattr(args, "cross_section", None)
+    if profile is not None:
+        hd = dataclasses.replace(hd, cross_section=dataclasses.replace(hd.cross_section, profile=profile))
+    return hd
 
 
 def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: float) -> RoadGraph:
@@ -368,6 +382,11 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
     errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd)
+    if hd.enabled and xodr.exists():
+        from roadgen.opendrive.plot import plot_xodr
+
+        with timed("plot lanes"):
+            plot_xodr(xodr, Path(f"{prefix}_hd.png"))
     scenegraph = None
     if args.ground:
         if "elevation" not in layers:
@@ -809,7 +828,18 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         "--hd", action=argparse.BooleanOptionalAction, default=None,
         help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
     )
+    p.add_argument(
+        "--cross-section", choices=PROFILES, metavar="PROFILE",
+        help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
+             "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
+    )
     p.set_defaults(func=cmd_build_xodr)
+
+    p = sub.add_parser("plot-xodr", help="draw an .xodr's lanes coloured by lane type")
+    p.add_argument("input", help=".xodr file")
+    p.add_argument("output", nargs="?", help="output image (default: <input>.lanes.png)")
+    p.add_argument("--step", type=float, default=2.0, help="sample spacing along roads [m] (default %(default)s)")
+    p.set_defaults(func=cmd_plot_xodr)
 
     p = sub.add_parser("generators", help="list registered generators, presets and parameters")
     p.set_defaults(func=cmd_generators)
@@ -844,6 +874,11 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g.add_argument(
             "--hd", action=argparse.BooleanOptionalAction, default=None,
             help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
+        )
+        g.add_argument(
+            "--cross-section", choices=PROFILES, metavar="PROFILE",
+            help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
+                 "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
         )
         g.add_argument(
             "--drive-check", action="store_true",

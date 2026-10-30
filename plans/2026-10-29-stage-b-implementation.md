@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0 and B1 done (2026-10-30), B2 in progress.** Discussion,
+Status: **approved 2026-10-30; B0–B2 done (2026-10-30), B3 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -474,6 +474,39 @@ Exit of B1: full suite 587 passed, 1 failed (the known `test_monitor_memory_cap_
   - drive-check on `grid`, `roundabout` and `diamond` with HD on;
   - HD off identical.
 - **Docs:** `docs/opendrive.md` (Lanes: side lanes, medians, role links), `docs/cli-reference.md` (`--hd`, `--cross-section`, `plot-xodr`), `docs/architecture.md` (module map).
+
+#### B2 result (done 2026-10-30)
+
+Delivered as planned: lane layout with side lanes and medians, lane types and curb / sidewalk heights in `make_lane_sections`, `--cross-section`, `plot-xodr` (and `PREFIX_hd.png` from `pipeline --hd`), and sidecar `cross_sections`. Changes against the plan, each found on the examples:
+
+- **The median lane runs the whole road, 0 m wide where there is no median.** Planned: medians taper to 0 before junctions. As a lane that then disappears, the median shifted the driving lane ids along the road (−1 mid-road, the first driving lane near the junction). Everything that follows a lane by id broke: the scenario's whole-road lanes and routes, esmini's drive-check (the `diamond` and the median test failed). With the lane kept at 0 m the driving lanes are −2, −3 … along the whole road; the median still tapers out (MUTCD shift taper) to end 5 m before every junction. `metrics --hd` leaves out lanes that are 0 m wide over a whole section.
+- **Shoulders and bike lanes that end at a junction narrow to 0 m at the road's end**, so they are still present, 0 m wide, in the last lane section. Parking ends 10 m before, as planned.
+- **Abrupt lane ends closed.** A cut (junction end, bridge) next to an internal width change (a street-to-avenue chain: parking 2.2 → 2.4 m) dropped the width-change piece and left parking ending at full width mid-road (`suburb`: 2 roads, continuity errors). Every run of a side lane that starts or ends inside the road now tapers over `side_taper` (`_close_runs`).
+- **Drive-check fixes** (`roadgen/sim/drive_check.py`), both found on `city`:
+  - **Full-width run checks the lane type.** The run before the junction and after it now stops where the lane id is not a driving lane. Before the taper of an added driving lane, its id is the bike lane's.
+  - **Jumps measured against the lane's own path.** esmini moves 0.5 m along the reference line, so a lane 5 m off it on the inside of a tight corner covers only 0.31 m per step. Wider trims squeezed one such corner (curvature 0.035 1/m) into the last 9.5 m of a road. esmini's positions and roadgen's own lane centres matched to the millimetre there, yet the check flagged 3 movements. A step is now compared with the lane-centre path between its positions (onto the next road: to the first lane's end plus from the next lane's start). A new test confirms a 0.3 m gap between two roads is still caught.
+- `--cross-section PROFILE` sets the **default** profile; edges with their own `Edge.cross_section` keep it. That is not "forces one profile on every edge": the `annotate` step's per-edge profiles (B5) must win.
+- The sidecar's `cross_sections` is keyed by **edge id** (an edge has one profile, a chain road can have several).
+- Side lanes carry no road marks yet (B4); driving lanes keep theirs, the solid line on the outermost driving lane found by role.
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b2 --hd`, `baselines/2026-10-30-stage-b-after-b2-hd.json`): all 11 networks build, validate, and pass the drive-check (movements and whole lanes) wherever it runs. esmini simulates `city` and `mixed_city` with 0 errors.
+
+Lane km per road km, e.g. `city`: driving 3.17, sidewalk and curb 1.48, parking 1.20, bike 0.64, shoulder 0.52, median 0.23. `grid`: driving 2.42, sidewalk and curb 2.00, parking 1.72, bike 0.42.
+
+| | B0 | B2 with `--hd` |
+|---|---|---|
+| `.xodr` size | grid 2.4, manhattan_like 6.5, city 18.3, mixed_city 23.2 MB | 5.8, 19.9, 27.2, 34.3 MB |
+| pipeline (incl. drive-check) | city 79 s, mixed_city 170 s | 147 s, 250 s |
+| esmini load, 50 cars | city 17.3 s, mixed_city 48.1 s | 26.3 s, 68.5 s |
+| esmini stepping | 87× / 64× real time | 74× / 59× real time |
+
+Files grow 1.5–3× because every lane section repeats all of a road's lanes, and parking tapers add four sections per road.
+
+**Open points:**
+- File size and load time are the price of the side lanes. A lane section per taper is what OpenDRIVE needs, but aligning tapers (e.g. parking and shoulders ending at the same stations) could cut sections. To weigh in B9's performance check.
+- The corner gaps at junctions remain until B3, as planned.
+
+Exit of B2: full suite 604 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's `Optional[...]` style and B008; docs updated (`opendrive.md` lanes and sidecar, `validation.md` drive-check, `cli-reference.md` `--cross-section` and `plot-xodr`, `architecture.md`).
 
 ### B3 · Knock-on effects and the streetscape
 

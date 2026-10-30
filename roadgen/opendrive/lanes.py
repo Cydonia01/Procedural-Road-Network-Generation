@@ -12,6 +12,13 @@ from scenariogeneration import xodr
 
 from roadgen.geometry.profiles import LaneLayout, WidthPiece
 
+# OpenDRIVE lane type of each lane kind of a layout (stage B side lanes and medians).
+LANE_TYPES = {
+    "driving": xodr.LaneType.driving, "median": xodr.LaneType.median, "parking": xodr.LaneType.parking,
+    "biking": xodr.LaneType.biking, "curb": xodr.LaneType.curb, "sidewalk": xodr.LaneType.sidewalk,
+    "shoulder": xodr.LaneType.shoulder, "border": xodr.LaneType.border,
+}
+
 MARK_WIDTH = 0.15
 BROKEN_LENGTH = 3.0
 BROKEN_SPACE = 9.0
@@ -82,9 +89,10 @@ def make_lane_sections(layout: LaneLayout) -> xodr.Lanes:
                                   ("left", section.left, ls.add_left_lane)):
             sign = -1 if side == "right" else 1
             roles = section.roles(side)
-            n_driving = sum(kind == "driving" for kind, _ in roles)
+            outer_driving = max((k for k, (kind, _) in enumerate(roles, 1) if kind == "driving"), default=0)
             for pos, (piece, role) in enumerate(zip(pieces, roles), 1):
-                lane = _section_lane(piece, section.s0, outermost=pos == n_driving)
+                lane = _section_lane(piece, section.s0, pos == outer_driving, role[0],
+                                     layout.height(side, role[1]))
                 before = previous[side].get(role)
                 if before is not None and _continues(piece, section.s0):
                     lane.add_link("predecessor", before[1])
@@ -101,8 +109,15 @@ def _continues(piece: WidthPiece, s0: float) -> bool:
     return not (piece.s0 >= s0 - 1e-6 and piece.w0 == 0.0)
 
 
-def _section_lane(piece: WidthPiece, s0: float, outermost: bool) -> xodr.Lane:
+def _section_lane(piece: WidthPiece, s0: float, outermost: bool, kind: str = "driving",
+                  height: float = 0.0) -> xodr.Lane:
+    """A lane of a section: driving lanes with their marks (solid on the outermost);
+    side lanes and medians unmarked (road marks come in stage B4), curbs and
+    sidewalks raised by height [m]."""
     a, b, c, d = piece.poly(s0)
-    lane = xodr.Lane(xodr.LaneType.driving, a=a, b=b, c=c, d=d)
-    lane.add_roadmark(solid_mark() if outermost else broken_mark())
+    lane = xodr.Lane(LANE_TYPES[kind], a=a, b=b, c=c, d=d)
+    if kind == "driving":
+        lane.add_roadmark(solid_mark() if outermost else broken_mark())
+    if height > 0:
+        lane.add_height(inner=height, outer=height)
     return lane

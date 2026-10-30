@@ -7,7 +7,12 @@ forward in small steps with esmini's junction selector aimed at the movement,
 through the connecting road and 20 m beyond.
 A movement passes when esmini routes it over the expected connecting road
 into the expected lane, the position never jumps, and esmini never reports
-an error. Reaching the end of a dead-end target road just ends the drive.
+an error. A jump is a step whose length differs from the distance between
+the lane's centre points at the two stations (our own evaluation of the
+.xodr): esmini moves a fixed distance along the reference line, so a lane
+far from it covers less ground on the inside of a curve and more outside.
+A step from one road onto the next is measured along both lanes: to where
+the first one ends and from where the next one starts. Reaching the end of a dead-end target road just ends the drive.
 Where one incoming lane splits into several lanes of the same road (a lane
 split, stage C5), esmini's selector, which only knows the turn angle, can't
 choose between them: any connecting road of that split, into its own lane,
@@ -29,13 +34,14 @@ from lxml import etree
 
 from roadgen.opendrive.builder import sidecar_path
 from roadgen.sim.esmini import esmini_library
+from roadgen.validate.continuity import RoadEval
 
 PathLike = Union[str, Path]
 
 APPROACH = 20.0  # m before the junction (at most half the incoming road)
 STEP = 0.5  # m per move
 DRIVE_ON = 20.0  # m driven on after the connecting road (less if the target road ends)
-JUMP_TOL = 0.05  # m deviation from STEP that counts as a jump
+JUMP_TOL = 0.05  # m deviation of a step from the lane's own path length that counts as a jump
 END_OF_ROAD = -2  # esmini Position::ReturnCode::ERROR_END_OF_ROAD
 
 # esmini's junctionSelectorAngle, measured counter-clockwise from straight
@@ -101,6 +107,7 @@ def drive_movements(xodr_path: PathLike, lib_path: Optional[PathLike] = None) ->
     xodr_path = Path(xodr_path)
     movements = json.loads(sidecar_path(xodr_path).read_text())["movements"]
     roads = {int(r.get("id")): r for r in etree.parse(str(xodr_path)).getroot().findall("road")}
+    evals = {rid: RoadEval(r) for rid, r in roads.items()}
     lengths = {rid: float(r.get("length")) for rid, r in roads.items()}
     lib = _load_rm(lib_path)
     if lib.RM_Init(str(xodr_path).encode()) != 0:
@@ -114,7 +121,7 @@ def drive_movements(xodr_path: PathLike, lib_path: Optional[PathLike] = None) ->
         for m in movements:
             r = _drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]],
                        _full_width_run(roads[m["from_road"]], m["from_lane"]),
-                       _full_width_run(roads[m["to_road"]], m["to_lane"], at_exit=False))
+                       _full_width_run(roads[m["to_road"]], m["to_lane"], at_exit=False), evals)
             r.accepted = tuple(splits[(m["from_road"], m["from_lane"], m["to_road"])])
             results.append(r)
         return results
@@ -122,18 +129,40 @@ def drive_movements(xodr_path: PathLike, lib_path: Optional[PathLike] = None) ->
         lib.RM_Close()
 
 
+def _lane_step(evals: Optional[dict], before: tuple[int, int, float], after: tuple[int, int, float]) -> float:
+    """Length of the lane-centre path between two positions (road, lane, s), by our
+    evaluation of the .xodr: a chord on one road and lane; onto the next road, the chord
+    to where the first lane ends (right lanes travel along +s) plus the chord from where
+    the next one starts. STEP without an evaluation."""
+    if evals is None or before[0] not in evals or after[0] not in evals:
+        return STEP
+    try:
+        if before[:2] == after[:2]:
+            return math.dist(evals[before[0]].lane_center(before[1], before[2]),
+                             evals[after[0]].lane_center(after[1], after[2]))
+        a, b = evals[before[0]], evals[after[0]]
+        exit_s = a.length if before[1] < 0 else 0.0
+        entry_s = 0.0 if after[1] < 0 else b.length
+        return (math.dist(a.lane_center(before[1], before[2]), a.lane_center(before[1], exit_s))
+                + math.dist(b.lane_center(after[1], entry_s), b.lane_center(after[1], after[2])))
+    except (KeyError, ValueError):
+        return STEP
+
+
 def _full_width_run(road: etree._Element, lane: int, at_exit: bool = True) -> float:
     """How far the lane runs at constant width from the road end where its traffic
     leaves (at_exit; s = length for right lanes, 0 for left lanes) or enters:
     an approach must start, and a drive on must end, within that stretch,
-    not in a taper or where the lane does not exist."""
+    not in a taper or where the lane does not exist. A lane id that is not a
+    driving lane in a section (a side lane outside a driving lane that has not
+    started yet) ends the stretch too."""
     length = float(road.get("length"))
     sections = road.findall("lanes/laneSection")
     bounds = [float(sec.get("s")) for sec in sections] + [length]
     full = []
     for k, sec in enumerate(sections):
         el = sec.find(f"*/lane[@id='{lane}']")
-        widths = el.findall("width") if el is not None else []
+        widths = el.findall("width") if el is not None and el.get("type") == "driving" else []
         full.append(bool(widths) and all(abs(float(w.get(c, 0))) < 1e-12 for w in widths for c in "bcd"))
     from_end = (lane < 0) == at_exit
     order = range(len(sections) - 1, -1, -1) if from_end else range(len(sections))
@@ -146,7 +175,8 @@ def _full_width_run(road: etree._Element, lane: int, at_exit: bool = True) -> fl
 
 
 def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: float,
-           lane_run: Optional[float] = None, target_run: Optional[float] = None) -> DriveResult:
+           lane_run: Optional[float] = None, target_run: Optional[float] = None,
+           evals: Optional[dict] = None) -> DriveResult:
     # Aim the junction selector at the movement's actual heading change when
     # known (several exits can share a kind at 5-way junctions).
     if "turn_angle" in m:
@@ -162,6 +192,7 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: flo
     data = _PositionData()
     lib.RM_GetPositionData(handle, ctypes.byref(data))
     route, prev = [data.roadId], (data.x, data.y)
+    where = (data.roadId, data.laneId, data.s)
     max_jump, min_rc = 0.0, 0
     entry_lane = None
     # Through the junction however long its connecting road is, then a bit further.
@@ -173,7 +204,9 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: flo
             break  # the target road is a short dead end: the movement is done
         min_rc = min(min_rc, rc)
         lib.RM_GetPositionData(handle, ctypes.byref(data))
-        max_jump = max(max_jump, abs(math.hypot(data.x - prev[0], data.y - prev[1]) - STEP))
+        expected = _lane_step(evals, where, (data.roadId, data.laneId, data.s))
+        max_jump = max(max_jump, abs(math.hypot(data.x - prev[0], data.y - prev[1]) - expected))
+        where = (data.roadId, data.laneId, data.s)
         if data.roadId != route[-1]:
             route.append(data.roadId)
             # The target road may be short (e.g. a ring spur), so read the lane
@@ -214,8 +247,6 @@ def drive_lanes(xodr_path: PathLike, lib_path: Optional[PathLike] = None) -> lis
     evaluated by roadgen.validate.continuity (line, arc, spiral geometry,
     lane offsets and widths, elevation and superelevation).
     """
-    from roadgen.validate.continuity import RoadEval
-
     xodr_path = Path(xodr_path)
     roads = [RoadEval(r) for r in etree.parse(str(xodr_path)).getroot().findall("road")
              if r.get("junction", "-1") == "-1"]

@@ -14,12 +14,13 @@ check or simulation failed.
 | **Input maps** | |
 | [`maps`](#generators-maps) | List map generators, presets and parameters |
 | [`map`](#map) | One input map (`.npz` + `.png`) |
-| [`plot-map`](#plot-map-plot-graph) | Map `.npz` → image |
+| [`plot-map`](#plot-map-plot-graph-plot-xodr) | Map `.npz` → image |
 | **Graph steps** | |
 | [`align`](#align-drape-separate) | Cap bend radii where a fitted curve would leave legal ground |
 | [`drape`](#align-drape-separate) | Heights from an elevation map into a RoadGraph |
 | [`separate`](#align-drape-separate) | Overpasses where roads cross without a junction |
-| [`plot-graph`](#plot-map-plot-graph) | RoadGraph JSON → image |
+| [`plot-graph`](#plot-map-plot-graph-plot-xodr) | RoadGraph JSON → image |
+| [`plot-xodr`](#plot-map-plot-graph-plot-xodr) | `.xodr` → image of its lanes by type |
 | **OpenDRIVE and checks** | |
 | [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
 | [`drive-check`](#drive-check) | Drive every junction movement and lane with esmini's RoadManager |
@@ -160,7 +161,8 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2) |
-| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), and edges too short for the wider junctions are repaired before the build |
+| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), and edges too short for the wider junctions are repaired before the build. Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
+| `--cross-section PROFILE` | Default profile with `--hd`: `urban`, `suburban`, `rural` or `none` (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
 | `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
 | `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |
 | `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
@@ -187,12 +189,17 @@ Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
 | `--on KIND=FILE.npz` | Build on an earlier kind, e.g. `map elevation fbm --on terrain=coast.npz`. Repeatable; not for `terrain`. Resampled if on another grid |
 | `--graph FILE.json` | Draw this RoadGraph on the preview |
 
-## plot-map, plot-graph
+## plot-map, plot-graph, plot-xodr
 
 ```bash
 python -m cli plot-map INPUT.npz [OUTPUT.png] [--graph FILE.json]     # default: <input>.png
 python -m cli plot-graph INPUT.json [OUTPUT.png] [--node-ids]          # default: <input>.png
+python -m cli plot-xodr INPUT.xodr [OUTPUT.png] [--step M]             # default: <input>.lanes.png
 ```
+
+`plot-xodr` draws a built `.xodr`'s lanes, connecting roads included, as
+polygons coloured by OpenDRIVE lane type, sampled every `--step` metres
+(default 2), from the file alone (`roadgen/opendrive/plot.py`).
 
 ## align, drape, separate
 
@@ -211,10 +218,10 @@ are the config sections `align:`, `drape:` and `grade_separation:`.
 ## build-xodr
 
 ```bash
-python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd]   # default: <input>.xodr
+python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd] [--cross-section PROFILE]   # default: <input>.xodr
 ```
 
-`--hd` / `--no-hd` as for [pipeline](#pipeline).
+`--hd` / `--no-hd` and `--cross-section` as for [pipeline](#pipeline).
 
 Builds and validates. Traffic connectivity problems are only warnings here,
 since hand-made test graphs often have dead ends.

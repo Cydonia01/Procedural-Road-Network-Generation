@@ -143,16 +143,23 @@ logic, the same logic its traffic uses, through `libesminiRMLib` loaded with
 **Every junction movement** in the `.roadmap.json` is driven:
 
 1. **Start** 20 m before the junction in the incoming lane. Where the road is
-   short, start at most half the road back, and never in a taper.
+   short, start at most half the road back, and never in a taper or where
+   that lane id is not a driving lane.
 2. **Drive** forward in 0.5 m steps through the connecting road and 20 m
-   beyond (less where the target lane is dropped sooner). The junction
+   beyond (less where the target lane is dropped sooner, or where its id
+   stops being a driving lane). The junction
    selector is aimed at the movement's `turn_angle`, so exits of the same
    kind at a 5-way junction are told apart.
 3. **Pass** if all of these hold:
    - the route is incoming road → expected connecting road → expected
      target road;
    - the lane on entering the target road is the expected lane;
-   - no step jumps by more than 5 cm;
+   - no step jumps by more than 5 cm. esmini moves 0.5 m along the reference
+     line, so a lane far from it covers less ground on the inside of a curve
+     and more on the outside. A step is therefore compared with the length of
+     the lane-centre path between its two positions, by roadgen's own
+     evaluation (onto the next road: to where the first lane ends plus from
+     where the next one starts). A gap between two roads still shows;
    - esmini returns no error code. Running off the end of a dead-end target
      road just ends the drive.
 

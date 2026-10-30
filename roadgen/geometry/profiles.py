@@ -17,6 +17,18 @@ lanes present over it, outward from the centre, with their roles, so a side
 lane outside a dropped driving lane keeps its role (and its links) while its
 lane id shifts inward.
 
+Side lanes (stage B, with a cross-section, roadgen.geometry.cross_section):
+each edge's profile adds a median (at the centre line, split between the
+two sides) and side lanes outside the driving lanes. Like driving lanes they
+taper in and out at nodes where an edge gains or loses them, and change
+width there. At the chain's junction ends some of them end before the
+junction: parking parking_clear before it, shoulders (urban and suburban
+profiles, and every profile at a ramp node) and, where a roundabout or
+cul-de-sac loop starts, bike lanes right at it, and medians side_taper
+before it after a MUTCD shift taper. Parking also stops over bridges, and
+shoulders narrow to tunnel_shoulder inside tunnels. Side lanes taper over
+side_taper.
+
 Speeds: each edge's limit over its range, lowered to a corner's advisory speed
 from a deceleration lead before the corner (at ADVISORY_DECEL) to its end.
 """
@@ -26,12 +38,17 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from itertools import pairwise
-from typing import Literal
+from typing import Literal, Optional
 
 import numpy as np
 
 from roadgen.geometry import design
 from roadgen.geometry.alignment import ChainAlignment
+from roadgen.geometry.cross_section import (
+    SHOULDERS_END,
+    CrossSectionParams,
+    edge_cross_section,
+)
 from roadgen.graph.model import RoadGraph
 
 log = logging.getLogger(__name__)
@@ -97,6 +114,13 @@ class LaneLayout:
     left: tuple[tuple[WidthPiece, ...], ...]
     right_kinds: tuple[str, ...] = ()  # kind of each position; () = all driving
     left_kinds: tuple[str, ...] = ()
+    right_heights: tuple[float, ...] = ()  # height of each position (curbs, sidewalks) [m]; () = 0
+    left_heights: tuple[float, ...] = ()
+
+    def height(self, side: Side, position: int) -> float:
+        """Height [m] of the lane at a layout position (1 = next to the centre)."""
+        heights = self.right_heights if side == "right" else self.left_heights
+        return heights[position - 1] if heights else 0.0
 
     def breakpoints(self) -> list[float]:
         pts = {0.0, self.length}
@@ -169,8 +193,14 @@ def _covering(pieces: tuple[WidthPiece, ...], s: float):
     return None
 
 
-def lane_layout(graph: RoadGraph, ca: ChainAlignment) -> LaneLayout:
-    """Lane widths along a chain road, with tapers at lane-count and width changes."""
+SIDE_ORDER = ("biking", "parking", "shoulder", "curb", "sidewalk", "border")  # outward, when profiles mix
+
+
+def lane_layout(graph: RoadGraph, ca: ChainAlignment, cross_section: Optional[CrossSectionParams] = None,
+                junctions: frozenset[int] = frozenset(), loops: frozenset[int] = frozenset()) -> LaneLayout:
+    """Lane widths along a chain road, with tapers at lane-count and width changes; with a
+    cross-section also its median and side lanes (junctions: the network's junction
+    nodes, loops: its loop edges, see cross_section.loop_edges)."""
     edges = [(graph.edges[ce.edge_id], ce) for ce in ca.chain.edges]
     ranges = [ca.edge_range(e.id) for e, _ in edges]
     sides: dict[Side, list[list[WidthPiece]]] = {}
@@ -200,7 +230,213 @@ def lane_layout(graph: RoadGraph, ca: ChainAlignment) -> LaneLayout:
                 body = [WidthPiece(start, end, widths[k], widths[k])] if end > start + STATION_EPS else []
                 positions[p] += head + body + tail
         sides[side] = [_merge(pieces) for pieces in positions]
-    return LaneLayout(ca.length, tuple(map(tuple, sides["right"])), tuple(map(tuple, sides["left"])))
+    if cross_section is None:
+        return LaneLayout(ca.length, tuple(map(tuple, sides["right"])), tuple(map(tuple, sides["left"])))
+    out: dict[str, tuple] = {}
+    for side in ("right", "left"):
+        median, extra, kinds, heights = _extra_positions(graph, ca, side, cross_section, junctions, loops)
+        driving = [tuple(p) for p in sides[side]]
+        out[side] = (tuple(median + driving + extra),
+                     ("median",) * len(median) + ("driving",) * len(driving) + kinds,
+                     (0.0,) * (len(median) + len(driving)) + heights)
+    return LaneLayout(ca.length, out["right"][0], out["left"][0], out["right"][1], out["left"][1],
+                      out["right"][2], out["left"][2])
+
+
+def _extra_positions(graph: RoadGraph, ca: ChainAlignment, side: Side, cs: CrossSectionParams,
+                     junctions: frozenset[int], loops: frozenset[int]
+                     ) -> tuple[list[tuple[WidthPiece, ...]], list[tuple[WidthPiece, ...]], tuple[str, ...],
+                                tuple[float, ...]]:
+    """(median position, side positions, their kinds, their heights) of one side of a chain."""
+    edges = [graph.edges[ce.edge_id] for ce in ca.chain.edges]
+    ranges = [ca.edge_range(e.id) for e in edges]
+    xs = [edge_cross_section(e, cs, e.id in loops) for e in edges]
+    # Side lanes per edge as roles (kind, k-th of that kind), outward.
+    per_edge: list[dict[tuple[str, int], tuple[float, float]]] = []
+    for x in xs:
+        seen: dict[str, int] = {}
+        roles = {}
+        for lane in (x.right if side == "right" else x.left):
+            seen[lane.kind] = seen.get(lane.kind, 0) + 1
+            roles[(lane.kind, seen[lane.kind])] = (lane.width, lane.height)
+        per_edge.append(roles)
+    orders = {tuple(r) for r in per_edge}
+    roles = list(per_edge[0]) if len(orders) == 1 else sorted(
+        {r for roles in per_edge for r in roles}, key=lambda r: (SIDE_ORDER.index(r[0]), r[1]))
+    ends = _junction_ends(graph, ca, junctions, loops)
+    speed = max(e.speed_limit for e in edges)
+
+    def side_taper(_: float) -> float:
+        return cs.side_taper
+
+    def median_taper(width: float) -> float:
+        return design.taper_length(speed, width)
+
+    medians = [x.median / 2 for x in xs]
+    median: list[tuple[WidthPiece, ...]] = []
+    if any(medians):
+        pieces = _role_pieces(medians, ranges, median_taper)
+        for at_start, _, _ in ends:  # medians end before every junction
+            w = max(medians)
+            pieces = _cut_end(pieces, ca.length, at_start, cs.side_taper, median_taper(w))
+        if _present(pieces, 2 * cs.side_taper):
+            # The median lane runs the whole road, 0 m wide where there is none, so the
+            # driving lanes keep their ids along the road (lane-following by id: esmini's
+            # drive-check, the scenario's routes).
+            median.append(tuple(_fill(pieces, ca.length)))
+
+    extra, kinds, heights = [], [], []
+    for role in roles:
+        kind = role[0]
+        widths = [r.get(role, (0.0, 0.0))[0] for r in per_edge]
+        height = next((r[role][1] for r in per_edge if role in r), 0.0)
+        pieces = _role_pieces(widths, ranges, side_taper)
+        for at_start, ramp, at_loop in ends:
+            profile = xs[0 if at_start else -1].profile
+            if kind == "parking":
+                pieces = _cut_end(pieces, ca.length, at_start, cs.parking_clear, cs.side_taper)
+            elif (kind == "shoulder" and (ramp or profile in SHOULDERS_END)) or (kind == "biking" and at_loop):
+                pieces = _cut_end(pieces, ca.length, at_start, 0.0, cs.side_taper)
+        if kind == "parking":
+            for s0, length in bridge_spans(graph, ca):
+                pieces = _cut(pieces, s0, s0 + length, 0.0, cs.side_taper)
+        if kind == "shoulder":
+            for s0, length in tunnel_spans(graph, ca):
+                pieces = _cut(pieces, s0, s0 + length, cs.tunnel_shoulder, cs.side_taper)
+        pieces = _close_runs(pieces, ca.length, cs.side_taper)
+        if _present(pieces, 2 * cs.side_taper):
+            extra.append(tuple(pieces))
+            kinds.append(kind)
+            heights.append(height)
+    return median, extra, tuple(kinds), tuple(heights)
+
+
+def _junction_ends(graph: RoadGraph, ca: ChainAlignment, junctions: frozenset[int],
+                   loops: frozenset[int]) -> list[tuple[bool, bool, bool]]:
+    """(at chain start, ramp node, a loop starts there) for each chain end at a junction."""
+    out = []
+    for at_start, node in ((True, ca.chain.start), (False, ca.chain.end)):
+        if node not in junctions:
+            continue
+        at_loop = any(e.id in loops for e in graph.incident_edges(node)) and not all(
+            e.id in loops for e in graph.incident_edges(node))
+        out.append((at_start, graph.nodes[node].kind == "ramp", at_loop))
+    return out
+
+
+def _role_pieces(widths: list[float], ranges: list[tuple[float, float]], taper) -> list[WidthPiece]:
+    """Width pieces of one lane role over a chain, from its width on each edge (0 = absent):
+    it widens from 0 or changes width after a node, and narrows to 0 before one, over
+    taper(width) [m], at most MAX_TAPER_SHARE of the edge."""
+    n = len(widths)
+    pieces: list[WidthPiece] = []
+    for k, (lo, hi) in enumerate(ranges):
+        w = widths[k]
+        if w <= 0:
+            continue
+        room = MAX_TAPER_SHARE * (hi - lo)
+        start, end = lo, hi
+        head: list[WidthPiece] = []
+        tail: list[WidthPiece] = []
+        if k > 0 and widths[k - 1] != w:
+            prev = max(widths[k - 1], 0.0)
+            length = min(taper(abs(w - prev)), room)
+            head.append(WidthPiece(lo, lo + length, prev, w))
+            start = lo + length
+        if k < n - 1 and widths[k + 1] <= 0:
+            length = min(taper(w), room)
+            tail.append(WidthPiece(hi - length, hi, w, 0.0))
+            end = hi - length
+        body = [WidthPiece(start, end, w, w)] if end > start + STATION_EPS else []
+        pieces += head + body + tail
+    return _merge(pieces)
+
+
+def _cut_end(pieces: list[WidthPiece], length: float, at_start: bool, clear: float,
+             taper: float) -> list[WidthPiece]:
+    """The role absent over the last (or first) clear metres of the chain, narrowing to 0
+    over taper before that."""
+    return _cut(pieces, 0.0, clear, 0.0, taper) if at_start else _cut(pieces, length - clear, length, 0.0, taper)
+
+
+def _cut(pieces: list[WidthPiece], a: float, b: float, w_low: float, taper: float) -> list[WidthPiece]:
+    """Width w_low over [a, b], blending from and back to the constant width around it
+    over taper. A piece that is not constant within the blend zone is left out, and a
+    blend that would cross a piece boundary becomes part of [a, b]."""
+    lo_zone, hi_zone = a - taper, b + taper
+    out: list[WidthPiece] = []
+    for p in pieces:
+        if p.s1 <= lo_zone + STATION_EPS or p.s0 >= hi_zone - STATION_EPS:
+            out.append(p)
+            continue
+        if not p.constant:
+            continue
+        w = p.w0
+        if w <= w_low:
+            out.append(p)
+            continue
+        blend_in = lo_zone >= p.s0 - STATION_EPS  # the blends fit inside this piece
+        blend_out = hi_zone <= p.s1 + STATION_EPS
+        g0 = a if blend_in else p.s0
+        g1 = b if blend_out else p.s1
+        segments = [(p.s0, g0 - (taper if blend_in else 0.0), w, w)]
+        if blend_in:
+            segments.append((g0 - taper, g0, w, w_low))
+        segments.append((g0, g1, w_low, w_low))
+        if blend_out:
+            segments.append((g1, g1 + taper, w_low, w))
+        segments.append((g1 + (taper if blend_out else 0.0), p.s1, w, w))
+        for s0, s1, w0, w1 in segments:
+            if s1 - s0 > STATION_EPS and (w0 > 0 or w1 > 0):
+                out.append(WidthPiece(max(s0, p.s0), min(s1, p.s1), w0, w1))
+    return _merge(out)
+
+
+def _close_runs(pieces: list[WidthPiece], length: float, taper: float) -> list[WidthPiece]:
+    """Taper every run of a lane that starts or ends inside the road at full width (a cut
+    can leave one where it dropped a piece it could not blend), over taper; a run too
+    short for that is dropped."""
+    runs: list[list[WidthPiece]] = []
+    for p in sorted(pieces, key=lambda p: p.s0):
+        if runs and abs(runs[-1][-1].s1 - p.s0) <= STATION_EPS:
+            runs[-1].append(p)
+        else:
+            runs.append([p])
+    out: list[WidthPiece] = []
+    for run in runs:
+        head, tail = run[0], run[-1]
+        if tail.s1 < length - STATION_EPS and tail.w1 > 0:
+            if not tail.constant or tail.s1 - tail.s0 < taper + STATION_EPS:
+                continue  # nothing to taper on
+            run[-1:] = [WidthPiece(tail.s0, tail.s1 - taper, tail.w0, tail.w0),
+                        WidthPiece(tail.s1 - taper, tail.s1, tail.w0, 0.0)]
+            head = run[0]
+        if head.s0 > STATION_EPS and head.w0 > 0:
+            if not head.constant or head.s1 - head.s0 < taper + STATION_EPS:
+                continue
+            run[:1] = [WidthPiece(head.s0, head.s0 + taper, 0.0, head.w0),
+                       WidthPiece(head.s0 + taper, head.s1, head.w0, head.w0)]
+        out += [p for p in run if p.s1 - p.s0 > STATION_EPS]
+    return _merge(out)
+
+
+def _fill(pieces: list[WidthPiece], length: float) -> list[WidthPiece]:
+    """The pieces with 0 m wide pieces wherever [0, length] is not covered."""
+    out: list[WidthPiece] = []
+    s = 0.0
+    for p in sorted(pieces, key=lambda p: p.s0):
+        if p.s0 > s + STATION_EPS:
+            out.append(WidthPiece(s, p.s0, 0.0, 0.0))
+        out.append(p)
+        s = p.s1
+    if length > s + STATION_EPS:
+        out.append(WidthPiece(s, length, 0.0, 0.0))
+    return out
+
+
+def _present(pieces: list[WidthPiece], least: float) -> bool:
+    """Whether a role has at least least metres at full width somewhere."""
+    return any(p.constant and p.w0 > 0 and p.s1 - p.s0 >= least for p in pieces)
 
 
 def _merge(pieces: list[WidthPiece]) -> list[WidthPiece]:
