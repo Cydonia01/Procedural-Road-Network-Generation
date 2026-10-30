@@ -58,10 +58,12 @@ from roadgen.geometry.vertical import (
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import (
+    CornerRoad,
     JunctionParams,
     Movement,
     RoadEnd,
     build_junction,
+    corner_roads,
     piece_geometry,
 )
 from roadgen.opendrive.lanes import make_lane_sections
@@ -106,6 +108,7 @@ class OpenDriveBuilder:
         self.bridges: dict[int, list[tuple[float, float]]] = {}  # road id -> (s, length)
         self.tunnels: dict[int, list[tuple[float, float]]] = {}  # road id -> (s, length)
         self.cross_sections: dict[int, str] = {}  # edge id -> cross-section profile (HD maps on)
+        self.corner_roads: list[CornerRoad] = []  # side lanes around junction corners (HD maps on)
 
     def build(self, graph: RoadGraph) -> xodr.OpenDrive:
         errors = graph.validate()
@@ -142,6 +145,7 @@ class OpenDriveBuilder:
         next_id = len(na.chains) + 1
         node_to_junction: dict[int, int] = {}
         movements: list[Movement] = []
+        corners: list[CornerRoad] = []
         for node_id in na.junctions:
             junction_id = next_id
             plane = planes[node_id] if planes is not None else None
@@ -151,11 +155,17 @@ class OpenDriveBuilder:
                 road = odr.roads[str(end.road_id)]
                 link = road.add_successor if end.contact == "end" else road.add_predecessor
                 link(xodr.ElementType.junction, junction_id)
+            corner, corner_conns, corner_recs = corner_roads(junction_id, ends[node_id],
+                                                             junction_id + 1 + len(roads), plane, tuple(moves))
+            for conn in corner_conns:
+                junction.add_connection(conn)
+            roads += corner
             for road in roads:
                 odr.add_road(road)
             odr.add_junction(junction)
             node_to_junction[node_id] = junction_id
             movements += moves
+            corners += corner_recs
             next_id = junction_id + 1 + len(roads)
             log.debug("node %d -> junction %d (%d connecting roads)", node_id, junction_id, len(roads))
 
@@ -168,6 +178,7 @@ class OpenDriveBuilder:
         self.edge_s_range = edge_s_range
         self.node_to_junction = node_to_junction
         self.movements = movements
+        self.corner_roads = corners
         self.bridges = bridges
         self.tunnels = tunnels
         cs = self.hd.active_cross_section
@@ -207,6 +218,7 @@ class OpenDriveBuilder:
                     "corners": self._corner_records(),
                     **({"cross_sections": {str(e): p for e, p in self.cross_sections.items()}}
                        if self.cross_sections else {}),
+                    **({"corner_roads": [asdict(c) for c in self.corner_roads]} if self.corner_roads else {}),
                 },
                 indent=2,
             )
@@ -288,11 +300,12 @@ class OpenDriveBuilder:
             # Explicit driving lanes only where other lanes are present (stage B): plain
             # roads keep the count x width offsets, bit for bit.
             plain = all(kind == "driving" for side in ("right", "left") for kind in layout.kinds(side))
-            lane_t = () if plain else tuple(sorted(
-                layout.driving_offsets(0.0 if contact == "start" else ca.length).items()))
+            at = 0.0 if contact == "start" else ca.length
+            lane_t = () if plain else tuple(sorted(layout.driving_offsets(at).items()))
+            cross = () if plain else tuple(layout.lanes_at(at))
             ends.append((node_id, RoadEnd(
                 edge_id=edge.id, road_id=road_id, contact=contact, pose=pose,
                 right_lanes=right, left_lanes=left, lane_width=edge.lane_width,
-                speed_limit=edge.speed_limit, lane_t=lane_t,
+                speed_limit=edge.speed_limit, lane_t=lane_t, cross=cross,
             )))
         return road, ends, bridge_spans(graph, ca)

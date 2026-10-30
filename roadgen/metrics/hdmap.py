@@ -3,8 +3,8 @@
 Works on the OpenDRIVE file alone (plus its .roadmap.json sidecar, where
 there is one), so it counts any network the same way:
 
-- lane length per lane type, as km of lane per km of normal road (lanes 0 m wide
-  over a whole section left out);
+- lane length per lane type, as km of lane per km of normal road (stretches
+  where a lane is 0 m wide left out);
 - road marks on normal roads by type and colour, and marks on connecting
   roads (a junction interior should have none);
 - signals by country and type(-subtype), dynamic ones (lights) apart, and
@@ -44,11 +44,16 @@ def _section_spans(road: etree._Element) -> list[tuple[etree._Element, float]]:
     return [(sec, max(starts[k + 1] - starts[k], 0.0)) for k, sec in enumerate(sections)]
 
 
-def _zero_width(lane: etree._Element) -> bool:
-    """Whether a lane is 0 m wide over its whole section (a median lane where there is
-    no median keeps the driving lanes' ids)."""
-    widths = lane.findall("width")
-    return bool(widths) and all(abs(float(w.get(k, 0))) < 1e-9 for w in widths for k in "abcd")
+def _wide_length(lane: etree._Element, section_length: float) -> float:
+    """Length [m] of a lane section over which the lane is not 0 m wide: its <width>
+    records that are not all zero (side lanes and medians run the whole road, 0 m wide
+    where they are absent)."""
+    widths = sorted(lane.findall("width"), key=lambda w: float(w.get("sOffset", 0)))
+    if not widths:
+        return section_length
+    starts = [float(w.get("sOffset", 0)) for w in widths] + [section_length]
+    return sum(max(starts[k + 1] - starts[k], 0.0) for k, w in enumerate(widths)
+               if any(abs(float(w.get(c, 0))) > 1e-9 for c in "abcd"))
 
 
 def _sign_key(sig: etree._Element) -> str:
@@ -76,8 +81,8 @@ def hdmap_metrics(xodr_path: PathLike) -> dict[str, Any]:
     for road in normal:
         for sec, length in _section_spans(road):
             for lane in sec.iter("lane"):
-                if lane.get("id") != "0" and not _zero_width(lane):
-                    lane_km[lane.get("type", "none")] += length / 1000.0
+                if lane.get("id") != "0":
+                    lane_km[lane.get("type", "none")] += _wide_length(lane, length) / 1000.0
                 for mark in lane.findall("roadMark"):
                     marks[f"{mark.get('type', '?')}/{mark.get('color', 'standard')}"] += 1
     connecting_marks = sum(len(r.findall(".//roadMark")) for r in connecting)

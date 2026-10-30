@@ -23,6 +23,11 @@ from scipy.spatial import cKDTree
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.alignment import ChainAlignment, half_width, network_alignment
+from roadgen.geometry.cross_section import (
+    CrossSectionParams,
+    loop_edges,
+    outer_half_width,
+)
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN as DEFAULT_JUNCTION_MARGIN
 from roadgen.geometry.profiles import bridge_spans, tunnel_spans
@@ -56,8 +61,10 @@ class GroundParams:
 def ground_heights(elevation: MapLayer, graph: Optional[RoadGraph] = None,
                    params: GroundParams = GroundParams(), terrain: Optional[MapLayer] = None,
                    junction_margin: float = DEFAULT_JUNCTION_MARGIN, design: DesignParams = DesignParams(),
+                   cross_section: Optional[CrossSectionParams] = None,
                    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Mesh vertices (x, y, z), each of shape (rows, cols), levelled under graph's roads."""
+    """Mesh vertices (x, y, z), each of shape (rows, cols), levelled under graph's roads
+    (with a cross-section, under their sidewalks and other side lanes too)."""
     x0, x1, y0, y1 = elevation.grid.bounds
     xs = np.linspace(x0, x1, max(2, math.ceil((x1 - x0) / params.cell_size) + 1))
     ys = np.linspace(y0, y1, max(2, math.ceil((y1 - y0) / params.cell_size) + 1))
@@ -67,14 +74,19 @@ def ground_heights(elevation: MapLayer, graph: Optional[RoadGraph] = None,
         return x, y, z
     target = np.full(z.shape, np.inf)
     try:
-        na = network_alignment(graph, design, junction_margin)
+        na = network_alignment(graph, design, junction_margin, cross_section=cross_section)
     except ValueError as err:  # the builder rejects such a graph too
         log.warning("ground: roads not levelled (%s)", err)
         return x, y, z
     planes = junction_planes(graph, na, design)
     reach_extra = params.road_margin + params.cell_size
+    loops = loop_edges(graph) if cross_section is not None else frozenset()
+
+    def extent(e) -> float:
+        return half_width(e) if cross_section is None else outer_half_width(e, cross_section, e.id in loops)
+
     for ca in na.chains:
-        _level_chain(graph, ca, planes, design, x, y, target, params, reach_extra)
+        _level_chain(graph, ca, planes, design, x, y, target, params, reach_extra, extent)
     for n in na.junctions:
         r = max(na.trims[n].values()) + reach_extra
         node = graph.nodes[n]
@@ -94,11 +106,11 @@ def ground_heights(elevation: MapLayer, graph: Optional[RoadGraph] = None,
 
 def _level_chain(graph: RoadGraph, ca: ChainAlignment, planes, design: DesignParams,
                  x: np.ndarray, y: np.ndarray, target: np.ndarray, params: GroundParams,
-                 reach_extra: float) -> None:
+                 reach_extra: float, extent=half_width) -> None:
     """Lower target under one chain road: below its surface (elevation and banking)
     out to its widest half width plus reach_extra, except under bridges and over tunnels."""
     smp = ca.alignment.sample(params.cell_size / 2)
-    reach = max(half_width(graph.edges[eid]) for eid in ca.chain.edge_ids) + reach_extra
+    reach = max(extent(graph.edges[eid]) for eid in ca.chain.edge_ids) + reach_extra
     idx = _near(x, y, (smp.x.min() - reach, smp.x.max() + reach), (smp.y.min() - reach, smp.y.max() + reach))
     if idx is None:
         return
@@ -139,9 +151,10 @@ def _near(x: np.ndarray, y: np.ndarray, xr: tuple[float, float],
 def ground_mesh(elevation: MapLayer, terrain: Optional[MapLayer] = None,
                 graph: Optional[RoadGraph] = None, params: GroundParams = GroundParams(),
                 junction_margin: float = DEFAULT_JUNCTION_MARGIN,
-                design: DesignParams = DesignParams()) -> IndexedMesh:
+                design: DesignParams = DesignParams(),
+                cross_section: Optional[CrossSectionParams] = None) -> IndexedMesh:
     """Two triangles per mesh cell; smooth normals; colored by terrain class per vertex."""
-    x, y, z = ground_heights(elevation, graph, params, terrain, junction_margin, design)
+    x, y, z = ground_heights(elevation, graph, params, terrain, junction_margin, design, cross_section)
     rows, cols = x.shape
     gy, gx = np.gradient(z, y[:, 0], x[0])
     normals = np.stack([-gx, -gy, np.ones_like(z)], axis=-1)

@@ -8,9 +8,11 @@ center lane's mark is the center line.
 
 from __future__ import annotations
 
+from typing import Union
+
 from scenariogeneration import xodr
 
-from roadgen.geometry.profiles import LaneLayout, WidthPiece
+from roadgen.geometry.profiles import LaneLayout, WidthPiece, WidthPieces
 
 # OpenDRIVE lane type of each lane kind of a layout (stage B side lanes and medians).
 LANE_TYPES = {
@@ -104,18 +106,22 @@ def make_lane_sections(layout: LaneLayout) -> xodr.Lanes:
     return lanes
 
 
-def _continues(piece: WidthPiece, s0: float) -> bool:
+def _continues(piece: Union[WidthPiece, WidthPieces], s0: float) -> bool:
     """Whether the lane exists right before s0 too (it does not widen from 0 there)."""
     return not (piece.s0 >= s0 - 1e-6 and piece.w0 == 0.0)
 
 
-def _section_lane(piece: WidthPiece, s0: float, outermost: bool, kind: str = "driving",
+def _section_lane(piece: Union[WidthPiece, WidthPieces], s0: float, outermost: bool, kind: str = "driving",
                   height: float = 0.0) -> xodr.Lane:
     """A lane of a section: driving lanes with their marks (solid on the outermost);
     side lanes and medians unmarked (road marks come in stage B4), curbs and
     sidewalks raised by height [m]."""
-    a, b, c, d = piece.poly(s0)
-    lane = xodr.Lane(LANE_TYPES[kind], a=a, b=b, c=c, d=d)
+    pieces = piece.pieces if isinstance(piece, WidthPieces) else (piece,)
+    at = max(pieces[0].s0, s0)
+    a, b, c, d = pieces[0].poly(at)
+    lane = xodr.Lane(LANE_TYPES[kind], a=a, b=b, c=c, d=d, soffset=at - s0 if at > s0 else 0)
+    for p in pieces[1:]:  # several <width> records: a side lane's tapers inside one section
+        lane.add_lane_width(*p.poly(p.s0), soffset=p.s0 - s0)
     if kind == "driving":
         lane.add_roadmark(solid_mark() if outermost else broken_mark())
     if height > 0:

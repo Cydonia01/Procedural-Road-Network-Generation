@@ -11,6 +11,12 @@ w0 + (w1 - w0)(3u^2 - 2u^3) over the MUTCD taper length, so lane edges stay
 tangent-continuous. A change of lane width on continuing lanes uses the same
 transition after the node. Tapers are at most half of their edge's length.
 
+Lane sections: a new section starts where a driving lane's width changes,
+or where any lane starts or ends. Side lanes and medians keep their width
+changes (tapers, curb extensions) inside a section as several pieces
+(WidthPieces), written as several <width> records, so they add no sections:
+fewer, longer sections and much smaller files (stage B, moved from B9).
+
 Lane roles: every lane position of a layout has a kind (driving; side lanes
 from stage B) and keeps its position as its role. A lane section holds the
 lanes present over it, outward from the centre, with their roles, so a side
@@ -90,6 +96,31 @@ class WidthPiece:
                 -2 * dw / l3)
 
 
+@dataclass(frozen=True)
+class WidthPieces:
+    """A side lane's or median's width pieces within one lane section, in s order."""
+
+    pieces: tuple[WidthPiece, ...]
+
+    @property
+    def s0(self) -> float:
+        return self.pieces[0].s0
+
+    @property
+    def w0(self) -> float:
+        return self.pieces[0].w0
+
+    @property
+    def constant(self) -> bool:
+        return all(p.constant and p.w0 == self.w0 for p in self.pieces)
+
+    def width(self, s: float) -> float:
+        piece = _covering(self.pieces, s)
+        if piece is None:  # just outside: the nearest end
+            piece = self.pieces[0] if s < self.pieces[0].s0 else self.pieces[-1]
+        return piece.width(s)
+
+
 Role = tuple[str, int]  # (lane kind, position in the layout: 1 = next to the centre)
 
 
@@ -123,11 +154,17 @@ class LaneLayout:
         return heights[position - 1] if heights else 0.0
 
     def breakpoints(self) -> list[float]:
+        """Section boundaries: every boundary of a driving lane's pieces, and where any
+        other lane starts or ends (its own width changes stay inside a section)."""
         pts = {0.0, self.length}
-        for side in (self.right, self.left):
-            for pieces in side:
-                for p in pieces:
-                    pts.update((p.s0, p.s1))
+        for side in ("right", "left"):
+            for pieces, kind in zip(getattr(self, side), self.kinds(side)):
+                if kind == "driving":
+                    for p in pieces:
+                        pts.update((p.s0, p.s1))
+                else:
+                    for run in _runs(pieces):
+                        pts.update((run[0].s0, run[-1].s1))
         out: list[float] = []
         for s in sorted(pts):
             if not out or s > out[-1] + STATION_EPS:
@@ -156,12 +193,30 @@ class LaneLayout:
                         continue
                     if gap and kind == "driving":
                         raise ValueError(f"lanes are not contiguous from the centre at s={mid:.2f}")
+                    if kind != "driving":
+                        inside = tuple(q for q in pieces if q.s1 > s0 + STATION_EPS and q.s0 < s1 - STATION_EPS)
+                        p = WidthPieces(inside) if len(inside) > 1 else inside[0]
                     present.append(p)
                     roles.append((kind, pos))
                 sides.append((tuple(present), tuple(roles)))
             (right, rr), (left, lr) = sides
             plain = all(k == "driving" for k, _ in rr + lr)
             out.append(LaneSection(s0, s1, right, left, () if plain else rr, () if plain else lr))
+        return out
+
+    def lanes_at(self, s: float) -> list[tuple[int, str, float, float, float]]:
+        """(lane id, kind, inner t, outer t, height) of every lane at station s, t being
+        the offset from the reference line [m] (left positive)."""
+        sec = next((x for x in self.sections() if x.s0 - STATION_EPS <= s <= x.s1 + STATION_EPS), None)
+        if sec is None:
+            raise ValueError(f"station {s:.3f} outside the road (length {self.length:.3f})")
+        out = []
+        for side, sign in (("right", -1), ("left", 1)):
+            t = 0.0
+            for k, (piece, (kind, pos)) in enumerate(zip(getattr(sec, side), sec.roles(side)), 1):
+                w = piece.width(s)
+                out.append((sign * k, kind, sign * t, sign * (t + w), self.height(side, pos)))
+                t += w
         return out
 
     def driving_offsets(self, s: float) -> dict[int, float]:
@@ -305,7 +360,9 @@ def _extra_positions(graph: RoadGraph, ca: ChainAlignment, side: Side, cs: Cross
                 pieces = _cut(pieces, s0, s0 + length, cs.tunnel_shoulder, cs.side_taper)
         pieces = _close_runs(pieces, ca.length, cs.side_taper)
         if _present(pieces, 2 * cs.side_taper):
-            extra.append(tuple(pieces))
+            # The whole road, 0 m wide where the lane is absent: it starts and ends nowhere
+            # inside the road, so its tapers add no lane sections.
+            extra.append(tuple(_fill(pieces, ca.length)))
             kinds.append(kind)
             heights.append(height)
     return median, extra, tuple(kinds), tuple(heights)
@@ -392,18 +449,23 @@ def _cut(pieces: list[WidthPiece], a: float, b: float, w_low: float, taper: floa
     return _merge(out)
 
 
-def _close_runs(pieces: list[WidthPiece], length: float, taper: float) -> list[WidthPiece]:
-    """Taper every run of a lane that starts or ends inside the road at full width (a cut
-    can leave one where it dropped a piece it could not blend), over taper; a run too
-    short for that is dropped."""
+def _runs(pieces) -> list[list[WidthPiece]]:
+    """Pieces grouped into runs that touch end to end."""
     runs: list[list[WidthPiece]] = []
     for p in sorted(pieces, key=lambda p: p.s0):
         if runs and abs(runs[-1][-1].s1 - p.s0) <= STATION_EPS:
             runs[-1].append(p)
         else:
             runs.append([p])
+    return runs
+
+
+def _close_runs(pieces: list[WidthPiece], length: float, taper: float) -> list[WidthPiece]:
+    """Taper every run of a lane that starts or ends inside the road at full width (a cut
+    can leave one where it dropped a piece it could not blend), over taper; a run too
+    short for that is dropped."""
     out: list[WidthPiece] = []
-    for run in runs:
+    for run in _runs(pieces):
         head, tail = run[0], run[-1]
         if tail.s1 < length - STATION_EPS and tail.w1 > 0:
             if not tail.constant or tail.s1 - tail.s0 < taper + STATION_EPS:

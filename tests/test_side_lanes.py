@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+
+import numpy as np
 import pytest
 from lxml import etree
 
@@ -14,7 +17,7 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.scenario.xosc_builder import ScenarioBuilder
-from roadgen.validate.continuity import RoadEval, check_continuity
+from roadgen.validate.continuity import RoadEval, _width, check_continuity
 from roadgen.validate.topology import check_topology
 
 CS = CrossSectionParams()
@@ -44,6 +47,13 @@ def _types(section: etree._Element, side: str) -> list[str]:
     return [lane.get("type") for lane in lanes]
 
 
+def _lane_width(road: etree._Element, kind: str, side: str, s: float) -> float:
+    """Width [m] of the first lane of a kind on one side at station s (0 if there is none)."""
+    sec = RoadEval(road)._section(s)
+    lane = next((x for x in sec.findall(f"{side}/lane") if x.get("type") == kind), None)
+    return 0.0 if lane is None else _width(lane, s - float(sec.get("s")))
+
+
 def _road(root: etree._Element, edge_name: str) -> etree._Element:
     return next(r for r in root.findall("road") if r.get("name") == edge_name)
 
@@ -57,21 +67,32 @@ def test_avenue_side_lanes_and_curb_extensions(tmp_path):
     middle = sections[len(sections) // 2]
     assert _types(middle, "right") == ["driving", "driving", "biking", "parking", "curb", "sidewalk"]
     assert _types(middle, "left") == ["driving", "driving", "biking", "parking", "curb", "sidewalk"]
-    # parking ends before the junction (the road's end at the junction has no parking)
-    end = sections[-1] if avenue.find("link/successor") is not None else sections[0]
-    assert "parking" not in _types(end, "right")
+    # parking ends 10 m before the junction (0 m wide there; it tapers inside a section)
+    at_end = avenue.find("link/successor") is not None
+    length = RoadEval(avenue).length
+    for s in ((length - 9.0, length - 0.01) if at_end else (9.0, 0.01)):
+        assert _lane_width(avenue, "parking", "right", s) == pytest.approx(0.0, abs=1e-9)
+    assert _lane_width(avenue, "parking", "right", length / 2) == pytest.approx(2.4)
+    assert len(sections) <= 3  # the parking tapers add no lane sections
     # curbs and sidewalks are raised 0.15 m
     curb = next(lane for lane in middle.findall("right/lane") if lane.get("type") == "curb")
     assert float(curb.find("height").get("inner")) == pytest.approx(0.15)
     # side lanes carry no road marks yet (B4); driving lanes keep theirs
     assert all(lane.find("roadMark") is None for lane in middle.iter("lane") if lane.get("type") not in
                ("driving", "none"))
-    # only driving lanes have junction connections
+    # movements connect driving lanes only; corner roads (B3) side lanes only
+    corners = {c["road"] for c in json.loads(path.with_suffix(".roadmap.json").read_text())["corner_roads"]}
+    assert len(corners) == 4
     for conn in root.iter("connection"):
         road = next(r for r in root.findall("road") if r.get("id") == conn.get("incomingRoad"))
-        for link in conn.findall("laneLink"):
-            types = {lane.get("type") for lane in road.iter("lane") if lane.get("id") == link.get("from")}
-            assert types == {"driving"}
+        at_end = road.find("link/successor[@elementType='junction']") is not None
+        end = road.findall("lanes/laneSection")[-1 if at_end else 0]
+        types = {lane.get("id"): lane.get("type") for lane in end.iter("lane")}
+        froms = {types[link.get("from")] for link in conn.findall("laneLink")}
+        if int(conn.get("connectingRoad")) in corners:
+            assert "driving" not in froms and froms <= {"biking", "curb", "sidewalk", "shoulder"}
+        else:
+            assert froms == {"driving"}
 
 
 def test_side_lanes_keep_their_role_across_a_lane_drop(tmp_path):
@@ -131,15 +152,12 @@ def test_median_shifts_driving_lanes_and_ends_before_junctions(tmp_path):
     assert _types(middle, "left") == ["median", "driving", "driving", "shoulder"]
     # at both junctions the median lane is 0 m wide (driving lanes keep ids -2, -3) and the
     # urban shoulder has narrowed to 0
-    for end, s_end in ((sections[0], 0.0), (sections[-1], RoadEval(road).length)):
+    length = RoadEval(road).length
+    for end, s_end in ((sections[0], 0.0), (sections[-1], length)):
         assert _types(end, "right")[:3] == ["median", "driving", "driving"]
-        ds = s_end - float(end.get("s"))
         for kind in ("median", "shoulder"):
-            lane = next((x for x in end.findall("right/lane") if x.get("type") == kind), None)
-            if lane is not None:
-                w = lane.find("width")
-                a, b, c, d = (float(w.get(k)) for k in "abcd")
-                assert a + b * ds + c * ds ** 2 + d * ds ** 3 == pytest.approx(0.0, abs=1e-6)
+            assert _lane_width(road, kind, "right", s_end) == pytest.approx(0.0, abs=1e-6)
+    assert _lane_width(road, "median", "right", length / 2) == pytest.approx(1.0)
     # junction connections start from the driving lanes at the road's ends
     for conn in root.iter("connection"):
         if conn.get("incomingRoad") != road.get("id"):
@@ -176,13 +194,17 @@ def test_parking_stops_over_bridges(tmp_path):
     g.add_edge(Edge(1, 1, 2, "street", 1, 1, bridges=[(100.0, 200.0)]))
     ca = network_alignment(g, cross_section=CS).of_edge(1)
     layout = lane_layout(g, ca, CS)
-    for sec in layout.sections():
-        mid = 0.5 * (sec.s0 + sec.s1)
-        parked = "parking" in {k for k, _ in sec.roles("right")}
-        if 100.0 <= mid <= 200.0:
-            assert not parked
-        if mid < 90.0 or mid > 210.0:
-            assert parked
+    parking = layout.right[[k for k in layout.kinds("right")].index("parking")]
+
+    def width(s: float) -> float:
+        return next(p for p in parking if p.s0 - 1e-6 <= s <= p.s1 + 1e-6).width(s)
+
+    for s in np.linspace(0.0, 300.0, 61):
+        if 100.0 <= s <= 200.0:
+            assert width(s) == pytest.approx(0.0)
+        if s < 95.0 or s > 205.0:
+            assert width(s) == pytest.approx(2.2)
+    assert len(layout.sections()) == 1  # parking stops over the bridge inside one section
 
 
 def test_loops_have_curb_and_sidewalk_outside_and_curb_inside(tmp_path):

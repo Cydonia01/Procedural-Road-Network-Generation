@@ -137,6 +137,8 @@ def _collapse(graph: RoadGraph, eid: int, margin: float, max_degree: int,
     a, b = graph.nodes[keep], graph.nodes[gone]
     old = (a.x, a.y)
     snapshot = {x.id: (x.from_node, x.to_node) for x in others}
+    moved = [x for x in graph.incident_edges(keep) if x.id != eid] + others
+    old_lengths = {x.id: graph.edge_length(x.id) for x in moved}
     a.x, a.y = (a.x + b.x) / 2, (a.y + b.y) / 2
     del graph.edges[eid]
     for x in others:
@@ -158,6 +160,13 @@ def _collapse(graph: RoadGraph, eid: int, margin: float, max_degree: int,
         return False
     del graph.nodes[gone]
     _drop_bridge_ref(graph, eid)
+    # Bridges and tunnels (from drape, before a later repair) stay at the same share of
+    # their edge when the edge's length changes.
+    for x in moved:
+        f = graph.edge_length(x.id) / old_lengths[x.id] if old_lengths[x.id] > LENGTH_EPS else 1.0
+        if f != 1.0:
+            x.bridges = [(s0 * f, s1 * f) for s0, s1 in x.bridges]
+            x.tunnels = [(s0 * f, s1 * f) for s0, s1 in x.tunnels]
     log.debug("repair: collapsed edge %d (node %d into %d)", eid, gone, keep)
     return True
 

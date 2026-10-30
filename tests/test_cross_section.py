@@ -236,3 +236,14 @@ def test_fit_also_repairs_dead_end_stubs():
     assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g, dead_ends=True)),
                               dead_ends=True) == 1
     assert 3 not in g.edges
+
+
+def test_collapse_keeps_bridges_on_their_edges():
+    g = two_junctions(16.0)  # edge 5 runs from node 2 (x = 16) to x = 116
+    g.edges[5].bridges = [(80.0, 95.0)]
+    assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g))) == 1
+    length = g.edge_length(5)  # node 2 merged into node 1 at x = 8: 108 m now
+    assert length == pytest.approx(108.0)
+    (s0, s1), = g.edges[5].bridges
+    assert (s0, s1) == pytest.approx((80.0 * 1.08, 95.0 * 1.08)) and s1 <= length
+    assert g.validate() == []
