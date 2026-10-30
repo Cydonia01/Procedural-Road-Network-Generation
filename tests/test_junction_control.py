@@ -235,8 +235,8 @@ def test_priority_junction_gets_lines_signs_and_priorities(tmp_path):
     assert j["control"] == "priority"
     roles = {a["role"] for a in j["approaches"]}
     assert roles == {"major", "stop"}  # 16.7 m/s avenue: the streets stop
-    codes = sorted(s.get("type") for s in root.iter("signal"))
-    assert codes == ["206", "206", "301", "301"]
+    codes = sorted(s.get("type") for s in root.iter("signal") if s.get("type") in ("205", "206", "301"))
+    assert codes == ["206", "206", "301", "301"]  # (and from B7 crosswalk and speed signs)
     lines = [o for o in root.iter("object") if o.get("name") == "stopLine"]
     assert len(lines) == 2 and all(o.get("type") == "roadMark" for o in lines)
     marking = lines[0].find("markings/marking")
@@ -261,6 +261,8 @@ def test_signs_face_their_approach_and_stand_beside_the_carriageway(tmp_path):
     _, root, _ = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path)
     for road in root.findall("road"):
         for sig in road.findall("signals/signal"):
+            if sig.get("type") not in ("205", "206", "301"):
+                continue
             at_end = road.find("link/successor[@elementType='junction']") is not None and \
                 float(sig.get("s")) > float(road.get("length")) / 2
             assert sig.get("orientation") == ("+" if at_end else "-")
@@ -459,5 +461,7 @@ def test_lines_follow_the_cross_slope_of_a_banked_road_end(tmp_path):
     roll = sum(float(rec.get(k)) * ds ** i for i, k in enumerate("abcd"))
     assert abs(roll) > 0.005
     corners = line.findall("outlines/outline/cornerLocal")
-    for c in corners:
-        assert float(c.get("z")) == pytest.approx(float(c.get("v")) * math.tan(roll), abs=1e-6)
+    t = float(line.get("t"))
+    for c in corners:  # the surface under the corner, relative to the line's centre, plus the lift
+        v = float(c.get("v"))
+        assert float(c.get("z")) == pytest.approx((t + v) * math.sin(roll) - t * math.sin(roll) + 0.02, abs=1e-6)

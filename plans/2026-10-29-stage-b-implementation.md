@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B6 and the lane-section merge (moved from B9) done (2026-10-30), B7 next.** Discussion,
+Status: **approved 2026-10-30; B0–B7 and the lane-section merge (moved from B9) done (2026-10-30), B8 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -220,6 +220,11 @@ The user's answers to the four questions of the discussion (also in its
 > 1. Yes, commit B6 as one commit.
 > 2. Single-phase light junctions: combine (a) and (b). In B7, where such a junction gets crosswalks, keep the lights and make the extra phase the pedestrian phase; where it gets none, annotate demotes it from lights to priority control. Record this in the plan.
 > Then implement B7. Stop after B7 and report.
+
+**2026-10-31, prompt 10** (answers to the B7 report)
+
+> Yes, commit B7 as one commit.
+> One realism change before B8: in Germany zebras are rare at unsignalised junctions. Keep crossings at every light-controlled arm, but at unsignalised junctions put zebras only on avenue arms in dense areas (reuse the population thresholds from B5; without maps, avenues only), and none on street × street junctions. Make it an option, record the decision in the plan, and report the new crosswalk counts. Commit that separately, then implement B8. Stop after B8 and report.
 
 ## Context
 
@@ -1003,6 +1008,76 @@ Exit of B6: full suite 693 passed, 1 failed (the known `test_monitor_memory_cap_
   - a curve warning precedes every advisory corner;
   - esmini loads the examples.
 - **Docs:** `docs/opendrive.md` (objects and signs).
+
+#### B7 result (done 2026-10-30)
+
+Delivered as planned:
+- crosswalks (`<object type="crosswalk">`): zebras with 350-10 at junctions without lights, two edge lines at lights;
+- the stop or yield line 1 m behind the crosswalk;
+- speed limit signs 274 and curve warnings 103 / 105 (`furniture.py`);
+- crosswalks and the new signs in `plot-xodr`.
+
+Both items added by the user are done too:
+- **306 / 307 along priority roads** (prompt 8) proved cheap to trace with the junction records: `control.priority_runs`;
+- **single-phase light junctions** (prompt 9).
+
+With HD off nothing changes (both identity guards pass). Changes against the plan, and choices it left open:
+
+- **Single-phase light junctions are demoted in the builder, not in `annotate`.** `annotate` runs only with maps, and phase groups need the movement geometry, which only the builder has. The case at hand, `manhattan_like`, has no maps. The effect is the one decided:
+  - with crosswalks, the lights stay and get a pedestrian phase: every vehicle light red, long enough to cross the longest crosswalk at `walk_speed` 1.2 m/s, at least `min_green`;
+  - without crosswalks, the junction becomes a priority junction, with the opposite pair as the priority road.
+  On the examples all ten such junctions (`manhattan_like`) have crosswalks and got a pedestrian phase. Pedestrian lights themselves are not placed.
+- **306 / 307:** traced per direction of travel along each priority junction's two priority-road arms, for runs through 2 or more junctions:
+  - 306 stands 10 m after the first junction (once, not repeated after every junction);
+  - 307 stands 30 m before the junction where the run ends, if it ends at one rather than at a dead end;
+  - the 301s at the junctions inside the run are dropped;
+  - a run that closes into a loop is cut where it closes.
+  A run through one junction keeps its 301.
+- **Crosswalk details:**
+  - placed 0.5 m before the road end, 3 m deep on streets, 4 m on avenues and highways;
+  - only at junctions with control (not at two-road junctions or ramp nodes);
+  - also on outgoing one-way arms;
+  - 350-10 faces each direction of travel. The plan's 350-20 is the left-side variant, which right-hand traffic needs only on one-way roads; not used.
+  - The room rule ("crosswalk + stop line + 2 m") applies to half the road where both its ends are junctions.
+- **The validator's approach reach grew from 5 to 8 m:** the stop line now stands up to 5.75 m before the road end, behind a 4 m crosswalk.
+- **Speed signs:**
+  - km/h to the nearest km/h, then down to 10, because limits are stored rounded (22.2 m/s for 80 km/h would otherwise be posted as 70);
+  - "an advisory speed at least 10 km/h below the limit" compares the unrounded speeds;
+  - the sign after a junction is left out within 20 m of a change sign;
+  - no along-road signs on roundabout rings and cul-de-sac loops.
+- **Curve warnings:** at the deceleration lead, at least 10 m before the corner, always 0.7 m above a 274 position (on its post).
+- **Line and crosswalk corners now lie on the road surface** (found in the close-ups). esmini puts each outline corner at the object's height plus its `z`. A crossing at lights on an 8 % grade had one edge line buried and the other z-fighting, whatever single slope term was used. Four variants were rendered on that crossing (cross slope only, ± grade, none). Now each corner's `z` is the exact surface under it (elevation and superelevation at s + u) relative to the object's, plus 2 cm (`MARK_LIFT`). This replaces B5's roll-only formula for stop lines.
+- **esmini logs at info level that it has no OSI type for 350.10, 103.x and 105.x,** the B0 limitation (its table spells them "350-10"). It draws them as placeholder boxes; 274-30 / -50 have models.
+
+**On the examples** (`b7_signs.py` → `baselines/2026-10-30-stage-b-after-b7-hd.json`):
+
+| Network | crosswalks (at lights) | share of controlled arms | 274 per km | curve warnings / advisory corners | 301 / 306 / 307 | `.xodr` growth over B6 |
+|---|---|---|---|---|---|---|
+| grid | 352 (0) | 100 % | 7.1 | 8 / 4 | 16 / 16 / 16 | +10.2 % |
+| manhattan_like | 1,440 (60) | 100 % | 3.9 | 8 / 4 | 14 / 14 / 14 | +11.6 % |
+| paris | 751 (17) | 98 % | 7.0 | 42 / 27 | 122 / 100 / 82 | +11.2 % |
+| suburb | 603 (5) | 80 % | 6.1 | 100 / 93 | 107 / 74 / 56 | +9.3 % |
+| organic_town | 321 (4) | 86 % | 8.3 | 20 / 27 | 40 / 34 / 27 | +10.5 % |
+| city (maps) | 643 (251) | 58 % | 9.5 | 190 / 117 | 156 / 82 / 66 | +4.5 % |
+| mixed_city (maps) | 1,079 (309) | 76 % | 8.8 | 200 / 131 | 179 / 122 / 94 | +5.0 % |
+| highway_corridor (maps) | 369 (101) | 83 % | 8.9 | 90 / 58 | 66 / 58 / 43 | +5.4 % |
+
+- **Curve warnings** count both directions of travel; advisory corners (sidecar `corners`) count once. Corners on rings and loops get none (`organic_town`, the junction presets).
+- **Crosswalks are fewer on the map networks,** where rural and highway edges (`annotate`) have no sidewalks.
+- **Junctions with lights** are unchanged, since none was demoted. `manhattan_like`'s ten single-phase junctions got a pedestrian phase.
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b7 --hd`): all 11 networks build and pass every validator and the drive-check wherever it runs. esmini simulates `city` and `mixed_city` with 0 errors and the same run-time warnings as before (3 and 4 "no connecting lane"). Repaired edges are unchanged. Close-ups (`out/stage_b/b7/closeups/`): a zebra, a crossing at lights on an 8 % grade (both edge lines and the stop line behind them drawn), a 274-30 sign.
+
+| | B6 | B7 |
+|---|---|---|
+| `.xodr` size, manhattan_like / city / mixed_city | 14.18 / 24.69 / 33.89 MB | 15.83 / 25.79 / 35.59 MB |
+| pipeline (incl. drive-check), city / mixed_city | 197 / 444 s | 197 / 451 s |
+| esmini load (`esmini_load.py`, back to back), manhattan_like / city | 34.9 / 36.9 s | 34.7 / 48.8 s |
+| simulate wall time, 50 cars, 30 s, city / mixed_city | 47.7 / 132 s | 48.9 / 132 s |
+
+`city`'s load time varies between runs: the same B6 file measured 36.9, 40.9 and 47.7 s on three runs, and B7's previous run 48.3 s against B6's 47.7 s. So no load cost of B7 can be separated from the spread; B9's performance check measures it properly.
+
+Exit of B7: full suite 704 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's `Optional[...]` / `Union` style and B008; docs updated (`opendrive.md` crosswalks, priority roads, along-road signs, pedestrian phase, corner heights; `validation.md` approach reach). Helper script: `b7_signs.py`.
 
 ### B8 · Junction realism: lane use, turn pockets, medians, banned turns
 

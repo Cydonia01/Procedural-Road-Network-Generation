@@ -151,7 +151,7 @@ roadgen/
     lanes.py               lane sections (lane types, heights) and road marks
     marks.py               HD road marks: German catalogue, no-lane-change zones (stage B)
     control.py             junction control kinds, approach roles, conflicts and right of way (stage B)
-    furniture.py           stop and yield lines, signs and lights at junction approaches (stage B)
+    furniture.py           stop and yield lines, crosswalks, signs and lights; speed and curve signs (stage B)
     lights.py              traffic-light phase groups and fixed-time plans (stage B)
     hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
     plot.py                plot-xodr: a built .xodr's lanes coloured by type, and its marks

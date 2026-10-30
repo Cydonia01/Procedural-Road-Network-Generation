@@ -143,12 +143,12 @@ with HD maps on.
 - **Unique ids:** signal ids, and object ids (bridges and tunnels included).
 - **Controlled approaches** (from the sidecar's `junctions`): every `stop`,
   `yield` or `signal` approach with incoming lanes has a stop or yield line
-  within 5 m of the road end, and every `stop` and `yield` approach a 206 /
-  205 sign there, facing its traffic.
+  within 8 m of the road end (behind a crosswalk), and every `stop` and
+  `yield` approach a 206 / 205 sign there, facing its traffic.
 - **Priority records** name two connecting roads of their own junction.
 - **Lights and controllers:** every light is in exactly one `<controller>`,
   every controlled signal exists, and every `<junction><controller>` names an
-  existing controller. Every `signal` approach has a facing light within 5 m
+  existing controller. Every `signal` approach has a facing light within 8 m
   of the road end.
 - **Signal plans** (sidecar): the junction's controller holds exactly the
   plan's lights; every phase sets every light, every light turns green once

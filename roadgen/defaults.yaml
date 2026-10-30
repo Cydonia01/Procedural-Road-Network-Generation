@@ -303,6 +303,7 @@ traffic_lights:  # fixed-time light plans at junctions with lights (roadgen/open
   all_red: 2.0              # every light red between two phases [s]
   cycle: [60.0, 90.0]       # shortest and longest cycle [s]
   overhead_min_lanes: 3     # approaches with this many lanes also get a light over the lanes
+  walk_speed: 1.2           # a pedestrian phase lets pedestrians cross the longest crosswalk at this speed [m/s]
 
 annotate:  # `annotate` step: cross-section profiles and junction control from the maps (roadgen/maps/annotate.py)
   urban_density: 3000.0     # urban profile from this density [people/km^2]

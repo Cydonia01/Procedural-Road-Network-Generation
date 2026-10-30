@@ -269,3 +269,52 @@ def yields_to(pairs: list[tuple[int, int]]) -> dict[int, list[int]]:
     for high, low in pairs:
         out.setdefault(low, []).append(high)
     return {k: sorted(v) for k, v in out.items()}
+
+
+# --- priority roads through several junctions -----------------------------------------
+
+Step = tuple[int, int]  # (road, direction): +1 along s, -1 against it
+
+
+def priority_runs(majors: dict[int, tuple[EndKey, EndKey]], road_ends: dict[EndKey, int],
+                  directions: dict[int, set[int]]) -> list[tuple[list[Step], list[int]]]:
+    """Runs of a priority road through consecutive priority junctions, per direction of
+    travel: (roads [(road, direction)], junctions between them), with roads[k] arriving at
+    junctions[k] and roads[k + 1] leaving it. majors: junction -> its priority road's two
+    arms; road_ends: (road, contact) -> the junction there; directions: road -> the
+    directions it has traffic in. A run that closes into a loop is cut where it closes,
+    starting from its lowest (road, direction). Runs through one junction only are left out."""
+    def arrive(step: Step) -> EndKey:
+        return step[0], "end" if step[1] > 0 else "start"
+
+    succ: dict[Step, tuple[int, Step]] = {}
+    for jid, (a, b) in majors.items():
+        for here, there in ((a, b), (b, a)):
+            road, contact = here
+            step = (road, 1 if contact == "end" else -1)  # arriving at junction jid on this arm
+            nxt = (there[0], 1 if there[1] == "start" else -1)  # leaving on the other arm
+            if road_ends.get(here) == jid and step[1] in directions.get(road, set()) \
+                    and nxt[1] in directions.get(nxt[0], set()):
+                succ[step] = (jid, nxt)
+    has_pred = {nxt for _, nxt in succ.values()}
+    starts = sorted(s for s in succ if s not in has_pred)
+    seen: set[Step] = set()
+    loops = [s for s in sorted(succ) if s in has_pred]
+    runs = []
+    for start in starts + loops:
+        if start in seen:
+            continue
+        roads, junctions = [start], []
+        step = start
+        seen.add(step)
+        while step in succ:
+            jid, nxt = succ[step]
+            if nxt in seen:  # a loop: cut where it closes
+                break
+            junctions.append(jid)
+            roads.append(nxt)
+            seen.add(nxt)
+            step = nxt
+        if len(junctions) >= 2:
+            runs.append((roads, junctions))
+    return runs

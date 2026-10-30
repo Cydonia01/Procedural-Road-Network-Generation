@@ -1,0 +1,388 @@
+{
+  "old": "out/stage_b/b6",
+  "new": "out/stage_b/b7",
+  "networks": {
+    "grid": {
+      "status": "ok",
+      "pipeline_s": [
+        24.2,
+        23.9
+      ],
+      "xodr_mb": [
+        4.96,
+        5.46
+      ],
+      "growth": 0.102,
+      "junctions_with_lights_before": 0,
+      "road_km": 25.35,
+      "crosswalks": 352,
+      "zebras": 352,
+      "at_lights": 0,
+      "crosswalk_share_of_controlled_arms": 1.0,
+      "signs": {
+        "103-10": 4,
+        "103-20": 4,
+        "205": 121,
+        "206": 39,
+        "274": 180,
+        "301": 16,
+        "306": 16,
+        "307": 16,
+        "350-10": 704
+      },
+      "speed_signs_per_km": 7.1,
+      "advisory_corners": 4,
+      "curve_warnings": 8,
+      "junctions_with_lights": 0,
+      "pedestrian_phases": 0
+    },
+    "manhattan_like": {
+      "status": "ok",
+      "pipeline_s": [
+        135.8,
+        135.4
+      ],
+      "xodr_mb": [
+        14.18,
+        15.83
+      ],
+      "growth": 0.1163,
+      "junctions_with_lights_before": 20,
+      "road_km": 79.8,
+      "crosswalks": 1440,
+      "zebras": 1380,
+      "at_lights": 60,
+      "crosswalk_share_of_controlled_arms": 1.0,
+      "signs": {
+        "1000001": 60,
+        "103-10": 4,
+        "103-20": 4,
+        "205": 268,
+        "206": 62,
+        "274": 310,
+        "301": 14,
+        "306": 14,
+        "307": 14,
+        "350-10": 1500
+      },
+      "speed_signs_per_km": 3.88,
+      "advisory_corners": 4,
+      "curve_warnings": 8,
+      "junctions_with_lights": 20,
+      "pedestrian_phases": 10
+    },
+    "paris": {
+      "status": "ok",
+      "pipeline_s": [
+        59.0,
+        59.9
+      ],
+      "xodr_mb": [
+        9.92,
+        11.03
+      ],
+      "growth": 0.1119,
+      "junctions_with_lights_before": 4,
+      "road_km": 40.49,
+      "crosswalks": 751,
+      "zebras": 734,
+      "at_lights": 17,
+      "crosswalk_share_of_controlled_arms": 0.982,
+      "signs": {
+        "1000001": 19,
+        "103-10": 15,
+        "103-20": 15,
+        "105-10": 6,
+        "105-20": 6,
+        "205": 220,
+        "206": 77,
+        "274": 283,
+        "301": 122,
+        "306": 100,
+        "307": 82,
+        "350-10": 1468
+      },
+      "speed_signs_per_km": 6.99,
+      "advisory_corners": 27,
+      "curve_warnings": 42,
+      "junctions_with_lights": 4,
+      "pedestrian_phases": 0
+    },
+    "suburb": {
+      "status": "ok",
+      "pipeline_s": [
+        71.2,
+        72.2
+      ],
+      "xodr_mb": [
+        9.55,
+        10.44
+      ],
+      "growth": 0.0928,
+      "junctions_with_lights_before": 1,
+      "road_km": 26.56,
+      "crosswalks": 603,
+      "zebras": 598,
+      "at_lights": 5,
+      "crosswalk_share_of_controlled_arms": 0.796,
+      "signs": {
+        "1000001": 4,
+        "103-10": 40,
+        "103-20": 36,
+        "105-10": 10,
+        "105-20": 14,
+        "205": 222,
+        "206": 63,
+        "215": 35,
+        "274": 162,
+        "301": 107,
+        "306": 74,
+        "307": 56,
+        "350-10": 1194
+      },
+      "speed_signs_per_km": 6.1,
+      "advisory_corners": 93,
+      "curve_warnings": 100,
+      "junctions_with_lights": 1,
+      "pedestrian_phases": 0
+    },
+    "organic_town": {
+      "status": "ok",
+      "pipeline_s": [
+        22.4,
+        22.7
+      ],
+      "xodr_mb": [
+        4.49,
+        4.96
+      ],
+      "growth": 0.1047,
+      "junctions_with_lights_before": 1,
+      "road_km": 18.39,
+      "crosswalks": 321,
+      "zebras": 317,
+      "at_lights": 4,
+      "crosswalk_share_of_controlled_arms": 0.856,
+      "signs": {
+        "1000001": 5,
+        "103-10": 9,
+        "103-20": 9,
+        "105-10": 1,
+        "105-20": 1,
+        "205": 114,
+        "206": 18,
+        "215": 16,
+        "274": 152,
+        "301": 40,
+        "306": 34,
+        "307": 27,
+        "350-10": 634
+      },
+      "speed_signs_per_km": 8.27,
+      "advisory_corners": 27,
+      "curve_warnings": 20,
+      "junctions_with_lights": 1,
+      "pedestrian_phases": 0
+    },
+    "city": {
+      "status": "ok",
+      "pipeline_s": [
+        196.9,
+        196.8
+      ],
+      "xodr_mb": [
+        24.69,
+        25.79
+      ],
+      "growth": 0.0446,
+      "junctions_with_lights_before": 151,
+      "road_km": 59.52,
+      "crosswalks": 643,
+      "zebras": 392,
+      "at_lights": 251,
+      "crosswalk_share_of_controlled_arms": 0.581,
+      "signs": {
+        "1000001": 500,
+        "103-10": 73,
+        "103-20": 73,
+        "105-10": 20,
+        "105-20": 24,
+        "205": 121,
+        "206": 109,
+        "274": 564,
+        "301": 156,
+        "306": 82,
+        "307": 66,
+        "350-10": 784
+      },
+      "speed_signs_per_km": 9.48,
+      "advisory_corners": 117,
+      "curve_warnings": 190,
+      "junctions_with_lights": 151,
+      "pedestrian_phases": 0
+    },
+    "mixed_city": {
+      "status": "ok",
+      "pipeline_s": [
+        443.9,
+        450.8
+      ],
+      "xodr_mb": [
+        33.89,
+        35.59
+      ],
+      "growth": 0.05,
+      "junctions_with_lights_before": 118,
+      "road_km": 61.66,
+      "crosswalks": 1079,
+      "zebras": 770,
+      "at_lights": 309,
+      "crosswalk_share_of_controlled_arms": 0.755,
+      "signs": {
+        "1000001": 421,
+        "103-10": 87,
+        "103-20": 87,
+        "105-10": 13,
+        "105-20": 13,
+        "205": 243,
+        "206": 143,
+        "215": 20,
+        "274": 543,
+        "301": 179,
+        "306": 122,
+        "307": 94,
+        "350-10": 1540
+      },
+      "speed_signs_per_km": 8.81,
+      "advisory_corners": 131,
+      "curve_warnings": 200,
+      "junctions_with_lights": 118,
+      "pedestrian_phases": 0
+    },
+    "highway_corridor": {
+      "status": "ok",
+      "pipeline_s": [
+        15.6,
+        15.9
+      ],
+      "xodr_mb": [
+        11.36,
+        11.97
+      ],
+      "growth": 0.0542,
+      "junctions_with_lights_before": 33,
+      "road_km": 31.31,
+      "crosswalks": 369,
+      "zebras": 268,
+      "at_lights": 101,
+      "crosswalk_share_of_controlled_arms": 0.827,
+      "signs": {
+        "1000001": 108,
+        "103-10": 32,
+        "103-20": 32,
+        "105-10": 11,
+        "105-20": 15,
+        "205": 92,
+        "206": 40,
+        "274": 278,
+        "301": 66,
+        "306": 58,
+        "307": 43,
+        "350-10": 536
+      },
+      "speed_signs_per_km": 8.88,
+      "advisory_corners": 58,
+      "curve_warnings": 90,
+      "junctions_with_lights": 33,
+      "pedestrian_phases": 0
+    },
+    "junction_k": {
+      "status": "ok",
+      "pipeline_s": [
+        2.7,
+        2.8
+      ],
+      "xodr_mb": [
+        0.17,
+        0.18
+      ],
+      "growth": 0.0838,
+      "junctions_with_lights_before": 0,
+      "road_km": 0.65,
+      "crosswalks": 8,
+      "zebras": 8,
+      "at_lights": 0,
+      "crosswalk_share_of_controlled_arms": 0.5,
+      "signs": {
+        "206": 3,
+        "274": 8,
+        "301": 2,
+        "306": 1,
+        "307": 1,
+        "350-10": 16
+      },
+      "speed_signs_per_km": 12.29,
+      "advisory_corners": 2,
+      "curve_warnings": 0,
+      "junctions_with_lights": 0,
+      "pedestrian_phases": 0
+    },
+    "junction_roundabout": {
+      "status": "ok",
+      "pipeline_s": [
+        2.9,
+        3.0
+      ],
+      "xodr_mb": [
+        0.18,
+        0.19
+      ],
+      "growth": 0.0561,
+      "junctions_with_lights_before": 0,
+      "road_km": 0.65,
+      "crosswalks": 7,
+      "zebras": 7,
+      "at_lights": 0,
+      "crosswalk_share_of_controlled_arms": 0.333,
+      "signs": {
+        "205": 4,
+        "215": 3,
+        "274": 3,
+        "301": 1,
+        "350-10": 13
+      },
+      "speed_signs_per_km": 4.62,
+      "advisory_corners": 6,
+      "curve_warnings": 0,
+      "junctions_with_lights": 0,
+      "pedestrian_phases": 0
+    },
+    "junction_diamond": {
+      "status": "ok",
+      "pipeline_s": [
+        2.6,
+        2.6
+      ],
+      "xodr_mb": [
+        0.17,
+        0.18
+      ],
+      "growth": 0.0516,
+      "junctions_with_lights_before": 2,
+      "road_km": 6.47,
+      "crosswalks": 4,
+      "zebras": 0,
+      "at_lights": 4,
+      "crosswalk_share_of_controlled_arms": 0.5,
+      "signs": {
+        "1000001": 6,
+        "274": 12
+      },
+      "speed_signs_per_km": 1.86,
+      "advisory_corners": 0,
+      "curve_warnings": 0,
+      "junctions_with_lights": 2,
+      "pedestrian_phases": 0
+    }
+  }
+}

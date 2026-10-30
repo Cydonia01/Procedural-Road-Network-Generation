@@ -273,18 +273,58 @@ keeps them in the sidecar only).
 
 **Signs and lines** (`furniture.py`), per approach with incoming lanes:
 
-| Role | Line, 1 m before the road end | Sign, 0.5 m outside the carriageway, facing the traffic |
+| Role | Line, 1 m before the road end (1 m behind a crosswalk) | Sign, 0.5 m outside the carriageway, facing the traffic |
 |---|---|---|
 | `stop` | stop line: white, 0.5 m deep, solid | 206 |
 | `yield` | yield line (Z 341): 0.5 m dashes, 0.25 m gaps, 0.3 m deep | 205; at roundabout entries also 215, above it |
 | `signal` | stop line | a traffic light on the roadside at the stop line, and one over the lanes on approaches with 3 or more lanes ([traffic lights](#traffic-lights-and-controllers-hd-maps)) |
-| `major` | none | 301, 30 m before the junction (at most half the road), not on roundabout rings |
+| `major` | none | 301, 30 m before the junction (at most half the road), not on roundabout rings; along a priority road through two or more priority junctions 306 / 307 instead (below) |
+
+**Crosswalks.** At the junction end of every road with sidewalks on both
+sides there (junctions with control only), 0.5 m before the road end, from
+curb to curb: 3 m deep on streets, 4 m on avenues and highways.
+
+- **Without lights:** a zebra (Z 293: 0.5 m stripes, 0.5 m gaps) and a sign
+  350-10 facing each direction of travel.
+- **At lights:** two solid edge lines 0.3 m wide (Fußgängerfurt), no sign.
+- The stop or yield line moves 1 m behind the crosswalk.
+- **Skipped** where the road has too little room for the crosswalk, its stop
+  line and 2 m more (half the road where both ends are junctions).
+
+A crosswalk is `<object type="crosswalk">` with an open outline across the
+road and its markings along it (a zebra's stripes; at lights two outline rows,
+one per edge line).
+
+**Priority roads (306 / 307).** Where a priority road runs through two or
+more consecutive priority junctions (traced along each junction's priority
+road arms, per direction of travel), it gets 306 just after the first
+junction and 307 30 m before the junction where it ends; the 301s at the
+junctions in between go, since 306 holds there. A run through one junction
+keeps its 301.
+
+**Along a road**, per direction of travel, except on roundabout rings and
+cul-de-sac loops:
+
+- **Speed limit 274** (value in km/h: to the nearest km/h, then down to 10)
+  where the posted speed changes, and 10 m after each junction on roads of
+  100 m or more. An advisory corner speed is posted only where it is at least
+  10 km/h below the limit.
+- **Curve warning** 103-10 / 103-20 (left / right) before every advisory
+  corner, or 105-10 / 105-20 (double curve) where the next one starts within
+  200 m, at the corner's deceleration lead (at least 10 m), on the post above a
+  274 standing there.
+
+Codes with a DE subtype (103, 105, 350) carry it; 274 carries an empty
+subtype and an integer `value` with `unit="km/h"`, the key esmini looks it up
+by.
 
 Lines are `roadMark` objects (`stopLine`, `yieldLine`) with an open outline
 of two corners across the approach's driving lanes and one `<marking>` along
-it, which esmini draws as paint. The two corners' heights follow the road's
-cross slope (superelevation) at the line, so a line across a banked road end
-stays on the surface instead of sinking half into it. There is no 294 signal, since esmini has no
+it, which esmini draws as paint. esmini puts every corner at the object's
+height plus the corner's `z`, so each corner's `z` is the road surface under
+it (elevation and superelevation) relative to the surface under the object,
+plus 2 cm: lines on a banked or sloped road end lie on the surface instead of
+sinking partly into it. There is no 294 signal, since esmini has no
 OSI type for it and CARLA does not know it. Signs are `<signal country="DE"
 subtype="-1">` with a `<validity>` over the approach lanes; esmini types
 205, 206, 215 and 301 for OSI. Signals are numbered 1, 2, …; line objects
@@ -311,6 +351,12 @@ plan:
   ([60, 90] s). The green time left after yellow and all-red is split by the
   groups' incoming lane counts, each at least `min_green` (10 s, which may
   stretch the cycle).
+- **Pedestrian phase:** a junction whose approaches all fit in one group (an
+  opposite pair, the third arm leaving only) has nothing to switch between.
+  With crosswalks it keeps its lights and gets a second phase with every
+  vehicle light red, long enough to cross the longest crosswalk at
+  `walk_speed` (1.2 m/s), at least `min_green`. Without crosswalks it becomes
+  a priority junction (the pair is the priority road).
 - **Offset:** seeded per junction, a whole second within the cycle, so
   neighbouring junctions do not switch together.
 
@@ -359,7 +405,7 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `corners` | Every fitted bend: `road`, `node`, `s_start`, `s_end`, reference `radius`, innermost `lane_radius`, `design_speed`, `max_speed`, `advisory_speed` (null at design radius), in m and m/s |
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
 | `cross_sections` | HD maps on only: each edge's cross-section profile |
-| `signal_plans` | HD maps on only, per junction with lights: `junction`, `node`, `controller`, `cycle` and `offset` [s], `min_green`, `groups` (`[road, contact]` per phase), `lights` (signal id → its approach), `phases` (`group`, `kind` green / yellow / all_red, `duration`, `states`: signal id → `"on;off;off"` red, `"off;on;off"` yellow, `"off;off;on"` green), and the junction's `conflicts` and `permissive` (high, low) connecting-road pairs |
-| `junctions` | HD maps on only: per junction its `control` kind, `priority_roads` (`[road, contact]`), `approaches` (`road`, `contact`, `role`), and its numbers of `conflicts` and `priorities` |
+| `signal_plans` | HD maps on only, per junction with lights: `junction`, `node`, `controller`, `cycle` and `offset` [s], `min_green`, `groups` (`[road, contact]` per phase), `lights` (signal id → its approach), `phases` (`group`, `kind` green / yellow / all_red / pedestrian, `duration`, `states`: signal id → `"on;off;off"` red, `"off;on;off"` yellow, `"off;off;on"` green), and the junction's `conflicts` and `permissive` (high, low) connecting-road pairs |
+| `junctions` | HD maps on only: per junction its `control` kind, `priority_roads` (`[road, contact]`), `approaches` (`road`, `contact`, `role`), and its numbers of `conflicts`, `priorities` and `crosswalks` |
 | `movement_control` | HD maps on only: per connecting road its approach's `control` role, `priority` (on the priority road) and `yields_to` (connecting roads) |
 | `corner_roads` | HD maps on only: each corner road's `junction_id`, `road`, `from_road`, `to_road`, lane `kinds`, `path` and `closes` (a movement drives the turn it follows) |

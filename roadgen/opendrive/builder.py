@@ -54,6 +54,7 @@ from roadgen.geometry.cross_section import (
 )
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.profiles import (
+    ADVISORY_DECEL,
     LaneLayout,
     bridge_spans,
     lane_layout,
@@ -73,15 +74,27 @@ from roadgen.opendrive.control import (
     conflicts,
     junction_control,
     priority_pairs,
+    priority_runs,
     yields_to,
 )
 from roadgen.opendrive.furniture import (
+    FURT_LINE,
     LIGHT_SIZE,
+    LINE_SETBACK,
+    PRIORITY_SIGN_DISTANCE,
     SIGN_SIZE,
+    SPEED_AFTER_JUNCTION,
+    STACK,
     ObjectRecord,
+    RoadSide,
     SignalRecord,
     approach_furniture,
+    carriageway_edge,
+    crosswalk_at,
+    crosswalk_furniture,
+    curve_warnings,
     end_geometry,
+    speed_signs,
 )
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import (
@@ -94,12 +107,13 @@ from roadgen.opendrive.junctions import (
     piece_geometry,
 )
 from roadgen.opendrive.lanes import make_lane_sections
-from roadgen.opendrive.lights import signal_plan
+from roadgen.opendrive.lights import phase_groups, signal_plan
 from roadgen.opendrive.marks import RoadMarkParams, road_marks
 
 log = logging.getLogger(__name__)
 
 BRIDGE_TYPE = "concrete"  # OpenDRIVE e_bridgeType
+MARK_LIFT = 0.02  # line and crosswalk corners this far above the road surface (no z-fighting in esmini) [m]
 TUNNEL_TYPE = "standard"  # OpenDRIVE e_tunnelType
 
 ODR_REV_MAJOR = "1"
@@ -110,6 +124,18 @@ HEADER_DATE = "1970-01-01T00:00:00"
 DEFAULT_JUNCTION_MARGIN = DEFAULTS["opendrive"]["junction_margin"]
 
 PathLike = Union[str, Path]
+
+
+def _directions(lanes_at, s: float) -> set[int]:
+    """Directions of travel of a road at station s: +1 with driving lanes on the right."""
+    ids = [lid for lid, kind, *_ in lanes_at(s) if kind == "driving"]
+    return {d for d, here in ((1, any(i < 0 for i in ids)), (-1, any(i > 0 for i in ids))) if here}
+
+
+def _validity(lanes_at, s: float, direction: int) -> Optional[tuple[int, int]]:
+    """Driving lanes of a direction of travel at s, as (innermost, outermost)."""
+    ids = [lid for lid, kind, *_ in lanes_at(s) if kind == "driving" and (lid < 0) == (direction > 0)]
+    return (min(ids, key=abs), max(ids, key=abs)) if ids else None
 
 
 def _cubic_at(records: list, s: float) -> float:
@@ -157,6 +183,7 @@ class OpenDriveBuilder:
         self.signals: list[SignalRecord] = []
         self.objects: list[ObjectRecord] = []
         self.signal_plans: list[dict] = []  # fixed-time light plans per junction with lights
+        self.priority_runs = 0  # priority roads through 2+ priority junctions (306 / 307)
 
     def build(self, graph: RoadGraph) -> xodr.OpenDrive:
         errors = graph.validate()
@@ -172,8 +199,9 @@ class OpenDriveBuilder:
         bridges: dict[int, list[tuple[float, float]]] = {}
         tunnels: dict[int, list[tuple[float, float]]] = {}
         ends: dict[int, list[RoadEnd]] = {n: [] for n in na.junctions}
+        self.signals, self.objects = [], []
         self._layouts: dict[int, LaneLayout] = {}
-        self._roll: dict[int, list] = {}  # road id -> superelevation records
+        self._roll: dict[int, tuple[list, list]] = {}  # road id -> elevation, superelevation records
         junctions = set(na.junctions)
         loops = loop_edges(graph) if self.hd.enabled else frozenset()
         planes = junction_planes(graph, na, self.design) if heights else None
@@ -183,6 +211,8 @@ class OpenDriveBuilder:
                 self.hd.active_marks)
             self._layouts[road_id] = layout
             self._roll[road_id] = roll
+            if self.hd.enabled and not all(eid in loops for eid in ca.chain.edge_ids):
+                self.signals += self._road_signs(graph, ca, road_id, layout, junctions)
             if spans:
                 bridges[road_id] = spans
             if tunnel_spans(graph, ca):
@@ -200,8 +230,8 @@ class OpenDriveBuilder:
         movements: list[Movement] = []
         corners: list[CornerRoad] = []
         self.junction_records, self.movement_control, self.priorities, self.conflicts = [], {}, {}, {}
-        self.signals, self.objects = [], []
         self._signal_junctions: list[tuple] = []
+        self._at_junction = {(e.road_id, e.contact) for es in ends.values() for e in es}
         self.signal_plans: list[dict] = []
         lengths = {road_id: ca.length for road_id, ca in enumerate(na.chains, 1)}
         layouts = self._layouts
@@ -247,6 +277,8 @@ class OpenDriveBuilder:
         cs = self.hd.active_cross_section
         self.cross_sections = {} if cs is None else {
             eid: edge_cross_section(e, cs, eid in loops).profile for eid, e in sorted(graph.edges.items())}
+        if self.hd.enabled:
+            self._priority_road_signs(ends)
         self._add_furniture(odr, len(na.chains))
         return odr
 
@@ -263,6 +295,27 @@ class OpenDriveBuilder:
             approach_of[m.connecting_road] = by_key[(end.road_id, end.contact)]
         pairs = conflicts(moves, paths) if control.kind != "none" else []
         prio = priority_pairs(moves, pairs, control, approach_of)
+        crosswalks = {}
+        if control.kind != "none":
+            for e in ends:
+                length = lengths[e.road_id]
+                other = (e.road_id, "start" if e.contact == "end" else "end")
+                room = length / 2 if other in self._at_junction else length
+                cw = crosswalk_at(e, length, graph.edges[e.edge_id].road_class, room)
+                if cw is not None:
+                    crosswalks[(e.road_id, e.contact)] = cw
+        clash: set = set()
+        if control.kind == "signal":
+            permissive = {frozenset(p) for p in prio}
+            clash = {frozenset((approach_of[a].key, approach_of[b].key)) for a, b in pairs
+                     if frozenset((a, b)) not in permissive}
+            groups = phase_groups([a for a, e in zip(approaches, ends) if e.in_lanes], clash)
+            if len(groups) == 1 and not crosswalks:
+                # One phase group and nobody crossing: nothing to switch between (B7, prompt 9).
+                major = tuple(groups[0])
+                control = Control("priority", {a.key: "major" if a.key in major else "yield" for a in approaches},
+                                  major)
+                prio = priority_pairs(moves, pairs, control, approach_of)
         self.priorities[junction_id] = prio
         self.conflicts[junction_id] = pairs
         yields = yields_to(prio)
@@ -276,9 +329,19 @@ class OpenDriveBuilder:
             "priority_roads": [list(k) for k in control.major],
             "approaches": [{"road": e.road_id, "contact": e.contact, "role": control.role((e.road_id, e.contact))}
                            for e in ends],
-            "conflicts": len(pairs), "priorities": len(prio)})
+            "conflicts": len(pairs), "priorities": len(prio), "crosswalks": len(crosswalks)})
         for e in ends:
-            geom = end_geometry(e, lengths[e.road_id], layouts[e.road_id].lanes_at)
+            key = (e.road_id, e.contact)
+            lanes_at = layouts[e.road_id].lanes_at
+            cw = crosswalks.get(key)
+            if cw is not None:
+                sigs, objs = crosswalk_furniture(
+                    junction_id, cw, control.kind == "signal", _directions(lanes_at, cw.s),
+                    lambda side, lanes_at=lanes_at: carriageway_edge(lanes_at, side),
+                    lambda d, lanes_at=lanes_at, s=cw.s: _validity(lanes_at, s, d))
+                self.signals += sigs
+                self.objects += objs
+            geom = end_geometry(e, lengths[e.road_id], lanes_at, cw.setback if cw else LINE_SETBACK)
             if geom is None:
                 continue
             sigs, objs = approach_furniture(junction_id, control, geom, control.kind == "roundabout",
@@ -287,20 +350,70 @@ class OpenDriveBuilder:
             self.objects += objs
         if control.kind == "signal":
             lanes = {(e.road_id, e.contact): len(e.in_lanes) for e in ends}
-            permissive = {frozenset(p) for p in prio}
-            clash = {frozenset((approach_of[a].key, approach_of[b].key)) for a, b in pairs
-                     if frozenset((a, b)) not in permissive}
-            self._signal_junctions.append((junction_id, node_id, approaches, lanes, pairs, prio, clash))
+            crossing = max((cw.length for cw in crosswalks.values()), default=0.0)
+            self._signal_junctions.append((junction_id, node_id, approaches, lanes, pairs, prio, clash, crossing))
+
+    def _road_signs(self, graph: RoadGraph, ca: ChainAlignment, road_id: int, layout: LaneLayout,
+                    junctions: set[int]) -> list[SignalRecord]:
+        """Speed signs and curve warnings along a road, per direction of travel."""
+        edges = [graph.edges[eid] for eid in ca.chain.edge_ids]
+        ranges = [ca.edge_range(e.id) for e in edges]
+
+        def limit(s: float) -> float:
+            return next((e.speed_limit for e, (a, b) in zip(edges, ranges) if a - 1e-6 <= s <= b + 1e-6),
+                        edges[-1].speed_limit)
+
+        corners = [(c.s_start, c.s_end, c.deflection, c.advisory_speed) for c in ca.corners
+                   if c.advisory_speed is not None]
+        profile = speed_profile(graph, ca)
+        out = []
+        for d in sorted(_directions(layout.lanes_at, ca.length / 2)):
+            entry = ca.chain.start if d > 0 else ca.chain.end
+            side = RoadSide(road_id, d, ca.length, layout.lanes_at, entry in junctions)
+            out += speed_signs(side, profile, limit)
+            out += curve_warnings(side, corners, limit, ADVISORY_DECEL)
+        return out
+
+    def _priority_road_signs(self, ends: dict[int, list[RoadEnd]]) -> None:
+        """306 after the first junction of a priority road through two or more priority
+        junctions, 307 before the junction where it ends, and no 301 at the junctions in
+        between (the 306 holds there)."""
+        majors = {r["junction"]: tuple(tuple(k) for k in r["priority_roads"]) for r in self.junction_records
+                  if r["control"] == "priority" and len(r["priority_roads"]) == 2}
+        node_to_jid = {r["node"]: r["junction"] for r in self.junction_records}
+        road_ends = {(e.road_id, e.contact): node_to_jid[n] for n, es in ends.items() for e in es}
+        directions = {road: _directions(layout.lanes_at, layout.length / 2) for road, layout in self._layouts.items()}
+        drop = set()
+        added = []
+        runs = priority_runs(majors, road_ends, directions)
+        self.priority_runs = len(runs)
+        for roads, jids in runs:
+            for (road, d), jid in zip(roads[1:-1], jids[1:]):  # the 306 holds at junctions 2..m
+                drop.add((road, "+" if d > 0 else "-", jid))
+            first, last = roads[1], roads[-1]
+            layout = self._layouts[first[0]]
+            side = RoadSide(first[0], first[1], layout.length, layout.lanes_at, True)
+            added.append(side.place("306", SPEED_AFTER_JUNCTION if first[1] > 0 else layout.length
+                                    - SPEED_AFTER_JUNCTION, 2.0 + STACK))
+            arrive = (last[0], "end" if last[1] > 0 else "start")
+            if arrive in road_ends:  # the priority road ends at the junction ahead
+                layout = self._layouts[last[0]]
+                side = RoadSide(last[0], last[1], layout.length, layout.lanes_at, True)
+                back = min(PRIORITY_SIGN_DISTANCE, layout.length / 2)
+                added.append(side.place("307", layout.length - back if last[1] > 0 else back, 2.0 + STACK))
+        self.signals = [s for s in self.signals if not (s.type == "301" and (s.road, s.orientation, s.junction)
+                                                        in drop)] + added
 
     def _signal_plans(self, light_ids: dict[tuple[int, int, str], list[str]]) -> None:
         """Fixed-time plans of the junctions with lights, once the lights are numbered;
         light_ids: (junction, road, contact) -> signal ids."""
         self.signal_plans = []
-        for controller, (jid, node_id, approaches, lanes, pairs, prio, clash) in enumerate(self._signal_junctions, 1):
+        for controller, (jid, node_id, approaches, lanes, pairs, prio, clash, crossing) in enumerate(
+                self._signal_junctions, 1):
             lights = {a.key: light_ids[(jid, *a.key)] for a in approaches if (jid, *a.key) in light_ids}
             if not lights:
                 continue
-            plan = signal_plan(jid, node_id, approaches, lanes, lights, self.hd.lights, self.hd.seed, clash)
+            plan = signal_plan(jid, node_id, approaches, lanes, lights, self.hd.lights, self.hd.seed, clash, crossing)
             self.signal_plans.append({
                 "junction": jid, "node": node_id, "controller": controller, "cycle": plan.cycle,
                 "offset": plan.offset, "min_green": self.hd.lights.min_green,
@@ -322,6 +435,7 @@ class OpenDriveBuilder:
             height, width = LIGHT_SIZE if rec.dynamic else (SIGN_SIZE, SIGN_SIZE)
             sig = xodr.Signal(round(rec.s, 6), round(rec.t, 6), rec.country, rec.type, subtype=rec.subtype,
                               id=str(k), name=f"{'light' if rec.dynamic else rec.type}_{k}", zOffset=rec.z,
+                              value=rec.value, unit="km/h" if rec.value is not None else None,
                               dynamic=xodr.Dynamic.yes if rec.dynamic else xodr.Dynamic.no,
                               orientation=xodr.Orientation.positive if rec.orientation == "+"
                               else xodr.Orientation.negative, height=height, width=width)
@@ -332,21 +446,41 @@ class OpenDriveBuilder:
         self._signal_plans(light_ids)
         base = (n_roads + 1) * 1000
         for k, rec in enumerate(self.objects):
-            obj = xodr.Object(round(rec.s, 6), round(rec.t, 6), xodr.ObjectType.roadMark, subtype="-1",
-                              id=str(base + k), name=rec.name)
-            # The corners follow the road's cross slope (superelevation, positive falling to
-            # the right), so a line across a banked road end stays on its surface.
-            slope = math.tan(_cubic_at(self._roll.get(rec.road, []), rec.s))
+            kind = xodr.ObjectType.crosswalk if rec.type == "crosswalk" else xodr.ObjectType.roadMark
+            obj = xodr.Object(round(rec.s, 6), round(rec.t, 6), kind, subtype="-1", id=str(base + k), name=rec.name)
+            # esmini puts every corner at the object's height plus its z: each corner gets the
+            # road surface under it (elevation, superelevation positive falling to the right)
+            # relative to the surface under the object, and MARK_LIFT, so lines on a sloped or
+            # banked road end lie on it instead of sinking partly into it (B5, B7).
+            elevation, superelevation = self._roll.get(rec.road, ([], []))
+            length = self._layouts[rec.road].length
+
+            def surface(u: float, v: float, rec=rec, elevation=elevation, superelevation=superelevation,
+                        length=length) -> float:
+                s = min(max(rec.s + u, 0.0), length)
+                return _cubic_at(elevation, s) + (rec.t + v) * math.sin(_cubic_at(superelevation, s))
+
+            base = surface(0.0, 0.0)
             outline = xodr.Outline(closed=False)
-            for corner, v in enumerate((-rec.half_span, rec.half_span)):
-                outline.add_corner(xodr.CornerLocal(0.0, v, round(v * slope, 6), 0.0, id=corner))
+            # Lines along u = 0 (stop lines, zebras); a crossing at lights along its two edges.
+            rows = (-rec.depth / 2 + FURT_LINE / 2, rec.depth / 2 - FURT_LINE / 2) if rec.edges else (0.0,)
+            for row, u in enumerate(rows):
+                for j, v in enumerate((-rec.half_span, rec.half_span)):
+                    outline.add_corner(xodr.CornerLocal(round(u, 6), v, round(surface(u, v) - base + MARK_LIFT, 6),
+                                                        0.0, id=2 * row + j))
             obj.add_outline(outline)
-            marking = xodr.Marking(xodr.RoadMarkColor.white, rec.line or 2 * rec.half_span, xodr.SideType.front,
-                                   rec.space, 0.0, 0.0, width=rec.depth, zOffset=0.01)
-            marking.add_cornerReference(0)
-            marking.add_cornerReference(1)
-            obj.add_marking(marking)
-            obj.add_validity(*rec.validity)
+            for row in range(len(rows)):
+                if rec.edges:
+                    marking = xodr.Marking(xodr.RoadMarkColor.white, 2 * rec.half_span, xodr.SideType.front, 0.0,
+                                           0.0, 0.0, width=FURT_LINE, zOffset=0.01)
+                else:
+                    marking = xodr.Marking(xodr.RoadMarkColor.white, rec.line or 2 * rec.half_span,
+                                           xodr.SideType.front, rec.space, 0.0, 0.0, width=rec.depth, zOffset=0.01)
+                marking.add_cornerReference(2 * row)
+                marking.add_cornerReference(2 * row + 1)
+                obj.add_marking(marking)
+            if rec.validity is not None:
+                obj.add_validity(*rec.validity)
             odr.roads[str(rec.road)].add_object(obj)
 
     def write(self, path: PathLike) -> Path:
@@ -362,6 +496,8 @@ class OpenDriveBuilder:
         for sig in root.iter("signal"):  # scenariogeneration upper-cases the country code
             if sig.get("country") == "OPENDRIVE":
                 sig.set("country", "OpenDRIVE")
+            if sig.get("value") is not None:  # ... and writes 50.0, which misses esmini's de_274-50
+                sig.set("value", str(int(float(sig.get("value")))))
         if self.hd.control.priorities:
             self._add_priorities(root)
         self._add_controllers(root)
@@ -467,9 +603,9 @@ class OpenDriveBuilder:
         planes: Optional[dict[int, JunctionPlane]] = None, design: DesignParams = DesignParams(),
         cross_section: Optional[CrossSectionParams] = None, loops: frozenset[int] = frozenset(),
         marks: Optional[RoadMarkParams] = None,
-    ) -> tuple[xodr.Road, list[tuple[int, RoadEnd]], list[tuple[float, float]], LaneLayout, list]:
+    ) -> tuple[xodr.Road, list[tuple[int, RoadEnd]], list[tuple[float, float]], LaneLayout, tuple[list, list]]:
         """The chain's road, its ends at junctions, its bridges as (s, length), its lane layout
-        and its superelevation records (s, a, b, c, d)."""
+        and its elevation and superelevation records (s, a, b, c, d)."""
         planview = xodr.PlanView()
         for piece in ca.alignment.pieces:
             planview.add_fixed_geometry(piece_geometry(piece), piece.start.x, piece.start.y, piece.start.hdg)
@@ -482,9 +618,9 @@ class OpenDriveBuilder:
         for s, speed in speed_profile(graph, ca):
             road.add_type(ROAD_TYPE, s=round(s, 6), speed=speed, speed_unit="m/s")
 
-        if planes is not None:
-            for rec in chain_elevation(graph, ca, planes):
-                road.add_elevation(*rec)
+        elevation = chain_elevation(graph, ca, planes) if planes is not None else []
+        for rec in elevation:
+            road.add_elevation(*rec)
         flat = {n: JunctionPlane(graph.nodes[n].x, graph.nodes[n].y, 0.0) for n in junctions}
         superelevation = chain_superelevation(graph, ca, planes if planes is not None else flat, design)
         for rec in superelevation:
@@ -510,4 +646,4 @@ class OpenDriveBuilder:
                 right_lanes=right, left_lanes=left, lane_width=edge.lane_width,
                 speed_limit=edge.speed_limit, lane_t=lane_t, cross=cross,
             )))
-        return road, ends, bridge_spans(graph, ca), layout, superelevation
+        return road, ends, bridge_spans(graph, ca), layout, (elevation, superelevation)

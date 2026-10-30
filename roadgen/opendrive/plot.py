@@ -7,6 +7,7 @@ lane widths. Connecting roads are drawn too, under the normal roads. Road
 marks are drawn on the lane borders, broken ones dash by dash, double ones
 thicker; curb marks are left out, since the curb lane itself is drawn.
 Stop and yield lines (roadMark objects) are drawn across their outline,
+crosswalks as light boxes,
 signs as markers by code, and, from the sidecar next to the file, a glyph
 per junction for its control kind; traffic lights are signals like the
 signs (code 1000001).
@@ -46,7 +47,10 @@ MARK_COLOR = "#ffffff"
 SIGN_STYLE = {  # DE code -> (marker, face colour)
     "206": ("8", "#d62728"), "205": ("v", "#ffffff"), "301": ("D", "#f2c40f"), "215": ("o", "#1f77b4"),
     "1000001": ("s", "#2ca02c"),  # traffic light
+    "274": ("o", "#ffffff"), "306": ("D", "#f2c40f"), "307": ("D", "#7f7f7f"), "350": ("s", "#1f77b4"),
+    "103": ("^", "#ff7f0e"), "105": ("^", "#d62728"),
 }
+CROSSWALK_COLOR = "#f5f5f5"
 OTHER_SIGN = ("s", "#999999")
 CONTROL_STYLE = {  # junction control -> (marker, colour)
     "signal": ("h", "#d62728"), "priority": ("D", "#f2c40f"), "roundabout": ("o", "#1f77b4"),
@@ -127,20 +131,28 @@ def _road_point(ev: RoadEval, s: float, t: float) -> tuple[float, float]:
     return x - np.sin(hdg) * t, y + np.cos(hdg) * t
 
 
-def furniture(road: etree._Element) -> tuple[list[np.ndarray], list[tuple[str, float, float]]]:
-    """(stop and yield lines as (2, 2) segments, signs as (code, x, y)) of a road."""
+def furniture(road: etree._Element) -> tuple[list[np.ndarray], list[np.ndarray], list[tuple[str, float, float]]]:
+    """(stop and yield lines as (2, 2) segments, crosswalks as (4, 2) polygons, signs as
+    (code, x, y)) of a road."""
     ev = RoadEval(road)
-    lines = []
+    lines, crosswalks = [], []
     for obj in road.findall("objects/object"):
-        if obj.get("type") != "roadMark":
-            continue
         s, t = float(obj.get("s")), float(obj.get("t"))
         corners = [float(c.get("v")) for c in obj.findall("outlines/outline/cornerLocal")]
-        if corners:
-            lines.append(np.array([_road_point(ev, s, t + v) for v in (min(corners), max(corners))]))
+        if not corners:
+            continue
+        lo, hi = min(corners), max(corners)
+        if obj.get("type") == "roadMark":
+            lines.append(np.array([_road_point(ev, s, t + v) for v in (lo, hi)]))
+        elif obj.get("type") == "crosswalk":
+            depth = max((float(m.get("width", "0")) for m in obj.findall("markings/marking")), default=0.0)
+            us = [float(c.get("u")) for c in obj.findall("outlines/outline/cornerLocal")]
+            half = max(depth / 2, (max(us) - min(us)) / 2 + depth / 2)
+            crosswalks.append(np.array([_road_point(ev, s + du, t + v) for du, v in
+                                        ((-half, lo), (-half, hi), (half, hi), (half, lo))]))
     signs = [(sig.get("type"), *_road_point(ev, float(sig.get("s")), float(sig.get("t"))))
              for sig in road.findall("signals/signal")]
-    return lines, signs
+    return lines, crosswalks, signs
 
 
 def _border(ev: RoadEval, sides: dict[int, list[etree._Element]], s0: float, lane_id: int, s: float) -> float:
@@ -172,14 +184,16 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
     polys: dict[str, list[np.ndarray]] = {}
     lines: list[tuple[str, float, np.ndarray]] = []
     stop_lines: list[np.ndarray] = []
+    crosswalks: list[np.ndarray] = []
     signs: list[tuple[str, float, float]] = []
     starts: dict[str, list[tuple[float, float]]] = {}  # junction id -> its connecting roads' starts
     for road in roads:
         for kind, poly in lane_polygons(road, step):
             polys.setdefault(kind, []).append(poly)
         lines += mark_lines(road, step)
-        road_lines, road_signs = furniture(road)
+        road_lines, road_crosswalks, road_signs = furniture(road)
         stop_lines += road_lines
+        crosswalks += road_crosswalks
         signs += road_signs
         if road.get("junction", "-1") != "-1":
             starts.setdefault(road.get("junction"), []).append(RoadEval(road).reference(0.0)[:2])
@@ -202,6 +216,9 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
                   for k, w, _ in lines]
         ax.add_collection(LineCollection([p for _, _, p in lines], colors=MARK_COLOR, linewidths=widths,
                                          capstyle="butt"))
+    if crosswalks:
+        ax.add_collection(PolyCollection(crosswalks, facecolors=CROSSWALK_COLOR, edgecolors="none", alpha=0.8,
+                                         zorder=3))
     if stop_lines:
         ax.add_collection(LineCollection(stop_lines, colors=MARK_COLOR, linewidths=max(1.0, 0.5 * scale * 72),
                                          capstyle="butt"))
