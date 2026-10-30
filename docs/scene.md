@@ -33,6 +33,10 @@ file. `pipeline --simulate` attaches it to the scenario.
   follows the same fitted roads, junction trims, junction planes and profile
   fit as the builder; a KD-tree finds the nearest point of each road.
 - **Left alone:** the ground under bridges and tunnels.
+- **With HD maps** (`pipeline --hd`) the levelling reaches the roads' outer
+  edges, sidewalks and shoulders included, and uses the same wider junction
+  trims as the build. Curbs and sidewalks are raised in the `.xodr` itself
+  (`<height>`), which esmini draws.
 
 The junction trims must match the `.xodr`, so pass `ground` the same
 `--junction-margin` as the build.
@@ -45,7 +49,10 @@ The junction trims must match the `.xodr`, so pass `ground` the same
    `polygonize`), drawn along the fitted roads, so buildings follow the
    curves.
 2. **Footprint.** A block minus every road widened by its half width plus
-   `setback` (3 m). Dead-end roads inside a block stay clear too.
+   `setback` (3 m). Dead-end roads inside a block stay clear too. With HD
+   maps the half width includes the road's
+   [side lanes](geometry.md#cross-sections), so buildings stand `setback`
+   behind the sidewalks.
 3. **Rounded corners.** Convex corners are rounded by `corner_radius` (6 m),
    so buildings keep clear of turning paths. Footprints under `min_area`
    (150 m²) are dropped.

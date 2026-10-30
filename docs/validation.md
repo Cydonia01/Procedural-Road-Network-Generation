@@ -81,7 +81,9 @@ contact point within:
 | Height (0 without `<elevationProfile>`) | 1 cm |
 | Grade in the travel direction | 0.01 |
 
-A connecting-road lane without a lane link is an error.
+A connecting-road lane without a lane link is an error, unless it is 0 m
+wide at that end (a side lane of a [corner road](opendrive.md#lanes) that only
+one of its arms has).
 
 **Inside a road**, across every lane-section boundary:
 
