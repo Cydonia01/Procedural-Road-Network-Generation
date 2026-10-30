@@ -77,7 +77,7 @@ def test_avenue_side_lanes_and_curb_extensions(tmp_path):
     # curbs and sidewalks are raised 0.15 m
     curb = next(lane for lane in middle.findall("right/lane") if lane.get("type") == "curb")
     assert float(curb.find("height").get("inner")) == pytest.approx(0.15)
-    # side lanes carry no road marks yet (B4); driving lanes keep theirs
+    # side lanes carry no road marks (B4)
     assert all(lane.find("roadMark") is None for lane in middle.iter("lane") if lane.get("type") not in
                ("driving", "none"))
     # movements connect driving lanes only; corner roads (B3) side lanes only

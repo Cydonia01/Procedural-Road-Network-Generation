@@ -276,6 +276,15 @@ cross_section:  # lanes beside the driving lanes, per profile and road class (ro
   corner_radius: [3.0, 4.9, 7.6]  # curb return at a junction, street, avenue, highway (StreetGen) [m]
   max_corner_share: 0.3     # a curb return takes at most this share of the shorter arm (else its radius shrinks)
 
+road_marks:  # HD road marks, German catalogue (StVO, RMS), all white (roadgen/opendrive/marks.py)
+  enabled: true             # with HD maps on; false keeps the marks of before stage B
+  width: [0.12, 0.12, 0.15] # line width, street, avenue, highway [m]
+  broken_town: [3.0, 6.0]   # broken line (Z 340) on streets and avenues: line, gap [m]
+  broken_highway: [6.0, 12.0]  # ... on highways [m]
+  no_change_length: [20.0, 30.0, 50.0]  # solid lines, laneChange none, before junctions; street, avenue, highway [m]
+  solid_centre_lanes: 2     # two-way roads with this many lanes each way get a solid centre line (Z 295)
+  no_street_centre: [urban, suburban]  # cross-section profiles whose streets get no centre line; [] = all do
+
 design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AASHTO, MUTCD)
   e_max_street: 0.04        # max superelevation of street curves, rise / run
   e_max_avenue: 0.04

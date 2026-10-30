@@ -38,6 +38,7 @@ from roadgen.validate.clearance import check_clearance
 from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
+from roadgen.validate.hdmap import check_hdmap
 from roadgen.validate.schema import validate_schema
 from roadgen.validate.topology import check_topology
 
@@ -157,6 +158,8 @@ def build_and_validate(
         a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
         errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
         errors += check_clearance(xodr_path, section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
+        if hd.enabled:
+            errors += check_hdmap(xodr_path)
         errors += validate_schema(xodr_path, xsd) or []
     for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
         log.warning("%s", warning)

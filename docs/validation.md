@@ -16,6 +16,7 @@ reports an error.
 | [Curvature continuity](#curvature-continuity) | `.xodr` | always (`paramPoly3` jumps are warnings) | `validate/continuity.py` |
 | [Lateral acceleration](#lateral-acceleration) | `.xodr` | always | `validate/dynamics.py` |
 | [Clearance](#clearance) | `.xodr` | always | `validate/clearance.py` |
+| [HD-map content](#hd-map-content) | `.xodr` | with HD maps on | `validate/hdmap.py` |
 | [XSD schema](#xsd-schema) | `.xodr` | only with `OPENDRIVE_XSD` or `--xsd` | `validate/schema.py` |
 | [Drive-check](#drive-check) | `.xodr` + sidecar | `drive-check`, `pipeline --drive-check` | `sim/drive_check.py` |
 
@@ -125,6 +126,17 @@ their reference heights must differ by at least
 Contacts within 1 m of a road's end don't count. A dead end reaching
 another road is the generator's layout, e.g. a dead end stopping right next
 to a street that grew past it later.
+
+### HD-map content
+
+*Is the HD-map content consistent?* Runs in `pipeline` and `build-xodr`
+with HD maps on.
+
+- **No marks inside junctions:** a connecting road (corner roads included)
+  has no `<roadMark>`.
+- **Mark records in order:** within each lane of a lane section, the road
+  marks' `sOffset`s lie inside the section and strictly ascend, so every
+  stretch of the lane has exactly one mark.
 
 ### XSD schema
 

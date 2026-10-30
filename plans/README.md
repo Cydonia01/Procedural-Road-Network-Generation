@@ -18,7 +18,7 @@ led to them, and record decisions.
 | 2026-10-27 | [Slim down the benchmark](2026-10-27-slim-benchmark.md) | done |
 | 2026-10-27 | [Docs refactor: less duplication, easier navigation](2026-10-27-docs-refactor.md) | done |
 | 2026-10-29 | [Stage B: HD-map completeness, discussion and decisions](2026-10-29-stage-b-discussion.md) | decided |
-| 2026-10-29 | [Stage B: HD-map completeness, implementation plan](2026-10-29-stage-b-implementation.md) | in progress (B0–B3 and the lane-section merge done) |
+| 2026-10-29 | [Stage B: HD-map completeness, implementation plan](2026-10-29-stage-b-implementation.md) | in progress (B0–B4 and the lane-section merge done) |
 
 The review these come from is `Roadgen AV Readiness Review.pdf` in the repo
 root (written in an earlier chat; its prompts were not saved).

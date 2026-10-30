@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B3 and the lane-section merge (moved from B9) done (2026-10-30), B4 next.** Discussion,
+Status: **approved 2026-10-30; B0–B4 and the lane-section merge (moved from B9) done (2026-10-30), B5 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -140,6 +140,73 @@ The user's answers to the four questions of the discussion (also in its
 **2026-10-30, prompt 5**
 
 > Commit B2, then implement B3 (close the junction corner gaps in the .xodr). After B3, before B4, do the lane-section merge from B9 (align parking/shoulder taper start and end points) so later phases build on smaller files; record the move in the plan. Stop after that and report sizes and load times against the B2 numbers.
+
+**2026-10-30, prompt 6** (new session after the previous one ran out of context)
+
+> We are in the middle of stage B (HD-map completeness) of
+> `Roadgen AV Readiness Review.pdf`. A previous session ran out of context; you
+> continue its work on branch `dev/stage-b`.
+>
+> ## Read first
+>
+> - `CLAUDE.md` and `.github/copilot-instructions.md` (project rules).
+> - `plans/README.md`, then `plans/2026-10-29-stage-b-discussion.md` and
+>   `plans/2026-10-29-stage-b-implementation.md`. The implementation plan is the
+>   source of truth: the phases B0–B10, every decision (look for "changed after
+>   B0", the shoulder decision, B3½), the result of each phase and the open items.
+> - `git log --oneline -10` and `git status`. B0 (on dev/stage-b), B1 (75fab39)
+>   and B2 (1770ff3) are committed. B3 (junction corner roads that close the
+>   corner gaps) and B3½ (lane-section merge: side lanes and medians run the
+>   whole road at 0 m where absent, so their tapers don't start new sections)
+>   may still be uncommitted. If so: review the diff against the B3 / B3½
+>   sections of the plan, run the full suite, and commit them as two commits
+>   if they separate cleanly, otherwise one.
+>
+> ## Status at hand-off
+>
+> - Done: B0, B1, B2, B3, B3½. Suite: 616 passing plus the known
+>   `test_monitor_memory_cap_and_peak` failure. All 11 example networks build and
+>   validate with `--hd`; drive-check and simulate pass. With HD off, the output
+>   is byte-identical to before stage B (builder identity guard) and the lsystem
+>   identity test passes. Keep both true until the default switch in the last phase.
+> - Open items, with my decisions:
+>   1. esmini loads more slowly because of the B3 corner roads (city 26 → 52 s,
+>      manhattan_like 13 → 33 s; stepping is unaffected). Accept it for now. In
+>      B9, first try to find the cause (e.g. build esmini with profiling
+>      symbols, or bisect by road attributes in a small fixture). If it can't be
+>      fixed, add a switch that leaves corner roads out for throughput
+>      benchmarks.
+>   2. Uncovered surfaces at one-way corners and slivers between turning lanes:
+>      approved as a junction-surface fill in B8, as proposed.
+>   3. suburb repairs 1.3 % of edges (target 1 %): accepted.
+>
+> ## Working style (keep it)
+>
+> - One phase at a time. After each phase: suite green apart from the known
+>   failure, ruff clean on touched files, the 11 examples rebuilt and loaded in
+>   esmini, screenshots under `out/stage_b/<phase>/`, the phase result and every
+>   deviation (with the reason) written into the implementation plan, the matching
+>   docs page updated. Then stop and report: what was added, what changed from
+>   the plan and why, numbers against the previous phase (sizes, load and
+>   pipeline times, repaired edges), and the decisions you need from me.
+> - Commit a phase only after I approve it, unless I say otherwise. Never start
+>   the next phase in the same change.
+> - Numbers quoted in the plan come from scripts in `plans/scripts/` and
+>   baselines in `plans/baselines/`.
+> - Append this prompt, verbatim and dated, to the Prompts section of the
+>   implementation plan.
+>
+> ## Next
+>
+> Commit B3/B3½ if needed (above), then implement B4 as the plan describes.
+> Stop after B4 and report.
+
+**2026-10-30, prompt 7** (answers to the B4 report)
+
+> 1. Yes, commit B4 as one commit.
+> 2. Streets in the urban and suburban profiles get no centre line (German residential practice); keep it on avenues, highways and in the rural profile. Make it a road_marks option so it can be turned back on.
+> 3. Curb mark: check esmini's OSI output (--osi_file) on a small fixture. If the curb mark becomes an OSI lane boundary of type curb, keep it and note esmini's white rendering as a known limitation; if not, drop it.
+> Record these decisions in the plan, commit, then implement B5. Stop after B5 and report.
 
 ## Context
 
@@ -655,6 +722,44 @@ The merge saves 23–45 % against B3 and leaves every file 3–34 % smaller than
   - no marks inside junctions;
   - HD off identical.
 - **Docs:** `docs/opendrive.md` (Road marks), `docs/validation.md`.
+
+#### B4 result (done 2026-10-30)
+
+Delivered as planned: `roadgen/opendrive/marks.py` (`RoadMarkParams`, section `road_marks`, in `HdMapParams.marks`); `make_lane_sections(layout, marks)`; the new `validate/hdmap.py`, run by `pipeline` and `build-xodr` with HD on; marks in `plot-xodr`. With HD off, nothing changes (both identity guards pass). Changes against the plan, and choices it left open:
+
+- **Own switch `road_marks.enabled`** (true): with HD on, false keeps the plain marks of before stage B. The plan wants B4 usable on its own; this also makes it removable on its own.
+- **Edge line on every outermost driving lane,** also next to a curb (plan: next to parking, bike or shoulder lanes). Side lanes run the whole road, 0 m wide where absent (B3½), so "what lies outside" changes along a lane. One solid line on the carriageway edge is what the builder wrote before stage B, and it keeps the lane border visible. The bike lane's line on its driving side is this edge line; bike lanes have no mark of their own.
+- **No-lane-change zones only at junctions of 3 or more roads.** A two-road junction is a road continuing (B1), and a solid stretch there would sit in the middle of a road. The zone also makes a **broken centre line** solid (Z 295 before junctions is German practice); a road shorter than its zone is solid all along.
+- **`solid solid` is written with two explicit `<line>`s** (0.15 m each, 0.15 m apart, `<type>` width 0.45 m), so no reader has to guess the gap. esmini draws two lines (`out/stage_b/b4/closeups/diamond_double_line.png`). It appears only where a median lane is 0 m wide: 5 m before junctions on highways with medians (68 records in `city`).
+- **Line widths** (not in the plan): 0.12 m on streets and avenues, 0.15 m on highways (RMS Schmalstrich / Autobahn); before stage B every line was 0.15 m.
+- **Validator:** besides "no marks on connecting roads", it checks that each lane's mark `sOffset`s lie inside their section and ascend. The zones depend on that, and it costs nothing.
+- **No centre line on streets in the `urban` and `suburban` profiles** *(user decision, prompt 7: German residential practice)*. Avenues, highways and streets in the `rural` profile (and in `none`) keep theirs. The option `road_marks.no_street_centre` (default `[urban, suburban]`; `[]` turns them back on) is read per edge, from `Edge.cross_section` or the default profile. Such a street has a `none` centre mark, also in the no-lane-change zone.
+- **No `curb` mark** *(user decision, prompt 7, after an OSI check)*. The first B4 build put one on every curb lane, and esmini drew it as a white line. `b4_osi_curb.py` ran esmini 3.9 with `--osi_file` on a 200 m urban street, with and without the marks, and decoded the ground truth with the OSI bindings esmini ships (`/opt/esmini/scripts/osi3`, plus `protobuf` installed into a scratch directory, not into the project). With the mark, the curb's boundary is `TYPE_SOLID_LINE` / `COLOR_WHITE`; without it, `TYPE_NO_LINE`. Neither is `TYPE_CURB`, so the mark only adds a false painted line, and it was dropped. The curb lane and its `<height>` describe the curb. Also seen: esmini reports `curb` lanes as OSI `SUBTYPE_BORDER` (sidewalk and parking keep their subtypes).
+
+**Marks per km of road** (`b4_marks.py` → `baselines/2026-10-30-stage-b-after-b4-hd.json`, final B4 code; lane borders and centre lines together; `none` = centre lines of streets in the urban and suburban profiles and stretches beside medians):
+
+| Network | broken | solid | solid solid | none |
+|---|---|---|---|---|
+| grid | 0.21 | 2.42 | — | 0.79 |
+| manhattan_like (one-way) | 0.94 | 2.58 | — | — |
+| city | 0.74 | 3.12 | 0.008 | 0.55 |
+| mixed_city | 0.52 | 2.83 | 0.001 | 0.57 |
+| highway_corridor | 0.69 | 2.78 | 0.001 | 0.63 |
+
+All white; 0 marks on connecting roads.
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b4 --hd`): all 11 networks build and validate (the HD check included) and pass the drive-check wherever it runs. esmini simulates `city` and `mixed_city` with 0 errors. Repaired edges are unchanged (marks do not touch the geometry). Screenshots: `out/stage_b/b4/*.view.png`, close-ups in `out/stage_b/b4/closeups/`.
+
+| | lane-section merge | B4 |
+|---|---|---|
+| `.xodr` size, grid / manhattan_like / city / mixed_city | 4.57 / 13.2 / 23.9 / 33.1 MB | 4.61 / 13.4 / 24.1 / 33.2 MB (+0.3–1.6 %) |
+| pipeline (incl. drive-check), city / mixed_city | 202 / 458 s | 198 / 381 s |
+| esmini load (`esmini_load.py`, back to back; first B4 build, with curb marks and street centre lines), grid / manhattan_like / city | 3.5 / 31.7 / 51.8 s | 3.5 / 34.3 / 51.5 s |
+| simulate wall time, 50 cars, 30 s, city / mixed_city | 50.6 / 138 s | 49.8 / 138 s |
+
+The load and simulate differences are within the run-to-run spread seen in B3½.
+
+Exit of B4: full suite 639 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's `Optional[...]` / `Union` style and B008; docs updated (`opendrive.md` Road marks (HD maps), `validation.md` HD-map content, `cli-reference.md`, `architecture.md`). Helper scripts: `b4_marks.py`, `b4_osi_curb.py`.
 
 ### B5 · Junction control, right of way, signs, stop lines; `annotate`
 

@@ -147,14 +147,16 @@ roadgen/
     builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
     junctions.py           movement planning and connecting roads
     lanes.py               lane sections (lane types, heights) and road marks
+    marks.py               HD road marks: German catalogue, no-lane-change zones (stage B)
     hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
-    plot.py                plot-xodr: a built .xodr's lanes coloured by type
+    plot.py                plot-xodr: a built .xodr's lanes coloured by type, and its marks
   validate/
     connectivity.py        traffic traps and reachability (RoadGraph)
     topology.py            ids and links (.xodr)
     continuity.py          lane position, heading, height, grade, curvature continuity (.xodr)
     dynamics.py            lateral acceleration at the posted speed (.xodr)
     clearance.py           vertical clearance where roads cross (.xodr)
+    hdmap.py               HD-map content: no marks in junctions, mark records in order (.xodr)
     schema.py              XSD validation (optional)
   metrics/
     geometry.py            curvature and lateral-acceleration statistics of an .xodr

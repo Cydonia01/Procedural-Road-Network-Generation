@@ -3,8 +3,10 @@
 Reads the file alone (any .xodr, whoever built it), with the validators' road
 evaluator (roadgen.validate.continuity): per lane section, the lane edges are
 sampled every `step` metres from the reference line, the lane offset and the
-lane widths. Connecting roads are drawn too, under the normal roads. Later
-stage B phases add road marks, signals and objects here.
+lane widths. Connecting roads are drawn too, under the normal roads. Road
+marks are drawn on the lane borders, broken ones dash by dash, double ones
+thicker; curb marks are left out, since the curb lane itself is drawn.
+Later stage B phases add signals and objects here.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from typing import Union
 
 import numpy as np
 from lxml import etree
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
@@ -36,6 +38,8 @@ LANE_COLORS = {  # OpenDRIVE lane type -> colour
     "border": "#7fa86a",
 }
 OTHER_COLOR = "#b04fb0"  # lane types without a colour above
+MARK_COLOR = "#ffffff"
+MIN_MARK_POINTS = 0.3  # thinnest drawn mark [pt]
 MAX_PIXELS = 4000  # longest side of the image [px]
 
 
@@ -67,6 +71,54 @@ def lane_polygons(road: etree._Element, step: float = 2.0) -> list[tuple[str, np
     return out
 
 
+def mark_lines(road: etree._Element, step: float = 2.0) -> list[tuple[str, float, np.ndarray]]:
+    """(mark type, width [m], (n, 2) polyline) of every drawn road mark of a road: each
+    mark record over its stretch of the lane's outer border, a broken one per dash."""
+    ev = RoadEval(road)
+    sections = ev.sections
+    bounds = [float(sec.get("s")) for sec in sections] + [ev.length]
+    out = []
+    for k, sec in enumerate(sections):
+        s0, s1 = bounds[k], bounds[k + 1]
+        sides = {sign: sorted(sec.findall(f"{side}/lane"), key=lambda lane: abs(int(lane.get("id"))))
+                 for side, sign in (("right", -1), ("left", 1))}
+
+        for lane in sec.iter("lane"):
+            marks = lane.findall("roadMark")
+            starts = [s0 + float(m.get("sOffset", "0")) for m in marks] + [s1]
+            for m, a, b in zip(marks, starts, starts[1:]):
+                kind = m.get("type", "none")
+                if kind in ("none", "curb") or b - a <= 1e-6:
+                    continue
+                width = float(m.get("width", "0.15"))
+                pieces = [(a, b)]
+                line = m.find("type/line")
+                if kind == "broken" and line is not None:
+                    dash, period = float(line.get("length")), float(line.get("length")) + float(line.get("space"))
+                    dashes = np.arange(a + float(line.get("sOffset", "0")), b, period)
+                    pieces = [(u, min(u + dash, b)) for u in dashes]
+                lane_id = int(lane.get("id"))
+                for u, v in pieces:
+                    ss = np.linspace(u, v, max(2, int(np.ceil((v - u) / step)) + 1))
+                    pts = []
+                    for s in ss:
+                        x, y, hdg = ev.reference(s)
+                        t = _border(ev, sides, s0, lane_id, s)
+                        pts.append((x - np.sin(hdg) * t, y + np.cos(hdg) * t))
+                    out.append((kind, width, np.array(pts)))
+    return out
+
+
+def _border(ev: RoadEval, sides: dict[int, list[etree._Element]], s0: float, lane_id: int, s: float) -> float:
+    """t of a lane's outer border (the centre lane's: the lane offset) at station s of a
+    section starting at s0, given each side's lanes from the centre outward."""
+    t = _offset(ev, s)
+    if lane_id:
+        sign = 1 if lane_id > 0 else -1
+        t += sign * sum(_width(lane, s - s0) for lane in sides[sign][:abs(lane_id)])
+    return t
+
+
 def _offset(ev: RoadEval, s: float) -> float:
     rec = _piecewise(ev.offsets, s, "s")
     return _poly(rec, s - float(rec.get("s"))) if rec is not None else 0.0
@@ -84,9 +136,11 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
     # Connecting roads first, so the normal roads' lanes lie on top of them.
     roads.sort(key=lambda r: r.get("junction", "-1") == "-1")
     polys: dict[str, list[np.ndarray]] = {}
+    lines: list[tuple[str, float, np.ndarray]] = []
     for road in roads:
         for kind, poly in lane_polygons(road, step):
             polys.setdefault(kind, []).append(poly)
+        lines += mark_lines(road, step)
     if not polys:
         raise ValueError(f"{xodr_path}: no lanes to draw")
     pts = np.vstack([p for ps in polys.values() for p in ps])
@@ -100,6 +154,12 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
     for kind in sorted(polys, key=lambda k: order.index(k) if k in order else len(order)):
         ax.add_collection(PolyCollection(polys[kind], facecolors=LANE_COLORS.get(kind, OTHER_COLOR),
                                          edgecolors="none", linewidths=0))
+    if lines:
+        points_per_m = scale * 72  # figure inches per metre times points per inch
+        widths = [max(MIN_MARK_POINTS, w * points_per_m * (2.5 if "solid solid" in k else 1.0))
+                  for k, w, _ in lines]
+        ax.add_collection(LineCollection([p for _, _, p in lines], colors=MARK_COLOR, linewidths=widths,
+                                         capstyle="butt"))
     ax.set_xlim(x0, x1)
     ax.set_ylim(y0, y1)
     ax.set_aspect("equal")
@@ -109,5 +169,5 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, bbox_inches="tight", facecolor="white")
-    log.info("wrote %s (%d lanes)", out, sum(len(ps) for ps in polys.values()))
+    log.info("wrote %s (%d lanes, %d mark lines)", out, sum(len(ps) for ps in polys.values()), len(lines))
     return out

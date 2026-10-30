@@ -118,10 +118,39 @@ reference line, and left lanes (positive ids) drive against it.
   - The sidecar lists them under `corner_roads`, with `closes` true where a
     movement drives the turn. They are not movements: drive-check, scenarios
     and esmini's traffic never use them.
-- **Road marks.** On driving lanes only, until the HD road marks (B4).
 - **Road marks** (without HD maps). A solid centre line, broken lines between
   lanes (3 m dash, 9 m gap), and a solid line on the outermost driving lane's
   edge.
+
+### Road marks (HD maps)
+
+`marks.py`, with HD maps on (`road_marks` section; `road_marks.enabled:
+false` keeps the plain marks above). The German catalogue (StVO, RMS), all
+white. A lane's mark lies on its outer border, the centre lane's is the
+centre line. Marks change along a lane with the road class of the edge under
+it and near junctions, as several `<roadMark sOffset>` records in one lane
+section.
+
+| Where | Mark |
+|---|---|
+| Centre line, two-way road | broken (Z 340): 3 m line / 6 m gap on streets and avenues, 6 / 12 m on highways |
+| ... on a street in the `urban` or `suburban` profile (`no_street_centre`) | none (German residential practice); `no_street_centre: []` gives them one |
+| ... with 2 or more lanes each way (`solid_centre_lanes`) | solid (Z 295) |
+| ... with a median lane | none where the median is wider than 0 m (its own edge lines replace it); `solid solid` (two explicit 0.15 m lines, 0.15 m apart) where it is 0 m wide, before junctions |
+| Centre lane of a one-way road | solid: the carriageway's left edge |
+| Median lane | solid edge line where it is wider than 0 m |
+| Between driving lanes | broken (`laneChange="both"`) |
+| No-lane-change zone | lane lines and a broken centre line become solid with `laneChange="none"` over the last 20 / 30 / 50 m (street / avenue / highway, `no_change_length`) of each approach to a junction of 3 or more roads, in the travel direction; across lane-section boundaries, and over the whole road if it is shorter |
+| Outermost driving lane | solid edge line, whatever lies outside it (it is also a bike lane's line on its driving side) |
+| Side lanes (parking, bike, shoulder, curb, sidewalk, border) | none |
+
+Widths: 0.12 m on streets and avenues, 0.15 m on highways (`width`).
+
+Curbs get no `curb` road mark: esmini's OSI ground truth turns that mark
+into a solid white lane boundary, not a curb boundary. The `curb` lane with
+its `<height>` describes the curb.
+Connecting roads, corner roads included, have no marks: junction interiors
+are unmarked, which the [HD-map check](validation.md#hd-map-content) enforces.
 
 **At a contact point.** A road whose reference line **ends** at a junction
 (contact `end`) brings traffic in on its right lanes and takes it out on its

@@ -17,6 +17,7 @@ from roadgen.maps.drape import DrapeParams
 from roadgen.metrics.geometry import GeometryMetricsParams
 from roadgen.metrics.network import NetworkMetricsParams
 from roadgen.opendrive.hdmap import HdMapParams
+from roadgen.opendrive.marks import RoadMarkParams
 from roadgen.scenario.xosc_builder import ScenarioParams
 from roadgen.scene.buildings import BuildingParams
 from roadgen.scene.ground import GroundParams
@@ -34,6 +35,7 @@ from roadgen.scene.ground import GroundParams
     (AlignParams, ("align",)),
     (CrossSectionParams, ("cross_section",)),
     (HdMapParams, ("hdmap",)),
+    (RoadMarkParams, ("road_marks",)),
 ])
 def test_dataclass_defaults_come_from_defaults_yaml(params_type, keys):
     defaults = section(DEFAULTS, *keys)
