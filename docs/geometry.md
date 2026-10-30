@@ -224,7 +224,9 @@ curve-warning signs at real 90° bends.
   - Both are cubic smoothsteps over the MUTCD taper length, at most half the
     edge.
   - `LaneLayout.sections()` gives the lane sections, and `half_widths(s)` the
-    road width at a station.
+    road width at a station. Sections break only at driving-lane changes and
+    where a lane starts or ends; a side lane's or median's width changes stay
+    inside a section (`WidthPieces`, written as several `<width>` records).
 - **`speed_profile`:** edge limits, lowered to each corner's advisory speed
   from a deceleration lead (1.5 m/s²) before the corner to its end.
 - **`height_samples`, `bridge_spans`:** the edges' heights and bridges placed
