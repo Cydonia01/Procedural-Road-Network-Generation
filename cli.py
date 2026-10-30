@@ -279,6 +279,19 @@ def separate_graph(graph: RoadGraph, cfg: dict, cross_section=None) -> RoadGraph
                         cross_section)
 
 
+def annotate_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
+    """HD maps: cross-section profiles and junction control from the population (and style)
+    map; unchanged without a population map."""
+    from roadgen.maps.annotate import AnnotateParams, annotate
+
+    if "population" not in layers:
+        return graph
+    control = section(cfg, "junction_control")
+    with timed("annotate"):
+        return annotate(graph, layers["population"], layers.get("style"), AnnotateParams(**section(cfg, "annotate")),
+                        control["signal_density"], control["stop_density"])
+
+
 def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
     """Radius caps for bends whose fitted curve would leave legal ground."""
     from roadgen.maps.align import AlignParams, align
@@ -375,6 +388,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     prefix = artifact(args, args.output, default_output(args))
     graph, layers = generate_graph(args)
     hd = hd_params(args)
+    if hd.enabled:
+        graph = annotate_graph(graph, layers, args.cfg)
     graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
     errors = graph.validate()
     for err in errors:
@@ -484,6 +499,17 @@ def cmd_separate(args: argparse.Namespace) -> int:
     output = artifact(args, args.output, Path(args.input).with_suffix(".separated.json"))
     save_json(graph, output)
     log.info("wrote %s (%d overpasses)", output, len(graph.metadata.get("overpasses", [])))
+    return 0
+
+
+def cmd_annotate(args: argparse.Namespace) -> int:
+    layers = load_layers(args.map_file)
+    if "population" not in layers:
+        raise SystemExit("error: annotate needs --map-file population=FILE.npz")
+    graph = annotate_graph(load_json(args.input), layers, args.cfg)
+    output = artifact(args, args.output, Path(args.input).with_suffix(".annotated.json"))
+    save_json(graph, output)
+    log.info("wrote %s (%s)", output, graph.metadata["annotate"])
     return 0
 
 
@@ -928,6 +954,14 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("input", help="RoadGraph JSON file")
     p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.separated.json)")
     p.set_defaults(func=cmd_separate)
+
+    p = sub.add_parser("annotate", help="HD maps: cross-section profiles and junction control from the "
+                                        "population (and style) map")
+    p.add_argument("input", help="RoadGraph JSON file")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
+                   help="population map (required) and style map (suburb districts), repeatable")
+    p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.annotated.json)")
+    p.set_defaults(func=cmd_annotate)
 
     p = sub.add_parser("ground", help="3D ground mesh (.osgt) from maps, levelled under a network")
     p.add_argument("output", nargs="?", help="output .osgt (default: scene.osgt)")

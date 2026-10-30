@@ -30,6 +30,7 @@ flowchart LR
 | Align | `RoadGraph` + maps → bend radius caps | `roadgen/maps/align.py` | [Heights](heights.md#1-align-bends-that-leave-legal-ground) |
 | Drape | `RoadGraph` + elevation (+ terrain) → heights, bridges, tunnels | `roadgen/maps/drape.py` | [Heights](heights.md#2-drape-heights-from-the-elevation-map) |
 | Separate | `RoadGraph` → overpasses where roads cross without a junction | `roadgen/geometry/grade_separation.py` | [Heights](heights.md#3-grade-separation-overpasses) |
+| Annotate (HD maps) | `RoadGraph` + population (+ style) → cross-section profiles, junction control | `roadgen/maps/annotate.py` | [Input maps](maps.md#annotate-profiles-and-control-from-the-maps) |
 | Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` (shape from `roadgen/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
 | Validate | `RoadGraph` / `.xodr` → errors | `roadgen/validate/` | [Validation](validation.md) |
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
@@ -124,6 +125,7 @@ roadgen/
     plot.py                map previews, optionally with roads
     align.py               radius caps for bends whose curve leaves legal ground
     drape.py               heights, bridges and tunnels for a RoadGraph
+    annotate.py            HD maps: cross-section profiles and junction control from the maps
   generators/
     base.py                RoadNetworkGenerator ABC, registry, params loading
     lsystem.py             city growth after Parish & Müller (grid and field goals, maps)
@@ -148,6 +150,8 @@ roadgen/
     junctions.py           movement planning and connecting roads
     lanes.py               lane sections (lane types, heights) and road marks
     marks.py               HD road marks: German catalogue, no-lane-change zones (stage B)
+    control.py             junction control kinds, approach roles, conflicts and right of way (stage B)
+    furniture.py           stop and yield lines, signs at junction approaches (stage B)
     hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
     plot.py                plot-xodr: a built .xodr's lanes coloured by type, and its marks
   validate/
@@ -156,7 +160,7 @@ roadgen/
     continuity.py          lane position, heading, height, grade, curvature continuity (.xodr)
     dynamics.py            lateral acceleration at the posted speed (.xodr)
     clearance.py           vertical clearance where roads cross (.xodr)
-    hdmap.py               HD-map content: no marks in junctions, mark records in order (.xodr)
+    hdmap.py               HD-map content: marks, signals and objects, controlled approaches, priorities (.xodr)
     schema.py              XSD validation (optional)
   metrics/
     geometry.py            curvature and lateral-acceleration statistics of an .xodr

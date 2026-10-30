@@ -349,10 +349,11 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
 
 def build_junction(
     junction_id: int, ends: list[RoadEnd], first_road_id: int, plane: Optional[JunctionPlane] = None,
-    params: JunctionParams = JunctionParams(), ramp: bool = False,
+    params: JunctionParams = JunctionParams(), ramp: bool = False, paths: Optional[dict] = None,
 ) -> tuple[xodr.Junction, list[xodr.Road], list[Movement]]:
     """Junction, connecting roads and movements; with plane, connecting roads lie on it
-    (height, grade and superelevation); ramp: an interchange ramp node."""
+    (height, grade and superelevation); ramp: an interchange ramp node. paths, if given,
+    gets each connecting road's lane-centre path as (n, 2) points (right of way, B5)."""
     by_edge = {e.edge_id: e for e in ends}
     junction = xodr.Junction(f"junction_{junction_id}", junction_id)
     roads: list[xodr.Road] = []
@@ -360,7 +361,11 @@ def build_junction(
     built = []
     for m in movements:
         a, b = by_edge[m.from_edge], by_edge[m.to_edge]
-        road, kind = _connecting_road(m, a, b, plane)
+        road, path = _connecting_road(m, a, b, plane)
+        kind = path.kind
+        if paths is not None:
+            ss = np.linspace(0.0, path.length, max(2, int(np.ceil(path.length / PATH_STEP)) + 1))
+            paths[m.connecting_road] = np.array([path.point(float(s))[:2] for s in ss])
         roads.append(road)
         m = replace(m, path=kind)
         built.append(m)
@@ -383,6 +388,7 @@ class CornerRoad:
     closes: bool  # a movement drives the right turn the curb follows: no surface left without a lane
 
 
+PATH_STEP = 1.0  # sampling of a turn path handed out for right of way [m]
 SIDE_ORDER = ("biking", "parking", "shoulder", "curb", "sidewalk", "border")
 WIDTH_EPS = 1e-6  # [m] narrower side lanes are absent
 CORNER_REACH = 0.85  # corner side lanes reach at most this share of the way to the turn's centre of curvature
@@ -534,7 +540,7 @@ def _smoothstep(v0: float, v1: float, length: float) -> tuple[float, float, floa
 
 
 def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd,
-                     plane: Optional[JunctionPlane] = None) -> tuple[xodr.Road, PathKind]:
+                     plane: Optional[JunctionPlane] = None) -> tuple[xodr.Road, TurnPath]:
     path = turn_path(a.lane_pose(m.from_lane, incoming=True), b.lane_pose(m.to_lane, incoming=False))
     planview = xodr.PlanView()
     for geometry, pose in path.geometries:
@@ -569,7 +575,7 @@ def _connecting_road(m: Movement, a: RoadEnd, b: RoadEnd,
             road.add_elevation(*rec)
         for rec in superelevation:
             road.add_superelevation(*rec)
-    return road, path.kind
+    return road, path
 
 
 POLY3_SAMPLES = 65  # curvature samples of a paramPoly3 fallback

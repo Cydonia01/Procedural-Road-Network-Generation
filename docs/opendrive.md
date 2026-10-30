@@ -242,6 +242,54 @@ and drive. `tests/test_junction_variety.py` covers 5-, 6- and 7-leg stars, a
   point at the exact lanes, and the junction `<connection>` has a matching
   `laneLink`.
 
+### Junction control and right of way (HD maps)
+
+`control.py`, with HD maps on (`junction_control` section, presets
+`default`, `dense`, `rural`). Each junction gets a control kind and a role
+per approach (road end), from the graph alone. The first matching rule wins:
+
+| Junction | Control | Approach roles |
+|---|---|---|
+| two roads, or a ramp node | `none` | none |
+| roundabout entry (`metadata["roundabouts"]`) | `roundabout` | ring `major`, arm `yield` |
+| diamond terminal (`metadata["interchanges"]`) | `signal` if the crossing road is an avenue or more, else `priority` | crossing road `major`, ramps `stop` |
+| `Node.control` set (by hand or by [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps)) | as set: `signal`, `stop`, `yield`, `right_before_left`, `none` | |
+| the crossing road an avenue or more, or 5+ legs with an avenue | `signal` (lights) | all `signal` |
+| only streets (`right_before_left`) | `right_before_left` | all `right_before_left` |
+| otherwise | `priority` | priority road `major`, the others `yield`, or `stop` where the priority road is at least `stop_speed` (16.7 m/s) fast, a minor arm is skewed more than `stop_skew_deg` (30°), the junction has 5+ legs, or at the seeded `stop_share` (15 %) |
+
+The **priority road** is the highest-ranked arm (class, then lanes, then
+speed) and the highest-ranked other arm, the most nearly opposite one among
+equals.
+
+**Right of way.** Two movements from different approaches conflict where
+their paths cross or end in the same lane. For each conflicting pair one has
+priority: the priority road's movement over a minor road's; between equal
+approaches the oncoming straight or right turn over a left turn (or
+U-turn), and otherwise the movement coming from the right. At lights only
+the permissive left turns get one; the phase plans separate the rest. Each
+pair is a `<junction><priority high low>` record (`priorities: false`
+keeps them in the sidecar only).
+
+**Signs and lines** (`furniture.py`), per approach with incoming lanes:
+
+| Role | Line, 1 m before the road end | Sign, 0.5 m outside the carriageway, facing the traffic |
+|---|---|---|
+| `stop` | stop line: white, 0.5 m deep, solid | 206 |
+| `yield` | yield line (Z 341): 0.5 m dashes, 0.25 m gaps, 0.3 m deep | 205; at roundabout entries also 215, above it |
+| `signal` | stop line | none yet (lights) |
+| `major` | none | 301, 30 m before the junction (at most half the road), not on roundabout rings |
+
+Lines are `roadMark` objects (`stopLine`, `yieldLine`) with an open outline
+of two corners across the approach's driving lanes and one `<marking>` along
+it, which esmini draws as paint. The two corners' heights follow the road's
+cross slope (superelevation) at the line, so a line across a banked road end
+stays on the surface instead of sinking half into it. There is no 294 signal, since esmini has no
+OSI type for it and CARLA does not know it. Signs are `<signal country="DE"
+subtype="-1">` with a `<validity>` over the approach lanes; esmini types
+205, 206, 215 and 301 for OSI. Signals are numbered 1, 2, …; line objects
+from (C + 1) · 1000 on (C chain roads), above every bridge and tunnel id.
+
 ## The `.roadmap.json` sidecar
 
 Written next to every `.xodr`. Later stages depend on it:
@@ -281,4 +329,6 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `corners` | Every fitted bend: `road`, `node`, `s_start`, `s_end`, reference `radius`, innermost `lane_radius`, `design_speed`, `max_speed`, `advisory_speed` (null at design radius), in m and m/s |
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
 | `cross_sections` | HD maps on only: each edge's cross-section profile |
+| `junctions` | HD maps on only: per junction its `control` kind, `priority_roads` (`[road, contact]`), `approaches` (`road`, `contact`, `role`), and its numbers of `conflicts` and `priorities` |
+| `movement_control` | HD maps on only: per connecting road its approach's `control` role, `priority` (on the priority road) and `yields_to` (connecting roads) |
 | `corner_roads` | HD maps on only: each corner road's `junction_id`, `road`, `from_road`, `to_road`, lane `kinds`, `path` and `closes` (a movement drives the turn it follows) |

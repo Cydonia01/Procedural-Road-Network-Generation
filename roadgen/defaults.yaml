@@ -285,6 +285,20 @@ road_marks:  # HD road marks, German catalogue (StVO, RMS), all white (roadgen/o
   solid_centre_lanes: 2     # two-way roads with this many lanes each way get a solid centre line (Z 295)
   no_street_centre: [urban, suburban]  # cross-section profiles whose streets get no centre line; [] = all do
 
+junction_control:  # junction control and right of way, German rules (roadgen/opendrive/control.py)
+  preset: default           # default | dense | rural
+  signal_density: 5500.0    # `annotate`: lights at avenue x street junctions from this density [people/km^2]
+  stop_density: 1500.0      # `annotate`: stop instead of yield below this density [people/km^2]
+  stop_speed: 16.7          # minor roads stop where the priority road is this fast [m/s]
+  stop_skew_deg: 30.0       # ... or a minor arm is this far off 90 deg [deg]
+  stop_share: 0.15          # ... or at this random share of priority junctions (seeded)
+  right_before_left: true   # street-only junctions without signs
+  priorities: true          # write <junction><priority> records (false: only the sidecar has them)
+
+annotate:  # `annotate` step: cross-section profiles and junction control from the maps (roadgen/maps/annotate.py)
+  urban_density: 3000.0     # urban profile from this density [people/km^2]
+  suburban_density: 1500.0  # suburban from this one (and in style-map suburb districts), rural below [people/km^2]
+
 design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AASHTO, MUTCD)
   e_max_street: 0.04        # max superelevation of street curves, rise / run
   e_max_avenue: 0.04

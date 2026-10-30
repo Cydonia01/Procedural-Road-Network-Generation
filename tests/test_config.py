@@ -13,9 +13,11 @@ from roadgen.geometry.cross_section import CrossSectionParams
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json
 from roadgen.maps.align import AlignParams
+from roadgen.maps.annotate import AnnotateParams
 from roadgen.maps.drape import DrapeParams
 from roadgen.metrics.geometry import GeometryMetricsParams
 from roadgen.metrics.network import NetworkMetricsParams
+from roadgen.opendrive.control import JunctionControlParams
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.marks import RoadMarkParams
 from roadgen.scenario.xosc_builder import ScenarioParams
@@ -36,6 +38,8 @@ from roadgen.scene.ground import GroundParams
     (CrossSectionParams, ("cross_section",)),
     (HdMapParams, ("hdmap",)),
     (RoadMarkParams, ("road_marks",)),
+    (JunctionControlParams, ("junction_control",)),
+    (AnnotateParams, ("annotate",)),
 ])
 def test_dataclass_defaults_come_from_defaults_yaml(params_type, keys):
     defaults = section(DEFAULTS, *keys)

@@ -6,11 +6,14 @@ sampled every `step` metres from the reference line, the lane offset and the
 lane widths. Connecting roads are drawn too, under the normal roads. Road
 marks are drawn on the lane borders, broken ones dash by dash, double ones
 thicker; curb marks are left out, since the curb lane itself is drawn.
-Later stage B phases add signals and objects here.
+Stop and yield lines (roadMark objects) are drawn across their outline,
+signs as markers by code, and, from the sidecar next to the file, a glyph
+per junction for its control kind. Later stage B phases add lights here.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Union
@@ -39,6 +42,14 @@ LANE_COLORS = {  # OpenDRIVE lane type -> colour
 }
 OTHER_COLOR = "#b04fb0"  # lane types without a colour above
 MARK_COLOR = "#ffffff"
+SIGN_STYLE = {  # DE code -> (marker, face colour)
+    "206": ("8", "#d62728"), "205": ("v", "#ffffff"), "301": ("D", "#f2c40f"), "215": ("o", "#1f77b4"),
+}
+OTHER_SIGN = ("s", "#999999")
+CONTROL_STYLE = {  # junction control -> (marker, colour)
+    "signal": ("h", "#d62728"), "priority": ("D", "#f2c40f"), "roundabout": ("o", "#1f77b4"),
+    "right_before_left": ("^", "#2ca02c"),
+}
 MIN_MARK_POINTS = 0.3  # thinnest drawn mark [pt]
 MAX_PIXELS = 4000  # longest side of the image [px]
 
@@ -109,6 +120,27 @@ def mark_lines(road: etree._Element, step: float = 2.0) -> list[tuple[str, float
     return out
 
 
+def _road_point(ev: RoadEval, s: float, t: float) -> tuple[float, float]:
+    x, y, hdg = ev.reference(s)
+    return x - np.sin(hdg) * t, y + np.cos(hdg) * t
+
+
+def furniture(road: etree._Element) -> tuple[list[np.ndarray], list[tuple[str, float, float]]]:
+    """(stop and yield lines as (2, 2) segments, signs as (code, x, y)) of a road."""
+    ev = RoadEval(road)
+    lines = []
+    for obj in road.findall("objects/object"):
+        if obj.get("type") != "roadMark":
+            continue
+        s, t = float(obj.get("s")), float(obj.get("t"))
+        corners = [float(c.get("v")) for c in obj.findall("outlines/outline/cornerLocal")]
+        if corners:
+            lines.append(np.array([_road_point(ev, s, t + v) for v in (min(corners), max(corners))]))
+    signs = [(sig.get("type"), *_road_point(ev, float(sig.get("s")), float(sig.get("t"))))
+             for sig in road.findall("signals/signal")]
+    return lines, signs
+
+
 def _border(ev: RoadEval, sides: dict[int, list[etree._Element]], s0: float, lane_id: int, s: float) -> float:
     """t of a lane's outer border (the centre lane's: the lane offset) at station s of a
     section starting at s0, given each side's lanes from the centre outward."""
@@ -137,10 +169,18 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
     roads.sort(key=lambda r: r.get("junction", "-1") == "-1")
     polys: dict[str, list[np.ndarray]] = {}
     lines: list[tuple[str, float, np.ndarray]] = []
+    stop_lines: list[np.ndarray] = []
+    signs: list[tuple[str, float, float]] = []
+    starts: dict[str, list[tuple[float, float]]] = {}  # junction id -> its connecting roads' starts
     for road in roads:
         for kind, poly in lane_polygons(road, step):
             polys.setdefault(kind, []).append(poly)
         lines += mark_lines(road, step)
+        road_lines, road_signs = furniture(road)
+        stop_lines += road_lines
+        signs += road_signs
+        if road.get("junction", "-1") != "-1":
+            starts.setdefault(road.get("junction"), []).append(RoadEval(road).reference(0.0)[:2])
     if not polys:
         raise ValueError(f"{xodr_path}: no lanes to draw")
     pts = np.vstack([p for ps in polys.values() for p in ps])
@@ -160,14 +200,41 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
                   for k, w, _ in lines]
         ax.add_collection(LineCollection([p for _, _, p in lines], colors=MARK_COLOR, linewidths=widths,
                                          capstyle="butt"))
+    if stop_lines:
+        ax.add_collection(LineCollection(stop_lines, colors=MARK_COLOR, linewidths=max(1.0, 0.5 * scale * 72),
+                                         capstyle="butt"))
+    for code in sorted({c for c, _, _ in signs}):
+        marker, color = SIGN_STYLE.get(code, OTHER_SIGN)
+        xy = np.array([(x, y) for c, x, y in signs if c == code])
+        ax.scatter(xy[:, 0], xy[:, 1], s=12, marker=marker, c=color, edgecolors="black", linewidths=0.3,
+                   zorder=4, label=f"sign {code}")
+    _plot_control(ax, Path(xodr_path), starts)
     ax.set_xlim(x0, x1)
     ax.set_ylim(y0, y1)
     ax.set_aspect("equal")
     ax.set_axis_off()
-    ax.legend(handles=[Patch(color=LANE_COLORS.get(k, OTHER_COLOR), label=k) for k in sorted(polys)],
+    handles, _ = ax.get_legend_handles_labels()
+    ax.legend(handles=[Patch(color=LANE_COLORS.get(k, OTHER_COLOR), label=k) for k in sorted(polys)] + handles,
               loc="upper right", fontsize=8, framealpha=0.9)
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, bbox_inches="tight", facecolor="white")
-    log.info("wrote %s (%d lanes, %d mark lines)", out, sum(len(ps) for ps in polys.values()), len(lines))
+    log.info("wrote %s (%d lanes, %d mark lines, %d signs)", out, sum(len(ps) for ps in polys.values()),
+             len(lines), len(signs))
     return out
+
+
+def _plot_control(ax, xodr_path: Path, starts: dict[str, list[tuple[float, float]]]) -> None:
+    """A glyph per controlled junction at the centre of its connecting roads' starts, from
+    the sidecar's junction records (nothing without them)."""
+    sidecar = xodr_path.with_suffix(".roadmap.json")
+    if not sidecar.exists():
+        return
+    junctions = json.loads(sidecar.read_text()).get("junctions", [])
+    for kind, (marker, color) in CONTROL_STYLE.items():
+        xy = [np.mean(starts[str(j["junction"])], axis=0) for j in junctions
+              if j["control"] == kind and str(j["junction"]) in starts]
+        if xy:
+            pts = np.array(xy)
+            ax.scatter(pts[:, 0], pts[:, 1], s=40, marker=marker, c=color, edgecolors="black", linewidths=0.5,
+                       zorder=5, alpha=0.85, label=kind.replace("_", " "))

@@ -212,6 +212,30 @@ radial pattern centres on the radial centres.
 Presets: `planned` (one grid angle, few organic districts, no radial core)
 and `old_town` (a wide radial core, mostly organic, many angles).
 
+## `annotate`: profiles and control from the maps
+
+With HD maps on, `pipeline` with maps runs it after grade separation, before
+the cross-section fit (`roadgen/maps/annotate.py`; `annotate` section). The
+builder never sees a map, so this step writes what depends on one into the
+graph's optional overrides:
+
+- `Edge.cross_section` from the population density at the edge's midpoint:
+  `urban` from `urban_density` (3,000 people/km²), `suburban` from
+  `suburban_density` (1,500), `rural` below. In the style map's suburb
+  districts an edge is at most `suburban`.
+- `Node.control` at junctions of 3 or more roads whose highest class is an
+  avenue or more and that also have a lower class: `signal` from
+  `junction_control.signal_density` (5,500), `stop` below
+  `junction_control.stop_density` (1,500).
+
+Values already set are kept. The counts go to `metadata["annotate"]`. The
+[builder's rules](opendrive.md#junction-control-and-right-of-way-hd-maps)
+then use them.
+
+```bash
+python -m cli annotate NET.json --map-file population=P.npz [--map-file style=S.npz] [-o OUT.json]   # NET.annotated.json
+```
+
 ## `image`: real or hand-drawn maps
 
 Every kind has an `image` generator that stretches a PNG, JPEG or `.npy`

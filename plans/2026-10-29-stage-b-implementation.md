@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B4 and the lane-section merge (moved from B9) done (2026-10-30), B5 next.** Discussion,
+Status: **approved 2026-10-30; B0–B5 and the lane-section merge (moved from B9) done (2026-10-30), B6 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -207,6 +207,13 @@ The user's answers to the four questions of the discussion (also in its
 > 2. Streets in the urban and suburban profiles get no centre line (German residential practice); keep it on avenues, highways and in the rural profile. Make it a road_marks option so it can be turned back on.
 > 3. Curb mark: check esmini's OSI output (--osi_file) on a small fixture. If the curb mark becomes an OSI lane boundary of type curb, keep it and note esmini's white rendering as a known limitation; if not, drop it.
 > Record these decisions in the plan, commit, then implement B5. Stop after B5 and report.
+
+**2026-10-30, prompt 8** (answers to the B5 report)
+
+> 1. Yes, commit B5 as one commit.
+> 2. Option (a): require yield, stop and right-before-left together on mixed_city only. Also record in the plan, as an item for stage D, that city has no street × street junctions at all (a diversity gap of the generator, not of stage B).
+> 3. 301 alone is fine for now. In B7, add 306/307 along priority roads if the road can be traced through consecutive junctions with the existing chain data at reasonable cost; otherwise leave it as an open item.
+> Record these decisions in the plan, commit, then implement B6. Stop after B6 and report.
 
 ## Context
 
@@ -822,6 +829,51 @@ Exit of B4: full suite 639 passed, 1 failed (the known `test_monitor_memory_cap_
   - `docs/cli-reference.md`;
   - `docs/validation.md`.
 
+#### B5 result (done 2026-10-30)
+
+Delivered as planned: `opendrive/control.py` (`JunctionControlParams`, section `junction_control`, presets `default`, `dense`, `rural`; the rule table; conflicts and priority pairs), `opendrive/furniture.py` (pure placement of lines and signs), `maps/annotate.py` with the `annotate` command and pipeline step, the builder's `<priority>` records, signals and line objects, sidecar `junctions` and `movement_control`, the new validator checks, and lines, signs and control glyphs in `plot-xodr`. With HD off nothing changes (both identity guards pass). Changes against the plan, and choices it left open:
+
+- **Sign 301 only, no 306 / 307.** The plan has 306 after the junction on the priority road and 301 where no 306 stands. A 306 holds until a 307 cancels it, so it needs the priority road traced across junctions, including where it stops being one. Sign 301 regulates exactly the next junction, so one per major approach is legally complete per junction. It stands 30 m before the junction (at most half the road), not on roundabout rings. 306 / 307 can follow when needed.
+- **215 stacked above 205** on the same post (`zOffset` 0.7 m higher), not as a separate sign.
+- **Signal approaches get a stop line now; the facing-light check waits for B6.** The validator requires a 205 / 206 sign only on yield and stop approaches.
+- **The sidecar keeps the movement records unchanged.** The per-movement `control`, `priority` and `yields_to` go into a separate `movement_control` map keyed by connecting road, so the HD-off sidecar stays byte-identical. `junctions` also counts each junction's conflicts and priority records.
+- **`annotate` takes the two densities as numbers** (`junction_control.signal_density`, `stop_density`), so `roadgen/maps` does not import the OpenDRIVE package. It runs after grade separation and before the cross-section fit (the fit must see the profiles). Drape and grade separation still size bridges and overpasses with the default `urban` profile, the widest one, so they stay wide enough. In style-map suburb districts an edge is at most `suburban`.
+- **Lines follow the cross slope** (found in the close-ups). A stop line across a banked road end (superelevation up to 0.04 rad where a road meets a sloped junction plane) sank half into the surface in esmini. The two outline corners now get heights `v · tan(superelevation)`.
+- **Signs stand beside the road at their own station** (found by the new validator on the three map networks): the first version took the carriageway edge at the road end, where a road can be wider (a lane added before the junction), and put some 301 signs 30 m back up to 4.5 m off the road.
+- **Ids:** signals 1, 2, …; line objects from (C + 1) · 1000 on (C chain roads), above every bridge and tunnel id (road id · 1000 + k).
+- **User decisions on this result (prompt 8):** right before left is required together with yield and stop only on `mixed_city` (exit criteria changed); 301 alone is fine for now, and B7 adds 306 / 307 along priority roads if they can be traced through consecutive junctions with the chain data at reasonable cost (else an open item); `city`'s missing street × street junctions go to stage D (see "Open items for later stages").
+- **`<priority>` records stay on** (`priorities: true`): they take 0.6–2.4 % of the files, far below the plan's 30 % switch-off rule.
+
+**Control on the examples** (`b5_control.py` → `baselines/2026-10-30-stage-b-after-b5-hd.json`; junctions of 3+ roads):
+
+| Network | junctions | priority | signal | right before left | roundabout | none | signs 205 / 206 / 215 / 301 | stop / yield lines | `<priority>` (share of file) |
+|---|---|---|---|---|---|---|---|---|---|
+| grid | 96 | 96 | — | — | — | — | 121 / 39 / — / 192 | 39 / 121 | 2,384 (2.4 %) |
+| manhattan_like | 380 | 360 | 20 | — | — | — | 268 / 62 / — / 420 | 112 / 268 | 3,200 (1.1 %) |
+| paris | 226 | 217 | 4 | 5 | — | — | 220 / 77 / — / 434 | 96 / 220 | 3,646 (1.8 %) |
+| suburb | 228 | 178 | 1 | 15 | 34 | — | 222 / 63 / 35 / 355 | 67 / 222 | 3,185 (1.7 %) |
+| organic_town | 120 | 103 | 1 | — | 16 | — | 114 / 18 / 16 / 206 | 23 / 114 | 1,125 (1.2 %) |
+| city (maps) | 339 | 188 | 151 | — | — | — | 121 / 109 / — / 376 | 609 / 121 | 3,062 (0.6 %) |
+| mixed_city (maps) | 420 | 267 | 118 | 16 | 19 | — | 243 / 143 / 20 / 533 | 564 / 243 | 5,395 (0.8 %) |
+| highway_corridor (maps) | 137 | 102 | 33 | — | — | 2 | 92 / 40 / — / 204 | 148 / 92 | 1,596 (0.7 %) |
+
+- **Annotate** set profiles on `city` (urban 443, suburban 233, rural 104 edges), with 84 junctions to lights and 41 to stop. `mixed_city`: 534 / 323 / 106 edges, 94 lights, 36 stop.
+- **Lights at avenue × street junctions:** 46 of 192 in `city` (24 %) and 69 of 316 in `mixed_city` (22 %), as calibrated in B0 (target about a quarter). Every junction where the crossing road is an avenue or more has lights, by the rule.
+- **Yield and stop** are both present everywhere. **Right before left** needs a junction of streets only: `mixed_city` has 16 and `suburb` 15, but **`city` has none**. All of `city`'s junctions touch an avenue or a highway, so the exit criterion "right-before-left present in `city`" cannot hold with the planned rule (open point below).
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b5 --hd`): all 11 networks build and pass every validator (the new HD checks included) and the drive-check wherever it runs. esmini simulates `city` and `mixed_city` with 0 errors. The only warnings are esmini's run-time "no connecting lane" lane-following messages (3 and 4), the same kind as in B4 (1 and 3); none concerns signals, objects or priorities. Repaired edges are unchanged. Close-ups: `out/stage_b/b5/closeups/` (a stop line and 206 in `city`, a roundabout yield line with 205 / 215, the stop lines at a diamond terminal).
+
+| | B4 | B5 |
+|---|---|---|
+| `.xodr` size, grid / manhattan_like / city / mixed_city | 4.61 / 13.4 / 24.1 / 33.2 MB | 4.96 / 14.2 / 24.5 / 33.7 MB (+1.0–7.6 %) |
+| pipeline (incl. drive-check), city / mixed_city | 198 / 381 s | 197 / 447 s |
+| esmini load (`esmini_load.py`, back to back; first B5 build), grid / manhattan_like / city | 3.5 / 33.8 / 49.9 s | 3.5 / 35.2 / 48.1 s |
+| simulate wall time, 50 cars, 30 s, city / mixed_city | 49.8 / 138 s | 48.7 / 144 s |
+
+The differences in time are within the run-to-run spread (B4's `mixed_city` pipeline varied between 381 and 453 s).
+
+Exit of B5: full suite 676 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's `Optional[...]` / `Union` style and B008; docs updated (`opendrive.md` junction control and right of way, sidecar keys; `maps.md` annotate; `cli-reference.md`; `validation.md`; `architecture.md`). Helper script: `b5_control.py`. Test data: `tests/data/esmini_de_signs.txt` (esmini's table lines for the codes used).
+
 ### B6 · Traffic lights, controllers, phase plans, OpenSCENARIO
 
 - **`opendrive/lights.py`** (new), `TrafficLightParams` (section `traffic_lights`):
@@ -869,6 +921,7 @@ Exit of B4: full suite 639 passed, 1 failed (the known `test_monitor_memory_cap_
   - at the junction border of every arm with sidewalks on both sides;
   - the stop line moves 1 m behind the crosswalk;
   - skipped where the approach is shorter than crosswalk + stop line + 2 m.
+- **306 / 307 along priority roads** *(added by prompt 8)*: where the priority road can be traced through consecutive priority junctions with the existing chain data (`junctions` records: priority roads per junction, roads shared by neighbouring junctions) at reasonable cost, 306 after the first junction of the run and 307 before it ends, replacing the 301s inside the run. Otherwise this stays an open item.
 - **Speed signs:**
   - 274 (value in km/h, rounded down to 10) at every change of the `<type>` speed in its travel direction;
   - also after each junction on roads longer than 100 m.
@@ -971,8 +1024,12 @@ Exit of B4: full suite 639 passed, 1 failed (the known `test_monitor_memory_cap_
 | Vehicles in `scenario` / `simulate` | only on driving lanes (positions checked on `city`) |
 | Controlled approaches with a stop or yield line and a sign or light | 100 % |
 | Lights switch in esmini | yes, shown in OSI output or screenshots |
-| Control mix | lights at every at-grade avenue × avenue and highway × avenue junction; yield, stop and right-before-left all present in `city` and `mixed_city` |
+| Control mix | lights at every at-grade avenue × avenue and highway × avenue junction; yield and stop present in `city` and `mixed_city`; yield, stop and right-before-left together in `mixed_city` *(changed by prompt 8: `city` has no street × street junctions)* |
 | Build time | ≤ 2 × B0 on `city` and `mixed_city` |
+
+## Open items for later stages
+
+- **Stage D (diversity of the generator):** `city` (lsystem preset `city`, seed 7) has no street × street junctions at all: every junction touches an avenue or a highway (B5 measurement, `baselines/2026-10-30-stage-b-after-b5-hd.json`), so right before left never occurs there. That is a gap of the generator's diversity, not of stage B *(prompt 8)*.
 
 ## Risks
 

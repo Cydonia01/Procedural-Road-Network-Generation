@@ -137,6 +137,15 @@ with HD maps on.
 - **Mark records in order:** within each lane of a lane section, the road
   marks' `sOffset`s lie inside the section and strictly ascend, so every
   stretch of the lane has exactly one mark.
+- **Signals and objects on their road:** within the road's length and outer
+  edge (signs up to 2 m outside it), with `<validity>` lanes that exist at
+  their station.
+- **Unique ids:** signal ids, and object ids (bridges and tunnels included).
+- **Controlled approaches** (from the sidecar's `junctions`): every `stop`,
+  `yield` or `signal` approach with incoming lanes has a stop or yield line
+  within 5 m of the road end, and every `stop` and `yield` approach a 206 /
+  205 sign there, facing its traffic.
+- **Priority records** name two connecting roads of their own junction.
 
 ### XSD schema
 
