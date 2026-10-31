@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Union
 
@@ -131,18 +132,29 @@ def _road_point(ev: RoadEval, s: float, t: float) -> tuple[float, float]:
     return x - np.sin(hdg) * t, y + np.cos(hdg) * t
 
 
-def furniture(road: etree._Element) -> tuple[list[np.ndarray], list[np.ndarray], list[tuple[str, float, float]]]:
-    """(stop and yield lines as (2, 2) segments, crosswalks as (4, 2) polygons, signs as
-    (code, x, y)) of a road."""
+def furniture(road: etree._Element) -> tuple[list, list, list, list[tuple[str, float, float]]]:
+    """(stop and yield lines and arrow lines as (2, 2) segments, crosswalks as (4, 2)
+    polygons, junction-surface patches as polygons, signs as (code, x, y)) of a road."""
     ev = RoadEval(road)
-    lines, crosswalks = [], []
+    lines, crosswalks, patches = [], [], []
     for obj in road.findall("objects/object"):
         s, t = float(obj.get("s")), float(obj.get("t"))
         corners = [float(c.get("v")) for c in obj.findall("outlines/outline/cornerLocal")]
         if not corners:
             continue
         lo, hi = min(corners), max(corners)
-        if obj.get("type") == "roadMark":
+        if obj.get("type") == "patch":  # junction-surface fill, drawn as driving surface
+            x0, y0, h0 = ev.reference(s)
+            pts = [(float(x.get("u")), float(x.get("v"))) for x in obj.findall("outlines/outline/cornerLocal")]
+            patches.append(np.array([(x0 + u * math.cos(h0) - v * math.sin(h0), y0 + u * math.sin(h0)
+                                      + v * math.cos(h0)) for u, v in pts]))
+        elif obj.get("name", "").startswith("arrow"):  # a lane arrow: its lines, turned by the heading
+            c, sn = math.cos(float(obj.get("hdg", "0"))), math.sin(float(obj.get("hdg", "0")))
+            pts = [(float(x.get("u")), float(x.get("v"))) for x in obj.findall("outlines/outline/cornerLocal")]
+            for (u0, v0), (u1, v1) in zip(pts[::2], pts[1::2]):
+                lines.append(np.array([_road_point(ev, s + u * c - v * sn, t + u * sn + v * c)
+                                       for u, v in ((u0, v0), (u1, v1))]))
+        elif obj.get("type") == "roadMark":
             lines.append(np.array([_road_point(ev, s, t + v) for v in (lo, hi)]))
         elif obj.get("type") == "crosswalk":
             depth = max((float(m.get("width", "0")) for m in obj.findall("markings/marking")), default=0.0)
@@ -152,7 +164,7 @@ def furniture(road: etree._Element) -> tuple[list[np.ndarray], list[np.ndarray],
                                         ((-half, lo), (-half, hi), (half, hi), (half, lo))]))
     signs = [(sig.get("type"), *_road_point(ev, float(sig.get("s")), float(sig.get("t"))))
              for sig in road.findall("signals/signal")]
-    return lines, crosswalks, signs
+    return lines, crosswalks, patches, signs
 
 
 def _border(ev: RoadEval, sides: dict[int, list[etree._Element]], s0: float, lane_id: int, s: float) -> float:
@@ -191,9 +203,10 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
         for kind, poly in lane_polygons(road, step):
             polys.setdefault(kind, []).append(poly)
         lines += mark_lines(road, step)
-        road_lines, road_crosswalks, road_signs = furniture(road)
+        road_lines, road_crosswalks, road_patches, road_signs = furniture(road)
         stop_lines += road_lines
         crosswalks += road_crosswalks
+        polys.setdefault("driving", []).extend(road_patches)
         signs += road_signs
         if road.get("junction", "-1") != "-1":
             starts.setdefault(road.get("junction"), []).append(RoadEval(road).reference(0.0)[:2])

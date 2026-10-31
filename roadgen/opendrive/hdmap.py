@@ -3,17 +3,17 @@
 One bundle the builder takes next to DesignParams and JunctionParams. With
 enabled off, the builder writes exactly what it wrote before stage B (the
 builder identity guard, tests/test_hdmap_identity.py). It holds the
-cross-section, the road marks, junction control and traffic lights; later
-phases add turn lanes here.
+cross-section with its turn pockets, the road marks, junction control and
+traffic lights.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from roadgen.config import DEFAULTS, section
-from roadgen.geometry.cross_section import CrossSectionParams
+from roadgen.geometry.cross_section import CrossSectionParams, TurnLaneParams
 from roadgen.opendrive.control import JunctionControlParams
 from roadgen.opendrive.lights import TrafficLightParams
 from roadgen.opendrive.marks import RoadMarkParams
@@ -29,11 +29,12 @@ class HdMapParams:
     marks: RoadMarkParams = field(default_factory=RoadMarkParams)
     control: JunctionControlParams = field(default_factory=JunctionControlParams)
     lights: TrafficLightParams = field(default_factory=TrafficLightParams)
+    turn_lanes: TurnLaneParams = field(default_factory=TurnLaneParams)
 
     @property
     def active_cross_section(self) -> Optional[CrossSectionParams]:
-        """The cross-section the geometry uses, None with HD maps off."""
-        return self.cross_section if self.enabled else None
+        """The cross-section the geometry uses (with the turn pockets), None with HD maps off."""
+        return replace(self.cross_section, turn_lanes=self.turn_lanes) if self.enabled else None
 
     @property
     def active_marks(self) -> Optional[RoadMarkParams]:
@@ -42,7 +43,7 @@ class HdMapParams:
 
     @classmethod
     def from_config(cls, cfg: dict, seed: Optional[int] = None, enabled: Optional[bool] = None) -> HdMapParams:
-        """From a config's hdmap, cross_section, road_marks, junction_control and traffic_lights sections; enabled (e.g. --hd / --no-hd)
+        """From a config's hdmap, cross_section, road_marks, junction_control, traffic_lights and turn_lanes sections; enabled (e.g. --hd / --no-hd)
         overrides hdmap.enabled when given."""
         on = section(cfg, "hdmap")["enabled"] if enabled is None else enabled
         return cls(enabled=on, seed=cfg["seed"] if seed is None else seed,
@@ -50,4 +51,5 @@ class HdMapParams:
                    marks=RoadMarkParams(**section(cfg, "road_marks")),
                    control=JunctionControlParams.preset(cfg["junction_control"].get("preset", "default"),
                                                         **section(cfg, "junction_control")),
-                   lights=TrafficLightParams(**section(cfg, "traffic_lights")))
+                   lights=TrafficLightParams(**section(cfg, "traffic_lights")),
+                   turn_lanes=TurnLaneParams(**section(cfg, "turn_lanes")))

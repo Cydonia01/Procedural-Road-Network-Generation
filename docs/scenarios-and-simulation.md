@@ -61,6 +61,11 @@ esmini's default controller does not stop vehicles at red lights; they drive
 through. The lights are there for the HD map, for rendering and for
 controllers that read them.
 
+Routes follow the movements, so `explicit_routes` never takes a banned turn
+(HD maps); a vehicle reaches a left-turn pocket's movements only if it
+starts in the pocket, since esmini's default controller does not change
+lanes.
+
 The storyboard stops when simulation time exceeds `--duration`. The output is
 deterministic for a seed, and the header date is fixed. `--scenegraph`
 attaches a [3D scene](scene.md).

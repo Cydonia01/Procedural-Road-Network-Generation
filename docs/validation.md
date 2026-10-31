@@ -155,6 +155,11 @@ with HD maps on.
   per cycle, every green lasts at least `min_green`, and no two conflicting
   movements are green in one phase unless one yields to the other (a
   permissive left turn).
+- **Lane use and bans** (sidecar): every `lane_use` record matches its
+  approach's movements; pocket lanes feed only left turns and U-turns; no
+  movement makes a banned turn; every approach with a banned turn has a
+  facing 209 / 214 sign; and the banned exit is still reachable from the
+  approach through other movements.
 
 ### XSD schema
 

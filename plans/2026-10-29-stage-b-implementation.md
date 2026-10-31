@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B7 and the lane-section merge (moved from B9) done (2026-10-30), B8 next.** Discussion,
+Status: **approved 2026-10-30; B0–B7 and the lane-section merge (moved from B9) done (2026-10-30), the zebra rule and B8 done (2026-10-31), B9 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -225,6 +225,12 @@ The user's answers to the four questions of the discussion (also in its
 
 > Yes, commit B7 as one commit.
 > One realism change before B8: in Germany zebras are rare at unsignalised junctions. Keep crossings at every light-controlled arm, but at unsignalised junctions put zebras only on avenue arms in dense areas (reuse the population thresholds from B5; without maps, avenues only), and none on street × street junctions. Make it an option, record the decision in the plan, and report the new crosswalk counts. Commit that separately, then implement B8. Stop after B8 and report.
+
+**2026-10-31, prompt 11** (answers to the B8 report)
+
+> 1. Arrows: try one outline per arrow first and check it in esmini (render and OSI). If it renders correctly, use it; if not, place arrows at 20 m only. Report the file sizes.
+> 2. City repairs: don't repair for pockets. Leave turn pockets off on edges too short for them, as real designs do on short blocks, and report how many pockets that drops.
+> Record both decisions in the plan, then commit B8. Stop and report before B9.
 
 ## Context
 
@@ -1148,6 +1154,117 @@ All 11 examples build, validate and pass the drive-check (`out/stage_b/b7z`). Su
   - bans keep connectivity and are signed;
   - `explicit_routes` scenarios never use a banned movement.
 - **Docs:** `docs/opendrive.md` (Movements: lane use, pockets, bans), `docs/scenarios-and-simulation.md` (routes).
+
+#### B8 result (done 2026-10-31)
+
+Delivered:
+- lane use per approach, from the movements (`junctions.lane_use`, sidecar `lane_use`);
+- left-turn pockets (`turn_lanes`);
+- banned turns with 209 / 214 signs (sidecar `banned`);
+- protected left phases;
+- Z 297 lane arrows;
+- the junction-surface fill approved in prompt 6.
+
+With HD off nothing changes (both identity guards pass). Changes against the plan, and choices it left open:
+
+- **Lane use is read from the movements, not the other way round.** `plan_movements` keeps its rules, gains the pocket and the bans, and `lane_use(movements)` writes the result down per approach lane. Without pockets and bans its movements are unchanged (identity guards). A separate solver feeding `plan_movements` would have restated the same rules twice.
+- **Pockets:**
+  - only on avenue and highway approaches (`pocket_classes`). On streets a 25 m pocket rarely fits and is unusual in Germany; `street` stays in `pocket_length` so it can be switched on.
+  - Decided from the graph (`cross_section.pocket_ends`): approaches with a left exit, at junctions with lights or priority control, where the last edge has room for the pocket, its taper and 40 m (`POCKET_ROOM`, the no-lane-change zone and the far end).
+  - The trims count the pocket's width (`junction_space.node_arms`).
+  - Only on the last edge of the chain, and kept out of the road's corners: a pocket inside a curve is its innermost, tightest lane and broke the lateral-acceleration limit on `mixed_city`. Length and taper shrink to fit; a taper under 2 m (`MIN_POCKET_TAPER`) drops the pocket.
+  - **The pocket does not take the median's width.** It is its own lane between the median and the driving lanes; the median still tapers out before the junction as in B1, and the other lanes shift outward. Turning the median into the pocket needs width pieces that trade between two positions; left for later.
+  - Like the side lanes, the pocket position runs the whole road at 0 m, so driving lane ids stay stable; a lane section where it is 0 m throughout gets type `none` and no marks.
+  - Right pockets are not implemented (the plan had them off; no parameter).
+- **Roundabout entries:** no change was needed. Medians already end before every junction (B1), and pockets need lights or priority control, which roundabout entries do not have.
+- **Bans:**
+  - The connectivity check uses a road-level turn graph (`control.turn_graph`: arcs between approaches, lane changes allowed on a road), not the lane-level one the plan named. A lane-level graph would also reflect lanes no movement uses, which B3's checks already cover.
+  - A ban is kept only if the number of strongly connected components is unchanged and every banned target stays reachable from the banned approach (`keeps_connectivity`). The SCC count alone let bans through on networks with dead ends, which are never one strongly connected component.
+  - Bans only on approaches with arriving traffic. A ban on an outgoing one-way arm bans nothing and got no sign.
+  - Seeded bans pick from left turns at junctions with lights or priority control (`ban_share` 0.05). Right-in / right-out only occurs where an at-grade highway meets a minor road, on `city` and `mixed_city`.
+- **Protected lefts:**
+  - Each pocket gets its own light (1000001, validity on the pocket lane), with `turn: left` in the sidecar.
+  - Stages per phase group run left, then through.
+  - A plan with protected-left stages gets no extra pedestrian phase; pedestrians cross while the left turns of the other axis run. The prompt 9 rule only adds one when a plan would otherwise have a single stage.
+- **Arrows:**
+  - `roadMark`-type objects only: esmini's sign table has no 297.
+  - 20 m before the stop line (prompt 11; first built at 20 m and 40 m), in each lane of approaches with 2 or more lanes at junctions with lights or priority control. A single lane needs no arrow, and arrows on minor approaches would only repeat the sign.
+  - Each arrow is an open outline with a white marking per stroke (shaft and heads, `furniture.arrow_segments`). One closed outline per arrow was tried and rejected; see the prompt 11 decisions below.
+- **Junction-surface fill:**
+  - `<object type="patch">` with a closed asphalt outline, on the first connecting road of each junction.
+  - It covers the parts of the junction hull no lane covers, rastered at 1 m and simplified by 5 cm; pieces under 0.5 m² are dropped. Heights come from the junction's plane.
+  - esmini draws patches in one flat colour, without the road texture, and they z-fight where they meet a median or island (close-up `city_fill.png`). That is cosmetic; esmini ignores patches for driving.
+- **Validator** (`hdmap.py`):
+  - `_check_lane_use`: each approach's lane use matches its movements, and pockets are left-only;
+  - `_check_bans`: no movement for a banned pair, the target stays reachable, and a 209 / 214 sign faces the approach.
+  - Not implemented: "right-turn paths stay inside the curb returns". The curb returns are built from the same corner geometry as the right-turn paths (B3), so it holds by construction, and checking it needs the corner polygons that only the builder has.
+- **Tests:** `tests/test_turn_lanes.py` (13), covering:
+  - pocket geometry, ids and taper;
+  - pockets out of curves;
+  - a drive-check through a pocket (esmini's selector turns left out of it);
+  - protected left phases;
+  - bans: connectivity, signs, one-way arms, routes;
+  - arrows;
+  - fill patches.
+
+  `test_traffic_lights.py` pins the pedestrian-phase test to `left_pockets: false`.
+
+**Prompt 11 decisions** (after the first B8 report):
+
+- **Arrows: one closed outline per arrow, if esmini renders it; else at 20 m only** (user). Checked with `b8_arrow_outline.py` on a cross of 2+2 avenues (`out/b8_arrows/`). Variants: the strokes as built; the strokes merged into one closed outline; that outline with `fillType="paint"` (OpenDRIVE 1.7); and with a white marking along every outline edge.
+  - **Render:** esmini fills a closed outline correctly, concave shapes included, but always in its flat grey object colour, whatever the fill type. On asphalt that is barely visible and it flickers. Edge markings draw a hollow white arrow and cost more bytes than the strokes (4,123 bytes per arrow against 2,721).
+  - **OSI:** each stroke is an OSI road marking (72 road markings on the fixture). With one outline per arrow only the 12 other lines remain, and the arrows are left as stationary objects of type other.
+  - The outline saves half the arrow bytes (1,224 per arrow against 2,721) but renders wrongly and loses the OSI road markings. **So arrows stay strokes, at 20 m only.** On the examples their bytes fell from 8.15 to 5.74 MB on `manhattan_like` and from 6.90 to 4.05 MB on `city`. That is less than half, since only approaches long enough had arrows at 40 m.
+- **Pockets: leave them out on blocks too short for them, rather than repairing the block** (user). In `repair_short_edges`, before an edge is collapsed or removed, the pockets at its two junctions are left out one at a time, in (node, edge) order, until it fits. Those it fits without are then put back. The pockets left out go into the graph metadata (`no_pockets`, [node, edge] pairs, which `pocket_ends` honours) and their count into `fit.dropped_pockets`. An edge too short even without pockets is repaired as before. This is not an option: the user decided it as a rule.
+  - **Pockets dropped:** 4 over the example set (`paris` 1, `city` 2, `mixed_city` 1).
+  - **Repaired edges are back at their B7z values:** `city` 15 → 10, `paris` 3 → 2. `city` is back at 0.9 % of its junction road ends, within the exit target.
+  - Cost: "fit cross-sections" takes longer on networks with pocket trials (`mixed_city` 30.0 → 39.5 s), since each trial recomputes the trims or the alignment.
+  - Tests: a 32 m block beside an avenue cross keeps its road after its trims without the pockets, and is a stub with them. The repair leaves exactly the needed pockets out and repairs nothing. Without turn lanes nothing is left out.
+
+**On the examples** (final, `b8_turns.py out/stage_b/b7z out/stage_b/b8r` → `baselines/2026-10-31-stage-b-after-b8-hd.json`; the first B8 run, before prompt 11, is in `out/stage_b/b8`):
+
+| Network | pocket approaches (left out) | bans: right-in/out / seeded | arrows | lights (protected left) | fill patches / m² | repaired edges B7z → B8 | `.xodr` size, growth over B7z |
+|---|---|---|---|---|---|---|---|
+| grid | 0 / 352 (0) | 0 / 3 | 352 | 0 (0) | 29 / 137 | 0 → 0 | 5.22 → 6.46 MB, +23.7 % |
+| manhattan_like | 8 / 800 (0) | 0 / 24 | 2,147 | 20 (8) | 1,361 / 12,523 | 0 → 0 | 15.09 → 23.52 MB, +55.9 % |
+| paris | 158 / 765 (1) | 0 / 14 | 774 | 4 (4) | 325 / 2,376 | 2 → 2 | 10.49 → 15.20 MB, +44.9 % |
+| suburb | 0 / 792 (0) | 0 / 13 | 493 | 1 (0) | 172 / 1,218 | 12 → 12 | 10.00 → 11.83 MB, +18.3 % |
+| organic_town | 40 / 359 (0) | 0 / 5 | 304 | 1 (0) | 106 / 883 | 0 → 0 | 4.75 → 6.29 MB, +32.4 % |
+| city (maps) | 205 / 1,126 (2) | 88 / 18 | 1,441 | 151 (84) | 579 / 6,001 | 10 → 10 | 25.37 → 32.11 MB, +26.6 % |
+| mixed_city (maps) | 166 / 1,439 (1) | 52 / 20 | 1,347 | 118 (59) | 500 / 4,651 | 11 → 11 | 34.74 → 41.12 MB, +18.4 % |
+| highway_corridor (maps) | 84 / 456 (0) | 0 / 6 | 485 | 33 (19) | 166 / 1,330 | 2 → 2 | 11.72 → 14.32 MB, +22.1 % |
+| junction_k / roundabout / diamond | 0 / 0 / 2 (0) | 0 | 4 / 2 / 10 | 0 / 0 / 2 (0 / 0 / 2) | 5 / 5 / 6 | 0 / 0 / 2, unchanged | +9.1 / +7.0 / +34.2 % |
+
+- **Pockets** need avenues and room. `grid` and `suburb` have no avenue approach with room, and `manhattan_like`'s avenues meet every 80 m.
+- **Small shifts against the first B8 run** come from the edges no longer repaired: approaches, lights and bans each move by one or two on `paris` and `city`.
+- **Fill:** the largest patch is 119.7 m², a lens between the turning paths of a skewed junction on `city`. The close-up shows the flat colour and flicker noted above.
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b8r --hd`): all 11 networks build and pass every validator and the drive-check wherever it runs (`city`: 3,150 movements and 1,922 road lanes; `mixed_city`: 4,140 and 2,228). esmini simulates `city` with 0 errors and 0 warnings, and `mixed_city` with 0 errors and 5 "no connecting lane" warnings (4 in B7z). Close-ups (`out/stage_b/b8r/closeups/`): a pocket approach with its arrows (`city_pocket.png`), the largest fill patch (`city_fill.png`).
+
+| | B7z | B8 |
+|---|---|---|
+| `.xodr` size, manhattan_like / city / mixed_city | 15.09 / 25.37 / 34.74 MB | 23.52 / 32.11 / 41.12 MB |
+| fit cross-sections / build / write xodr / validate, mixed_city | see B7 | 39.5 / 10.5 / 9.3 / 12.8 s |
+| pipeline (incl. drive-check), city / mixed_city | 194 / 434 s | 225 / 731 s (see below) |
+| drive-check alone, city / mixed_city | 163 s / – | 171 s / 389 s |
+| esmini load (`esmini_load.py`, back to back), manhattan_like / city | 34.7 / 47.9 s | 42.2 / 49.6 s |
+| simulate wall time, 50 cars, 30 s, city / mixed_city | 48.9 / 150 s | 50.0 / 138 s |
+
+- **Pipeline times of the example runs vary** beyond what the stages explain:
+  - The first B8 run measured 1,170 s on `city`, but the drive-check alone takes 171 s (163 s on B7z) and the build steps add about 11 s. A solo rerun took 225 s, the same as the final example run.
+  - In the final run `mixed_city` took 731 s against 481 s in the first B8 run. Every timed stage matches except the pocket trials (+10 s); the rest is in the drive-check. Timed alone, one after the other, the drive-check took 389 s on the final file and **2,278 s on the first run's file**, whose whole pipeline had taken 481 s. The same file and command differ by up to about 5×, so the variance is in the environment (Docker VM) or in esmini's RoadManager, not in what B8 builds. The cause is not found yet.
+  - B9's performance check measures these properly.
+- **Write time** grew from 1.5 to 7.2 s on `city`. Its cause is not measured yet; the new objects (arrows, patches) are the likely one. B9's profile looks at it.
+
+Exit of B8: full suite 726 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's `Optional[...]` / `Union` style and B008. Docs updated:
+- `opendrive.md`: lane use, pockets (and those left out on short blocks), bans, arrows (and why not one outline), fill;
+- `generators.md`: the repair leaves pockets out first;
+- `validation.md`: the lane-use and ban checks;
+- `scenarios-and-simulation.md`: routes avoid banned turns;
+- `cli-reference.md`: `turn_lanes`, bans, the pocket rule of the repair;
+- `architecture.md`: sidecar `lane_use` and `banned`.
+
+Helper scripts: `b8_turns.py`, `b8_closeups.py`, `b8_arrow_outline.py`.
 
 ### B9 · Validation and metrics completed
 

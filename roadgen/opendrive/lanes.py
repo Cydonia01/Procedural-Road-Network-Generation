@@ -20,6 +20,7 @@ LANE_TYPES = {
     "driving": xodr.LaneType.driving, "median": xodr.LaneType.median, "parking": xodr.LaneType.parking,
     "biking": xodr.LaneType.biking, "curb": xodr.LaneType.curb, "sidewalk": xodr.LaneType.sidewalk,
     "shoulder": xodr.LaneType.shoulder, "border": xodr.LaneType.border,
+    "pocket": xodr.LaneType.driving,  # a left-turn pocket; "none" where it is 0 m wide
 }
 
 MARK_WIDTH = 0.15
@@ -123,10 +124,12 @@ def _section_lane(piece: Union[WidthPiece, WidthPieces], s0: float, outermost: b
     pieces = piece.pieces if isinstance(piece, WidthPieces) else (piece,)
     at = max(pieces[0].s0, s0)
     a, b, c, d = pieces[0].poly(at)
-    lane = xodr.Lane(LANE_TYPES[kind], a=a, b=b, c=c, d=d, soffset=at - s0 if at > s0 else 0)
+    absent = kind == "pocket" and all(p.constant and p.w0 == 0.0 for p in pieces)
+    lane_type = xodr.LaneType.none if absent else LANE_TYPES[kind]
+    lane = xodr.Lane(lane_type, a=a, b=b, c=c, d=d, soffset=at - s0 if at > s0 else 0)
     for p in pieces[1:]:  # several <width> records: a side lane's tapers inside one section
         lane.add_lane_width(*p.poly(p.s0), soffset=p.s0 - s0)
-    if marks is not None:
+    if marks is not None and not absent:
         for mark in marks:
             lane.add_roadmark(mark)
     elif kind == "driving":

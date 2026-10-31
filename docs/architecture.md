@@ -136,7 +136,7 @@ roadgen/
   geometry/                neutral road shape (no OpenDRIVE imports)
     planar.py              poses, straight segments, Hermite paramPoly3
     junction_space.py      junction trims: where roads stop at a node; curb returns
-    cross_section.py       side lanes, medians, corner radii per profile and road class
+    cross_section.py       side lanes, medians, corner radii per profile and road class; turn pockets
     design.py              design-speed rules: radii, advisory speeds, spirals, tapers
     primitives.py          line / arc / spiral pieces, alignments
     clothoid.py            G2 clothoid transitions

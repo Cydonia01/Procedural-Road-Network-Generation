@@ -207,7 +207,9 @@ def test_hd_params_from_config():
     hd = HdMapParams.from_config(DEFAULTS)
     assert not hd.enabled and hd.active_cross_section is None
     on = HdMapParams.from_config(DEFAULTS, seed=4, enabled=True)
-    assert on.seed == 4 and on.active_cross_section == CrossSectionParams()
+    from roadgen.geometry.cross_section import TurnLaneParams
+
+    assert on.seed == 4 and on.active_cross_section == CrossSectionParams(turn_lanes=TurnLaneParams())
 
 
 def test_pipeline_hd_fits_and_builds(tmp_path):

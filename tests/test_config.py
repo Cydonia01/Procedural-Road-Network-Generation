@@ -9,7 +9,7 @@ from cli import build_parser, main
 from roadgen.config import DEFAULTS, load_config, merge, section
 from roadgen.generators.base import load_params
 from roadgen.generators.lsystem import LSystemParams
-from roadgen.geometry.cross_section import CrossSectionParams
+from roadgen.geometry.cross_section import CrossSectionParams, TurnLaneParams
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json
 from roadgen.maps.align import AlignParams
@@ -42,12 +42,15 @@ from roadgen.scene.ground import GroundParams
     (JunctionControlParams, ("junction_control",)),
     (AnnotateParams, ("annotate",)),
     (TrafficLightParams, ("traffic_lights",)),
+    (TurnLaneParams, ("turn_lanes",)),
 ])
 def test_dataclass_defaults_come_from_defaults_yaml(params_type, keys):
     defaults = section(DEFAULTS, *keys)
     for f in dataclasses.fields(params_type):
         if f.name == "seed":
             assert f.default == DEFAULTS["seed"]
+        elif f.metadata.get("config", True) is False:  # set from another section
+            continue
         elif f.default is not dataclasses.MISSING:
             assert f.default == defaults[f.name], f.name
     fields = {f.name for f in dataclasses.fields(params_type)}

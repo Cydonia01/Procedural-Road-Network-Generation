@@ -258,3 +258,30 @@ def test_clashing_opposite_arms_get_their_own_phases():
     clash = {frozenset(((1, "end"), (3, "end")))}  # e.g. two crossing left turns at a skewed junction
     groups = [{k for k, _ in g} for g in phase_groups(approaches, clash)]
     assert {1, 3} not in groups and {2, 4} in groups and len(groups) == 3
+
+
+def _avenue_cross(arm: float = 200.0):
+    from roadgen.graph.model import Edge, Node, RoadGraph
+
+    g = RoadGraph()
+    for nid, (x, y) in {1: (0.0, 0.0), 2: (-arm, 0.0), 3: (arm, 0.0), 4: (0.0, arm), 5: (0.0, -arm)}.items():
+        g.add_node(Node(nid, x, y))
+    for eid, (a, b) in enumerate(((2, 1), (1, 3), (1, 4), (5, 1)), 1):
+        g.add_edge(Edge(eid, a, b, "avenue", 2, 2, speed_limit=13.9))
+    return g
+
+
+def test_pockets_get_their_own_lights_and_protected_left_phases(tmp_path):
+    path, _, sidecar = _build(_avenue_cross(), tmp_path)
+    assert check_hdmap(path) == []
+    (plan,) = sidecar["signal_plans"]
+    pockets = {(u["road"], u["contact"]): u["pockets"] for u in sidecar["lane_use"]}
+    assert all(len(p) == 1 for p in pockets.values()) and len(pockets) == 4
+    left = [s for s, lanes in plan["light_lanes"].items()
+            if lanes == pockets[tuple(plan["lights"][s])]]
+    assert len(left) == 4
+    turns = [(p["turn"], p["kind"]) for p in plan["phases"]]
+    assert turns.count(("left", "green")) == 2 and turns.count(("through", "green")) == 2
+    for p in plan["phases"]:  # a pocket light and a through light are never green together
+        green = {s for s, st in p["states"].items() if st == GREEN}
+        assert not (green & set(left)) or green <= set(left)

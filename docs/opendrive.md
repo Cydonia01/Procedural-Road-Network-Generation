@@ -96,6 +96,13 @@ reference line, and left lanes (positive ids) drive against it.
   keep their ids (−2, −3, … and 2, 3, …) along the road. Anything that
   follows a lane by id (esmini's drive-check, the scenario's routes) thus
   stays on the same lane. Junction connections start from the driving lanes.
+- **Left-turn pockets** (HD maps on, `turn_lanes` section;
+  [details](#lane-use-pockets-and-banned-turns-hd-maps)): an innermost lane
+  on a two-way road's approach to a junction, between the median and the
+  driving lanes. It widens from 0 over 15 m (`pocket_taper`) and keeps the
+  lane width over the last 25 / 40 / 60 m (`pocket_length`, street / avenue
+  / highway). Like the median, its position runs the whole road: type
+  `none` and 0 m wide elsewhere, so the driving lanes keep their ids.
 - Only **driving** lanes get movements, scenario spawn slots and routes;
   esmini's own traffic (odrviewer) also keeps to driving-type lanes.
 - **Corner roads** (`junctions.py::corner_roads`). Where two neighbouring arms
@@ -189,6 +196,50 @@ movement**:
    has fewer lanes.
 4. **Two-arm junctions** use `continuation_pairs`: every lane continues, and
    surplus lanes merge into the outermost outgoing lane.
+
+### Lane use, pockets and banned turns (HD maps)
+
+- **Lane use** (`lane_use`): the movement kinds each incoming lane feeds,
+  per approach in the sidecar (`lane_use`, with its pocket lanes). Without
+  pockets and bans the movements are those above, unchanged.
+- **Pockets** (`cross_section.pocket_ends`, decided from the graph before the
+  trims, which count the pocket's width): on approaches of the
+  `pocket_classes` (avenues and highways) that have a left exit, at
+  junctions of three or more roads that are not ramp nodes or roundabout
+  entries and whose `Node.control` is not `none` or `right_before_left`, where
+  the edge has room for the pocket, its taper and 40 m beyond. Where a pocket
+  would leave a neighbouring block too short for its trims, the pocket is
+  left out rather than the block repaired (graph metadata `no_pockets`,
+  [`repair`](generators.md#repair-edges-too-short-for-their-junctions)), as real designs do on short
+  blocks. A pocket feeds
+  only the left turns (and a U-turn); the through lanes then feed no left
+  turn. At lights each pocket gets its own light and its own protected phase
+  ([lights](#traffic-lights-and-controllers-hd-maps)).
+- **Banned turns** (`junction_control.ban_left_highway`, `ban_share`):
+  - **right-in / right-out** where the priority road is an at-grade highway
+    with 2 or more lanes each way: the minor roads turn right only, and the
+    highway's left turns into them are banned;
+  - **seeded:** at `ban_share` (5 %) of the other junctions with lights or
+    priority control, one seeded approach loses its left turns;
+  - a ban is applied only while the network's turn graph (road traversals
+    linked by the movements) keeps its strongly connected components and the
+    banned exit stays reachable from the approach by another way;
+  - a sign 209 / 214 at the stop line says what the approach keeps (209-20
+    right only, 214 straight and right, ...);
+  - sidecar `banned`: junction, from / to road end, reason.
+- **Lane arrows** (Z 297): `roadMark` objects drawn as white lines (one
+  marking per stroke), 20 m before the stop line in each incoming lane of an
+  approach with 2 or more lanes, at junctions with priority control or
+  lights, shaped by the lane's movement kinds. esmini has no sign type 297,
+  so they are objects only. One closed outline per arrow would halve their
+  size, but esmini draws closed outlines in a flat grey, and its OSI output
+  then holds no road markings for them; each stroke is one there.
+- **Junction-surface fill:** surface inside a junction that no lane covers
+  (between the curb and the movements at corners no turn follows, slivers
+  between turning lanes, the middle of large junctions) becomes a flat
+  `<object type="patch">` with a closed asphalt outline, on the junction's
+  first connecting road, its corners on the junction plane. esmini draws it
+  in a flat colour; it is an object, not a lane, for CARLA and OSI.
 
 **U-turns** are created only with `u_turns: true`.
 
@@ -346,9 +397,11 @@ approach has `overhead_min_lanes` (3) or more lanes. The junction's fixed-time
 plan:
 
 - **Phase groups:** approaches arriving from roughly opposite directions
-  (within 180 ± 30°) share a phase, the highest-ranked first; the rest get a
-  phase each. Left turns are permissive: they yield to the oncoming traffic
-  of their phase (the junction's `<priority>` records).
+  (within 180 ± 30°) share a phase, the highest-ranked first, if their
+  movements are compatible; the rest get a phase each. Left turns without a
+  pocket are permissive: they yield to the oncoming traffic of their phase
+  (the junction's `<priority>` records). **Pockets** have a light of their own
+  over the pocket and a protected phase before their group's through phase.
 - **Each phase:** green, yellow, then all-red (`all_red`, 2 s). Yellow
   follows ITE: `reaction_time + v / (2 deceleration)` (1 s, 3 m/s²), at
   least `min_yellow` (3 s), for the group's fastest approach: 3.3 s at
@@ -412,6 +465,8 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
 | `cross_sections` | HD maps on only: each edge's cross-section profile |
 | `signal_plans` | HD maps on only, per junction with lights: `junction`, `node`, `controller`, `cycle` and `offset` [s], `min_green`, `groups` (`[road, contact]` per phase), `lights` (signal id → its approach), `phases` (`group`, `kind` green / yellow / all_red / pedestrian, `duration`, `states`: signal id → `"on;off;off"` red, `"off;on;off"` yellow, `"off;off;on"` green), and the junction's `conflicts` and `permissive` (high, low) connecting-road pairs |
+| `lane_use` | HD maps on only, per approach: `junction`, `road`, `contact`, `lanes` (incoming lane → movement kinds), `pockets` |
+| `banned` | HD maps on only, per banned turn: `junction`, `from` and `to` (`[road, contact]`), `reason` (`right_in_right_out`, `seeded`) |
 | `junctions` | HD maps on only: per junction its `control` kind, `priority_roads` (`[road, contact]`), `approaches` (`road`, `contact`, `role`), and its numbers of `conflicts`, `priorities` and `crosswalks` |
 | `movement_control` | HD maps on only: per connecting road its approach's `control` role, `priority` (on the priority road) and `yields_to` (connecting roads) |
 | `corner_roads` | HD maps on only: each corner road's `junction_id`, `road`, `from_road`, `to_road`, lane `kinds`, `path` and `closes` (a movement drives the turn it follows) |

@@ -25,6 +25,13 @@ Traffic lights (B6):
   of its plan, every light turns green once per cycle, every green lasts at
   least the plan's min_green; and no two conflicting movements are green in
   one phase, unless one yields to the other (a permissive left turn).
+
+Lane use and banned turns (B8), with the sidecar:
+- every lane_use record matches the movements of its approach;
+- left-turn pockets feed only left turns and U-turns;
+- no movement makes a banned turn, every approach with a banned turn has a
+  facing 209 / 214 sign at its stop line, and the banned turn's exit road is
+  still reachable from its approach through other movements.
 """
 
 from __future__ import annotations
@@ -68,6 +75,8 @@ def check_hdmap_tree(tree: etree._ElementTree, sidecar: Optional[dict] = None) -
     errors += _check_controllers(root)
     if sidecar is not None:
         errors += _check_plans(root, sidecar)
+        errors += _check_lane_use(sidecar)
+        errors += _check_bans(root, sidecar)
     for road in root.findall("road"):
         rid = road.get("id")
         if road.get("junction", "-1") != "-1":
@@ -115,6 +124,9 @@ def _check_furniture(root: etree._Element) -> list[str]:
         ev = RoadEval(road)
         items = [(sig, SIGN_MARGIN, 0.0) for sig in road.findall("signals/signal")]
         for obj in road.findall("objects/object"):
+            if obj.get("type") == "patch":  # junction-surface fill: in the junction, not on its host road
+                object_ids[obj.get("id")] += 1
+                continue
             corners = [float(c.get("v")) for c in obj.findall("outlines/outline/cornerLocal")]
             items.append((obj, EDGE_TOL, max((abs(v) for v in corners), default=0.0)))
         for tag in ("bridge", "tunnel"):
@@ -210,6 +222,7 @@ def _check_plans(root: etree._Element, sidecar: dict) -> list[str]:
             errors.append(f"{where}: its junction has no controller holding exactly its lights")
         green_once = set()
         approach_of = {sid: tuple(key) for sid, key in plan["lights"].items()}
+        light_lanes = plan.get("light_lanes")  # B8: a light releases only its lanes
         permissive = {tuple(sorted(p)) for p in plan.get("permissive", [])}
         conflicts = [tuple(p) for p in plan.get("conflicts", [])]
         moves = {m["connecting_road"]: m for m in movements if m["junction_id"] == plan["junction"]}
@@ -220,12 +233,16 @@ def _check_plans(root: etree._Element, sidecar: dict) -> list[str]:
             green_once |= green
             if green and phase["duration"] < plan.get("min_green", 0.0) - EPS:
                 errors.append(f"{where}: phase {k} green for {phase['duration']} s, below min_green")
-            open_ = {approach_of[s] for s in green}
+            open_ = {(*approach_of[s], lane) for s in green for lane in (light_lanes or {}).get(s, [None])}
+
+            def released(m: dict, light_lanes=light_lanes, open_=open_) -> bool:
+                return (*_approach(m), m["from_lane"] if light_lanes else None) in open_
+
             for a, b in conflicts:
                 ma, mb = moves.get(a), moves.get(b)
                 if ma is None or mb is None:
                     continue
-                if _approach(ma) in open_ and _approach(mb) in open_ and tuple(sorted((a, b))) not in permissive:
+                if released(ma) and released(mb) and tuple(sorted((a, b))) not in permissive:
                     errors.append(f"{where}: phase {k} gives green to conflicting movements {a} and {b}")
         missing = lights - green_once
         if missing:
@@ -236,6 +253,56 @@ def _check_plans(root: etree._Element, sidecar: dict) -> list[str]:
 def _approach(m: dict) -> tuple[int, str]:
     """(road, contact) of the approach a movement arrives on: right lanes arrive at the road's end."""
     return m["from_road"], "end" if m["from_lane"] < 0 else "start"
+
+
+def _check_lane_use(sidecar: dict) -> list[str]:
+    errors = []
+    uses: dict[tuple, dict[int, set]] = {}
+    for m in sidecar.get("movements", []):
+        key = (m["junction_id"], m["from_road"], "end" if m["from_lane"] < 0 else "start")
+        uses.setdefault(key, {}).setdefault(m["from_lane"], set()).add(m["kind"])
+    for rec in sidecar.get("lane_use", []):
+        key = (rec["junction"], rec["road"], rec["contact"])
+        where = f"junction {rec['junction']}: approach road {rec['road']} ({rec['contact']})"
+        lanes = {int(k): set(v) for k, v in rec["lanes"].items()}
+        if lanes != uses.get(key, {}):
+            errors.append(f"{where}: lane_use does not match its movements")
+        for lane in rec.get("pockets", []):
+            if not lanes.get(lane, set()) <= {"left", "uturn"}:
+                errors.append(f"{where}: pocket lane {lane} feeds {sorted(lanes.get(lane, set()))}, not only left")
+    return errors
+
+
+def _check_bans(root: etree._Element, sidecar: dict) -> list[str]:
+    import networkx as nx
+
+    bans = sidecar.get("banned", [])
+    if not bans:
+        return []
+    errors = []
+    moves = sidecar.get("movements", [])
+    g = nx.DiGraph()
+    for m in moves:  # road traversals (+1 along s), linked by the movements
+        g.add_edge((m["from_road"], 1 if m["from_lane"] < 0 else -1), (m["to_road"], 1 if m["to_lane"] < 0 else -1))
+    roads = {r.get("id"): r for r in root.findall("road")}
+    for b in bans:
+        (fr, fc), (tr, tc) = b["from"], b["to"]
+        where = f"junction {b['junction']}: banned turn road {fr} ({fc}) -> road {tr} ({tc})"
+        made = [m for m in moves if m["junction_id"] == b["junction"] and m["from_road"] == fr
+                and (m["from_lane"] < 0) == (fc == "end") and m["to_road"] == tr and (m["to_lane"] < 0) == (tc == "start")]
+        if made:
+            errors.append(f"{where}: still made by {len(made)} movements")
+        source, target = (fr, 1 if fc == "end" else -1), (tr, 1 if tc == "start" else -1)
+        if source in g and target in g and not nx.has_path(g, source, target):
+            errors.append(f"{where}: the exit road is no longer reachable from the approach")
+        road = roads.get(str(fr))
+        if road is not None:
+            s_end = float(road.get("length")) if fc == "end" else 0.0
+            facing = "+" if fc == "end" else "-"
+            if not any(s.get("type") in ("209", "214") and s.get("orientation") == facing
+                       and abs(float(s.get("s")) - s_end) <= APPROACH_REACH + EPS for s in road.findall("signals/signal")):
+                errors.append(f"{where}: no facing 209 / 214 sign at the approach")
+    return errors
 
 
 def _check_priorities(root: etree._Element) -> list[str]:

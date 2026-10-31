@@ -27,12 +27,22 @@ only the profile's curb and sidewalk, on the island side only its curb.
 Corner radius: the curb return between two neighbouring arms of a junction,
 by road class, the smaller of the two (StreetGen sec. 2.4; 3, 4.9 and 7.6 m
 in Paris), shrunk where the arms are short (sec. 2.5).
+
+Left-turn pockets (stage B8, TurnLaneParams): an extra innermost lane on a
+two-way road's approach to a junction, over its last pocket_length after a
+pocket_taper, for left turns only. Decided from the graph alone
+(pocket_ends), before the trims, which count its width: on approaches of the
+pocket_classes that have a left exit, at junctions of three or more roads
+that are not ramp nodes or roundabout entries and whose Node.control does
+not rule out a pocket, where the edge has room for the pocket, its taper and
+POCKET_ROOM at the far end.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+import math
+from dataclasses import dataclass, field
+from typing import Literal, Optional
 
 from roadgen.config import DEFAULTS, section
 from roadgen.graph.model import Edge, RoadGraph
@@ -45,6 +55,26 @@ SHOULDERS_END = frozenset({"urban", "suburban"})  # profiles whose shoulders end
 CLASSES = ("street", "avenue", "highway")
 
 _D = section(DEFAULTS, "cross_section")
+_DT = section(DEFAULTS, "turn_lanes")
+POCKET_ROOM = 40.0  # an edge with a pocket keeps this much beyond it (the far junction's trim and zone) [m]
+LEFT_EXIT = (math.pi / 4, math.pi * 0.95)  # a turn this far to the left is a left exit [rad]
+
+
+@dataclass(frozen=True)
+class TurnLaneParams:
+    left_pockets: bool = _DT["left_pockets"]  # left-turn pockets on junction approaches
+    pocket_classes: tuple[str, ...] = _DT["pocket_classes"]  # road classes whose approaches get them
+    pocket_length: tuple[float, float, float] = _DT["pocket_length"]  # street, avenue, highway [m]
+    pocket_taper: float = _DT["pocket_taper"]  # [m]
+
+    def __post_init__(self) -> None:
+        if set(self.pocket_classes) - set(CLASSES):
+            raise ValueError(f"turn_lanes.pocket_classes: unknown classes; available: {CLASSES}")
+        if len(self.pocket_length) != 3 or min(self.pocket_length) <= 0 or self.pocket_taper <= 0:
+            raise ValueError("turn_lanes needs 3 pocket lengths > 0 (street, avenue, highway) and pocket_taper > 0")
+
+    def length(self, road_class: str) -> float:
+        return float(self.pocket_length[CLASSES.index(road_class)])
 
 Layout = tuple[tuple[str, float, float], ...]  # (kind, width [m], height [m]) from the driving lanes outward
 
@@ -75,6 +105,8 @@ class CrossSectionParams:
     tunnel_shoulder: float = _D["tunnel_shoulder"]  # shoulders inside tunnels [m]
     corner_radius: tuple[float, float, float] = _D["corner_radius"]  # street, avenue, highway [m]
     max_corner_share: float = _D["max_corner_share"]  # most of the shorter arm a curb return takes
+    # Turn pockets (stage B8; not a config key: HdMapParams sets it from turn_lanes); None = none.
+    turn_lanes: Optional[TurnLaneParams] = field(default=None, metadata={"config": False})
 
     def __post_init__(self) -> None:
         if self.profile not in PROFILES:
@@ -192,3 +224,40 @@ def outer_half_width(edge: Edge, params: CrossSectionParams, loop: bool = False)
         right, left = edge.lanes_forward, edge.lanes_backward
     _, _, r_out, l_out = side_half_widths(edge, params, right, left, loop=loop)
     return max(r_out, l_out)
+
+
+def pocket_ends(graph: RoadGraph, node_id: int, params: TurnLaneParams) -> frozenset[int]:
+    """Edges whose approach to node_id gets a left-turn pocket (see the module docstring)."""
+    node = graph.nodes[node_id]
+    incident = graph.incident_edges(node_id)
+    if not params.left_pockets or node.kind == "ramp" or len(incident) < 3 \
+            or node.control in ("none", "right_before_left"):
+        return frozenset()
+    for r in graph.metadata.get("roundabouts", []):
+        if node_id in r.get("entries", []):
+            return frozenset()
+    headings = {}
+    for e in incident:
+        other = graph.nodes[e.to_node if e.from_node == node_id else e.from_node]
+        headings[e.id] = math.atan2(other.y - node.y, other.x - node.x)  # leaving the node
+    left_out = {e for n, e in graph.metadata.get("no_pockets", []) if n == node_id}  # by the repair
+    out = []
+    for e in incident:
+        if e.road_class not in params.pocket_classes or e.is_one_way or e.id in left_out:
+            continue
+        arriving = headings[e.id] + math.pi  # travel heading of traffic reaching the node
+        left_exit = False
+        for f in incident:
+            if f.id == e.id or not _leaves(f, node_id):
+                continue
+            turn = math.atan2(math.sin(headings[f.id] - arriving), math.cos(headings[f.id] - arriving))
+            left_exit = left_exit or LEFT_EXIT[0] < turn < LEFT_EXIT[1]
+        room = params.length(e.road_class) + params.pocket_taper + POCKET_ROOM
+        if left_exit and graph.edge_length(e.id) >= room:
+            out.append(e.id)
+    return frozenset(out)
+
+
+def _leaves(edge: Edge, node_id: int) -> bool:
+    """Whether traffic can leave node_id along edge."""
+    return edge.lanes_forward > 0 if edge.from_node == node_id else edge.lanes_backward > 0

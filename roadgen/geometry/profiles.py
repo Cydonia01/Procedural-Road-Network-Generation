@@ -11,8 +11,8 @@ w0 + (w1 - w0)(3u^2 - 2u^3) over the MUTCD taper length, so lane edges stay
 tangent-continuous. A change of lane width on continuing lanes uses the same
 transition after the node. Tapers are at most half of their edge's length.
 
-Lane sections: a new section starts where a driving lane's width changes,
-or where any lane starts or ends. Side lanes and medians keep their width
+Lane sections: a new section starts where a driving lane's (or a turn
+pocket's) width changes, or where any lane starts or ends. Side lanes and medians keep their width
 changes (tapers, curb extensions) inside a section as several pieces
 (WidthPieces), written as several <width> records, so they add no sections:
 fewer, longer sections and much smaller files (stage B, moved from B9).
@@ -35,6 +35,16 @@ before it after a MUTCD shift taper. Parking also stops over bridges, and
 shoulders narrow to tunnel_shoulder inside tunnels. Side lanes taper over
 side_taper.
 
+Turn pockets (stage B8, cross_section.pocket_ends): on a chain end at a
+junction where the cross-section's turn_lanes give the last edge a pocket,
+an innermost lane of kind "pocket" on the incoming side (the right side at
+the chain's end, the left at its start), between the median and the driving
+lanes: it widens from 0 over pocket_taper and keeps the edge's lane width
+over the last pocket_length, both on the last edge and out of the road's
+corners (shortened, or left out where too little room remains). Like the
+median its position runs the whole road, 0 m wide elsewhere, so the driving
+lanes keep their ids.
+
 Speeds: each edge's limit over its range, lowered to a corner's advisory speed
 from a deceleration lead before the corner (at ADVISORY_DECEL) to its end.
 """
@@ -54,6 +64,7 @@ from roadgen.geometry.cross_section import (
     SHOULDERS_END,
     CrossSectionParams,
     edge_cross_section,
+    pocket_ends,
 )
 from roadgen.graph.model import RoadGraph
 
@@ -63,6 +74,7 @@ Side = Literal["right", "left"]
 ADVISORY_DECEL = 1.5  # comfortable deceleration ahead of an advisory curve [m/s^2]
 STATION_EPS = 1e-6  # [m] breakpoints closer than this are merged
 MAX_TAPER_SHARE = 0.5  # a taper uses at most this share of its edge
+MIN_POCKET_TAPER = 2.0  # a turn pocket whose taper would be shorter is left out [m]
 
 
 @dataclass(frozen=True)
@@ -159,7 +171,7 @@ class LaneLayout:
         pts = {0.0, self.length}
         for side in ("right", "left"):
             for pieces, kind in zip(getattr(self, side), self.kinds(side)):
-                if kind == "driving":
+                if kind in ("driving", "pocket"):
                     for p in pieces:
                         pts.update((p.s0, p.s1))
                 else:
@@ -221,7 +233,7 @@ class LaneLayout:
 
     def driving_offsets(self, s: float) -> dict[int, float]:
         """Lane id -> lane-centre offset t from the reference line [m] of every driving lane
-        at station s (left positive); for road ends at junctions."""
+        (and turn pocket wider than 0) at station s (left positive); for road ends at junctions."""
         sec = next((x for x in self.sections() if x.s0 - STATION_EPS <= s <= x.s1 + STATION_EPS), None)
         if sec is None:
             raise ValueError(f"station {s:.3f} outside the road (length {self.length:.3f})")
@@ -230,7 +242,7 @@ class LaneLayout:
             t = 0.0
             for k, (piece, (kind, _)) in enumerate(zip(getattr(sec, side), sec.roles(side)), 1):
                 w = piece.width(s)
-                if kind == "driving":
+                if kind == "driving" or (kind == "pocket" and w > STATION_EPS):
                     out[sign * k] = sign * (t + w / 2)
                 t += w
         return out
@@ -290,10 +302,11 @@ def lane_layout(graph: RoadGraph, ca: ChainAlignment, cross_section: Optional[Cr
     out: dict[str, tuple] = {}
     for side in ("right", "left"):
         median, extra, kinds, heights = _extra_positions(graph, ca, side, cross_section, junctions, loops)
+        pocket = _pocket(graph, ca, side, cross_section, junctions)
         driving = [tuple(p) for p in sides[side]]
-        out[side] = (tuple(median + driving + extra),
-                     ("median",) * len(median) + ("driving",) * len(driving) + kinds,
-                     (0.0,) * (len(median) + len(driving)) + heights)
+        out[side] = (tuple(median + pocket + driving + extra),
+                     ("median",) * len(median) + ("pocket",) * len(pocket) + ("driving",) * len(driving) + kinds,
+                     (0.0,) * (len(median) + len(pocket) + len(driving)) + heights)
     return LaneLayout(ca.length, out["right"][0], out["left"][0], out["right"][1], out["left"][1],
                       out["right"][2], out["left"][2])
 
@@ -366,6 +379,41 @@ def _extra_positions(graph: RoadGraph, ca: ChainAlignment, side: Side, cs: Cross
             kinds.append(kind)
             heights.append(height)
     return median, extra, tuple(kinds), tuple(heights)
+
+
+def _pocket(graph: RoadGraph, ca: ChainAlignment, side: Side, cs: CrossSectionParams,
+            junctions: frozenset[int]) -> list[tuple[WidthPiece, ...]]:
+    """The turn pocket position of one side of a chain ([] or one position): traffic on the
+    right side reaches the chain's end node, on the left side its start node."""
+    if cs.turn_lanes is None:
+        return []
+    at_end = side == "right"
+    node = ca.chain.end if at_end else ca.chain.start
+    edge = graph.edges[ca.chain.edge_ids[-1 if at_end else 0]]
+    if node not in junctions or edge.id not in pocket_ends(graph, node, cs.turn_lanes):
+        return []
+    lo, hi = ca.edge_range(edge.id)
+    # Out of the road's corners: a pocket inside a curve would be the curve's innermost,
+    # tightest lane, sharper than its design speed allows.
+    for c in ca.corners:
+        if at_end and c.s_end > lo and c.s_start < hi:
+            lo = max(lo, c.s_end)
+        elif not at_end and c.s_start < hi and c.s_end > lo:
+            hi = min(hi, c.s_start)
+    if hi - lo <= 0.0:
+        return []
+    length = min(cs.turn_lanes.length(edge.road_class), (hi - lo) / 2)
+    taper = min(cs.turn_lanes.pocket_taper, (hi - lo) - length)  # both stay on the edge
+    if taper < MIN_POCKET_TAPER:
+        return []
+    w = edge.lane_width
+    if at_end:
+        a = max(hi - length - taper, lo)
+        pieces = [WidthPiece(a, a + taper, 0.0, w), WidthPiece(a + taper, ca.length, w, w)]
+    else:
+        b = min(lo + length + taper, hi)
+        pieces = [WidthPiece(0.0, b - taper, w, w), WidthPiece(b - taper, b, w, 0.0)]
+    return [tuple(_fill(pieces, ca.length))]
 
 
 def _junction_ends(graph: RoadGraph, ca: ChainAlignment, junctions: frozenset[int],

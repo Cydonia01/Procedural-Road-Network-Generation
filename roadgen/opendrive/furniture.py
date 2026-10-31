@@ -22,7 +22,9 @@ Per approach (a road end with incoming lanes), by its role:
   0.3 m deep) and sign 205; at roundabout entries also 215;
 - signal: a stop line and a traffic light (OpenDRIVE 1000001, dynamic) on
   the right roadside at it, plus one over the middle of the approach lanes
-  (OVERHEAD_Z) where the approach has overhead_min_lanes or more;
+  (OVERHEAD_Z) where the approach has overhead_min_lanes or more, valid for
+  the through lanes; and one over each left-turn pocket (B8), valid for it
+  alone, so its left turns get a protected phase;
 - major: sign 301 (priority at the next junction), PRIORITY_SIGN_DISTANCE
   before the road end (at most half the road), except on roundabout rings
   (the builder replaces it with 306 / 307 along runs of priority roads).
@@ -72,7 +74,7 @@ LIGHT_Z, OVERHEAD_Z = 3.0, 5.5  # light heads above the road: roadside and over 
 LIGHT_SIZE = (0.8, 0.3)  # light head height and width [m]
 LIGHT_TYPE = "1000001"  # OpenDRIVE three-lamp vehicle light (country "OpenDRIVE")
 STACK = 0.7  # a second sign on the same post sits this much higher [m]
-CARRIAGEWAY = frozenset({"driving", "parking", "biking", "shoulder", "median"})
+CARRIAGEWAY = frozenset({"driving", "pocket", "parking", "biking", "shoulder", "median"})
 SPEED_AFTER_JUNCTION = 10.0  # speed sign this far after a junction [m]
 SPEED_SIGN_MIN_ROAD = 100.0  # ... on roads at least this long [m]
 SPEED_SIGN_SPACING = 20.0  # no speed sign after a junction this close to a change sign [m]
@@ -96,6 +98,7 @@ class SignalRecord:
     subtype: str = "-1"
     dynamic: bool = False  # a light
     value: Optional[int] = None  # speed limit [km/h]
+    turn: str = ""  # a light for a left-turn pocket only: "left"
 
     @property
     def contact(self) -> str:
@@ -117,6 +120,8 @@ class ObjectRecord:
     junction: int
     type: str = "roadMark"  # OpenDRIVE object type: roadMark | crosswalk
     edges: bool = False  # crosswalk at lights: two edge lines instead of zebra stripes
+    segments: tuple = ()  # an arrow: ((u0, v0), (u1, v1)) lines in the object frame [m]
+    hdg: float = 0.0  # object heading relative to the road (pi: for traffic against s) [rad]
 
 
 @dataclass(frozen=True)
@@ -131,6 +136,7 @@ class EndGeometry:
     lane_edges: dict[int, tuple[float, float]]  # incoming driving lane -> (inner t, outer t)
     carriageway_edge: Callable[[float], float]  # s -> |t| of the carriageway's outer edge, incoming side [m]
     setback: float = LINE_SETBACK  # stop and yield lines this far before the road end [m]
+    pockets: tuple[int, ...] = ()  # incoming left-turn pocket lanes
 
     @property
     def sign(self) -> int:
@@ -166,7 +172,7 @@ def end_geometry(end, length: float, lanes_at: Callable[[float], list],
         half = end.lane_width / 2
         edges = {lid: (end.lane_offset(lid) - side * half, end.lane_offset(lid) + side * half) for lid in lanes}
     return EndGeometry(end.road_id, end.contact, 0.0 if end.contact == "start" else length, length, lanes,
-                       edges, carriageway_edge(lanes_at, side), setback)
+                       edges, carriageway_edge(lanes_at, side), setback, tuple(end.pocket_lanes))
 
 
 @dataclass(frozen=True)
@@ -270,15 +276,66 @@ def approach_furniture(junction_id: int, control: Control, geom: EndGeometry, ro
         if roundabout:
             sign("215", s_line, 2.0 + STACK)  # above the 205, on its post
     elif role == "signal":
+        through = [lane for lane in geom.in_lanes if lane not in geom.pockets] or list(geom.in_lanes)
+        valid = (min(through, key=abs), max(through, key=abs))
         signals.append(SignalRecord(geom.road, s_line, side * (geom.carriageway_edge(s_line) + SIGN_OFFSET),
-                                    orientation, LIGHT_TYPE, validity, junction_id, LIGHT_Z, "OpenDRIVE",
+                                    orientation, LIGHT_TYPE, valid, junction_id, LIGHT_Z, "OpenDRIVE",
                                     dynamic=True))
-        if overhead_min_lanes is not None and len(geom.in_lanes) >= overhead_min_lanes:
-            signals.append(SignalRecord(geom.road, s_line, line.t, orientation, LIGHT_TYPE, validity, junction_id,
+        if overhead_min_lanes is not None and len(through) >= overhead_min_lanes:
+            t = sum(geom.lane_edges[lane][k] for lane in through for k in (0, 1)) / (2 * len(through))
+            signals.append(SignalRecord(geom.road, s_line, t, orientation, LIGHT_TYPE, valid, junction_id,
                                         OVERHEAD_Z, "OpenDRIVE", dynamic=True))
+        for pocket in geom.pockets:  # a light of its own over each left-turn pocket (protected lefts)
+            t = sum(geom.lane_edges[pocket]) / 2
+            signals.append(SignalRecord(geom.road, s_line, t, orientation, LIGHT_TYPE, (pocket, pocket), junction_id,
+                                        OVERHEAD_Z, "OpenDRIVE", dynamic=True, turn="left"))
     elif role == "major" and not roundabout:
         sign("301", geom.back(min(PRIORITY_SIGN_DISTANCE, geom.length / 2)))
     return signals, objects
+
+
+# --- lane arrows (B8) ----------------------------------------------------------------
+
+ARROW_DISTANCES = (20.0,)  # lane arrows this far before the stop line [m] (prompt 11: not also at 40 m)
+ARROW_LINE = 0.15  # [m]
+ARROW_MIN_LANES = 2  # approaches with at least this many incoming lanes get arrows
+ARROW_SHAFT = ((-2.5, 0.0), (0.5, 0.0))
+ARROW_PARTS = {  # Z 297, 5 m long, in the lane's frame (u ahead, v left) [m]
+    "straight": (((0.5, 0.0), (2.5, 0.0)), ((2.5, 0.0), (1.4, 0.45)), ((2.5, 0.0), (1.4, -0.45))),
+    "left": (((0.5, 0.0), (1.7, 0.8)), ((1.7, 0.8), (0.8, 0.85)), ((1.7, 0.8), (1.35, 0.0))),
+    "right": (((0.5, 0.0), (1.7, -0.8)), ((1.7, -0.8), (0.8, -0.85)), ((1.7, -0.8), (1.35, 0.0))),
+}
+
+
+def arrow_segments(kinds: list[str]) -> tuple:
+    """Lines of a lane arrow for the movement kinds of a lane (U-turns are not drawn)."""
+    parts = [p for k in ("left", "straight", "right") if k in kinds for p in ARROW_PARTS[k]]
+    return (ARROW_SHAFT, *parts) if parts else ()
+
+
+def lane_arrows(junction_id: int, geom: EndGeometry, lane_kinds: dict[int, list[str]],
+                lanes_at: Callable[[float], list]) -> list[ObjectRecord]:
+    """Arrows ARROW_DISTANCES before the stop line in each incoming lane of an approach
+    with ARROW_MIN_LANES lanes or more, where the lane is at full width there."""
+    if len(geom.in_lanes) < ARROW_MIN_LANES:
+        return []
+    out = []
+    for distance in ARROW_DISTANCES:
+        back = geom.setback + distance
+        if back + 5.0 > geom.length:
+            continue
+        s = geom.back(back)
+        lanes = {lid: (t0, t1) for lid, kind, t0, t1, _ in lanes_at(s)}
+        for lane in geom.in_lanes:
+            segments = arrow_segments(lane_kinds.get(lane, []))
+            edge = lanes.get(lane)
+            if not segments or edge is None or abs(edge[1] - edge[0]) < 2.5:
+                continue
+            name = "arrow_" + "_".join(k for k in ("left", "straight", "right") if k in lane_kinds[lane])
+            out.append(ObjectRecord(geom.road, s, (edge[0] + edge[1]) / 2, name, 1.0, ARROW_LINE, 0.0, 0.0,
+                                    (lane, lane), junction_id, segments=segments,
+                                    hdg=0.0 if geom.sign > 0 else math.pi))
+    return out
 
 
 # --- along the road ----------------------------------------------------------------

@@ -56,7 +56,7 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
 `maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
-`cross_section`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scenario`, `buildings`, `esmini`, `pipeline`.
+`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scenario`, `buildings`, `esmini`, `pipeline`.
 
 Parameters are layered. Each layer overrides the one before it:
 
@@ -162,7 +162,7 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2) |
-| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are repaired before the build. Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
+| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are repaired before the build (turn pockets that would make an edge too short are left out instead). Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
 | `--cross-section PROFILE` | Default profile with `--hd`: `urban`, `suburban`, `rural` or `none` (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
 | `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
 | `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |

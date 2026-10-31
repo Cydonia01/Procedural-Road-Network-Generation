@@ -122,7 +122,13 @@ With HD maps on, the pipeline runs the same repair once more before the
 build, with the roads' [side lanes](geometry.md#cross-sections) in the trims.
 That pass leaves the stubs the network already had alone. An edge the
 builder's alignment finds too short for a bend it keeps as a junction counts
-as too short too.
+as too short too. A [left-turn pocket](opendrive.md#lane-use-pockets-and-banned-turns-hd-maps)
+widens its arm and so the trims of the arms beside it. Before such an edge
+is collapsed or removed, the pockets at its two junctions are left out one
+at a time until it fits; those it fits without are put back. The pockets
+left out are kept in the graph metadata (`no_pockets`, `[node, edge]`
+pairs), and their count in `fit.dropped_pockets`. Only an edge that is too
+short even without pockets is repaired.
 
 ## Graph transforms
 

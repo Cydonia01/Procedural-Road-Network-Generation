@@ -3,6 +3,10 @@
 At a junction with lights (control kind "signal", roadgen.opendrive.control)
 every approach with incoming lanes gets a light (furniture). Its plan:
 
+- Protected lefts (B8): where approaches of a group have left-turn pockets,
+  their pocket lights get a phase of their own before the group's through
+  phase (both with yellow and all-red), so left turns never run against
+  oncoming traffic; the pockets' lanes weigh their green.
 - Groups: approaches arriving from roughly opposite directions (heading
   difference within 180 +- OPPOSITE_TOL) share a phase, if their movements
   are compatible (every conflict between them is a permissive left turn;
@@ -110,21 +114,33 @@ def phase_groups(approaches: list[Approach], clash: Optional[set[frozenset]] = N
 
 def signal_plan(junction_id: int, node_id: int, approaches: list[Approach], lanes: dict[EndKey, int],
                 lights: dict[EndKey, list[str]], params: TrafficLightParams, seed: int,
-                clash: Optional[set[frozenset]] = None, crossing: float = 0.0) -> SignalPlan:
+                clash: Optional[set[frozenset]] = None, crossing: float = 0.0,
+                left_lights: frozenset[str] = frozenset()) -> SignalPlan:
     """The fixed-time plan of one junction; lanes: incoming lanes per approach, lights:
     light signal ids per approach, clash: see phase_groups; crossing: the longest
-    crosswalk [m], for a pedestrian phase where all approaches share one group (0: none)."""
+    crosswalk [m], for a pedestrian phase where all approaches share one group (0: none);
+    left_lights: the lights of left-turn pockets, which get protected phases."""
     by_key = {a.key: a for a in approaches}
     groups = phase_groups([a for a in approaches if a.key in lights], clash)
-    n = len(groups)
-    yellows = [params.yellow(max(by_key[k].speed for k in g)) for g in groups]
+    # Phases: per group its protected left phase (pocket lights) if any, then the rest.
+    stages = []  # (group index, turn, lights, weight)
+    for k, g in enumerate(groups):
+        mine = [s for key in g for s in lights[key]]
+        left = [s for s in mine if s in left_lights]
+        if left:
+            stages.append((k, "left", left, len(left)))
+        rest = [s for s in mine if s not in left_lights]
+        if rest:
+            stages.append((k, "through", rest, sum(lanes.get(key, 1) for key in g) - len(left)))
+    n = len(stages)
+    yellows = [params.yellow(max(by_key[key].speed for key in groups[k])) for k, *_ in stages]
     lo, hi = params.cycle
     cycle = min(max(CYCLE_BASE + CYCLE_STEP * max(n - 2, 0), lo), hi)
     pedestrian = 0.0
-    if n == 1 and crossing > 0:
+    if len(groups) == 1 and n == 1 and crossing > 0:
         pedestrian = max(params.min_green, float(math.ceil(crossing / params.walk_speed)))
     lost = sum(yellows) + n * params.all_red + pedestrian
-    weights = [sum(lanes.get(k, 1) for k in g) for g in groups]
+    weights = [max(w, 1) for *_, w in stages]
     available = max(cycle - lost, 0.0)
     greens = [max(params.min_green, round(available * w / sum(weights), 1)) for w in weights]
     biggest = weights.index(max(weights))  # takes what rounding left over, so the cycle holds
@@ -132,16 +148,15 @@ def signal_plan(junction_id: int, node_id: int, approaches: list[Approach], lane
     cycle = round(sum(greens) + lost, 1)
     every = sorted(s for ids in lights.values() for s in ids)
     phases = []
-    for k, group in enumerate(groups):
-        mine = {s for key in group for s in lights[key]}
-        for kind, duration, lamp in (("green", greens[k], GREEN), ("yellow", yellows[k], YELLOW),
+    for j, (k, turn, mine, _) in enumerate(stages):
+        for kind, duration, lamp in (("green", greens[j], GREEN), ("yellow", yellows[j], YELLOW),
                                      ("all_red", params.all_red, RED)):
             if duration <= 0:
                 continue
-            phases.append({"group": k, "kind": kind, "duration": float(duration),
+            phases.append({"group": k, "turn": turn, "kind": kind, "duration": float(duration),
                            "states": {s: (lamp if s in mine else RED) for s in every}})
     if pedestrian:
-        phases.append({"group": n, "kind": "pedestrian", "duration": pedestrian,
+        phases.append({"group": len(groups), "turn": "", "kind": "pedestrian", "duration": pedestrian,
                        "states": {s: RED for s in every}})
     rng = np.random.default_rng([seed, SALT, node_id])
     offset = float(np.floor(rng.random() * cycle))

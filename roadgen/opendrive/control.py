@@ -46,6 +46,7 @@ CONTROL_KINDS = ("none", "right_before_left", "yield", "stop", "signal")  # Node
 ZEBRAS = ("dense_avenues", "all", "none")  # where junctions without lights get zebra crossings
 RANK = {c: k for k, c in enumerate(CLASSES)}  # street < avenue < highway
 SALT = 5  # random stream of the stop share (np.random.default_rng([seed, SALT, node]))
+BAN_SALT = 8  # random stream of the seeded left-turn bans
 OPPOSITE_TOL = math.radians(45.0)  # arms this close to opposite count as oncoming
 EndKey = tuple[int, str]  # (road id, contact) of a road end
 
@@ -60,12 +61,16 @@ class JunctionControlParams:
     right_before_left: bool = _D["right_before_left"]  # street-only junctions without signs
     priorities: bool = _D["priorities"]  # write <priority> records (else only the sidecar has them)
     zebras: str = _D["zebras"]  # zebras without lights: dense_avenues | all | none (crossings at lights always)
+    ban_left_highway: bool = _D["ban_left_highway"]  # right-in / right-out where a minor road meets a 2+2 highway
+    ban_share: float = _D["ban_share"]  # left turns banned from one approach at this seeded share of junctions
 
     def __post_init__(self) -> None:
         if min(self.signal_density, self.stop_density, self.stop_speed) < 0:
             raise ValueError("junction_control densities and stop_speed must be >= 0")
         if not 0 <= self.stop_share <= 1 or not 0 <= self.stop_skew_deg <= 90:
             raise ValueError("junction_control needs 0 <= stop_share <= 1 and 0 <= stop_skew_deg <= 90")
+        if not 0 <= self.ban_share <= 1:
+            raise ValueError("junction_control.ban_share must be within [0, 1]")
         if self.zebras not in ZEBRAS:
             raise ValueError(f"unknown junction_control.zebras {self.zebras!r}; available: {ZEBRAS}")
 
@@ -330,3 +335,95 @@ def priority_runs(majors: dict[int, tuple[EndKey, EndKey]], road_ends: dict[EndK
         if len(junctions) >= 2:
             runs.append((roads, junctions))
     return runs
+
+
+# --- banned turns ------------------------------------------------------------------------
+
+Ban = tuple[EndKey, EndKey]  # (approach, exit) road ends
+TravelNode = tuple[int, int]  # (road, direction): +1 along s, -1 against it
+
+
+def turn_graph(movements) -> dict[TravelNode, set[TravelNode]]:
+    """Arcs between road traversals through the junctions, from movements: a vehicle may
+    change lanes along a road, so a road traversal is one node."""
+    arcs: dict[TravelNode, set[TravelNode]] = {}
+    for m in movements:
+        a = (m.from_road, 1 if m.from_lane < 0 else -1)  # right lanes drive along s
+        b = (m.to_road, 1 if m.to_lane < 0 else -1)
+        arcs.setdefault(a, set()).add(b)
+        arcs.setdefault(b, set())
+    return arcs
+
+
+def ban_arcs(bans: set[Ban]) -> set[tuple[TravelNode, TravelNode]]:
+    """The turn-graph arcs of banned (approach, exit) pairs."""
+    return {((a[0], 1 if a[1] == "end" else -1), (b[0], 1 if b[1] == "start" else -1)) for a, b in bans}
+
+
+def keeps_connectivity(arcs: dict[TravelNode, set[TravelNode]], removed: set) -> bool:
+    """Whether the turn graph without the removed arcs keeps its strongly connected
+    components, and every removed arc's target stays reachable from its source (a ban
+    only makes traffic take another way)."""
+    import networkx as nx
+
+    def graph(cut: set):
+        g = nx.DiGraph()
+        g.add_nodes_from(arcs)
+        g.add_edges_from((a, b) for a, bs in arcs.items() for b in bs if (a, b) not in cut)
+        return g
+
+    after = graph(removed)
+    if nx.number_strongly_connected_components(after) != nx.number_strongly_connected_components(graph(set())):
+        return False
+    return all(nx.has_path(after, a, b) for a, b in removed if a in after and b in after)
+
+
+def ban_candidates(node_id: int, control: Control, approaches: list[Approach], exits: dict[EndKey, float],
+                   graph: RoadGraph, params: JunctionControlParams, seed: int,
+                   arriving: frozenset = frozenset()) -> tuple[set[Ban], str]:
+    """The bans proposed at one junction and why ("right_in_right_out", "seeded", "" for
+    none); exits: road end -> travel heading of traffic leaving on it [rad]; arriving: the
+    road ends traffic arrives on (only they can lose a turn).
+
+    Right-in / right-out where the priority road is an at-grade highway with two or more
+    lanes each way: the minor approaches turn right only, and the highway's left turns
+    into the minor roads are banned. Elsewhere, at a seeded ban_share of the junctions
+    with lights or priority control, one approach (seeded) loses its left turns."""
+    from roadgen.opendrive.junctions import classify_exits
+
+    if control.kind not in ("priority", "signal"):
+        return set(), ""
+
+    def kinds(a: Approach) -> dict[EndKey, str]:
+        turns = {k: wrap_angle(h - a.heading_in) for k, h in exits.items() if k[0] != a.key[0] or k[1] != a.key[1]}
+        return classify_exits(turns)
+
+    approaches = [a for a in approaches if a.key in arriving]
+    by_key = {a.key: a for a in approaches}
+    majors = [by_key[k] for k in control.major if k in by_key]
+    wide = all(a.road_class == "highway" and min(graph.edges[a.edge_id].lanes_forward,
+                                                 graph.edges[a.edge_id].lanes_backward) >= 2 for a in majors)
+    minors = [a for a in approaches if a.key not in control.major]
+    bans: set[Ban] = set()
+    if params.ban_left_highway and control.kind == "priority" and len(majors) == 2 and wide and minors:
+        minor_keys = {k for k in exits if k not in control.major}
+        for a in minors:
+            bans |= {(a.key, k) for k, kind in kinds(a).items() if kind != "right"}
+        for a in majors:
+            bans |= {(a.key, k) for k, kind in kinds(a).items() if kind == "left" and k in minor_keys}
+        return bans, "right_in_right_out"
+    rng = np.random.default_rng([seed, BAN_SALT, node_id])
+    if rng.random() >= params.ban_share:
+        return set(), ""
+    candidates = sorted(a.key for a in approaches if any(k == "left" for k in kinds(a).values()))
+    if not candidates:
+        return set(), ""
+    a = by_key[candidates[int(rng.integers(len(candidates)))]]
+    return {(a.key, k) for k, kind in kinds(a).items() if kind == "left"}, "seeded"
+
+
+BAN_SIGNS = {  # the exits an approach keeps -> DE sign (code, subtype)
+    frozenset({"right"}): ("209", "20"), frozenset({"straight"}): ("209", "30"), frozenset({"left"}): ("209", "10"),
+    frozenset({"straight", "right"}): ("214", "-1"), frozenset({"straight", "left"}): ("214", "10"),
+    frozenset({"left", "right"}): ("214", "30"),
+}

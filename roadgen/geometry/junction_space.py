@@ -21,6 +21,7 @@ from roadgen.geometry.cross_section import (
     CrossSectionParams,
     edge_cross_section,
     loop_edges,
+    pocket_ends,
     side_half_widths,
 )
 from roadgen.graph.model import Edge, RoadGraph
@@ -157,6 +158,8 @@ def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSecti
     # Where a loop starts (roundabout entry, cul-de-sac stem) its transform designed the
     # corners: no class curb returns there, and bike lanes end before it.
     at_loop = any(e.id in loops for e in incident)
+    pockets = (pocket_ends(graph, node_id, cross_section.turn_lanes)
+               if cross_section is not None and cross_section.turn_lanes is not None else frozenset())
     arms = []
     for e in incident:
         right, left, reverse = oriented_lanes(e)
@@ -175,6 +178,8 @@ def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSecti
                                           ramp=node.kind == "ramp", loop=loop, at_loop=at_loop)
         if node_id != start_node:
             rc, lc, ro, lo = lc, rc, lo, ro
+        if e.id in pockets:  # a left-turn pocket widens the incoming side: the arm's left
+            lc, lo = lc + e.lane_width, lo + e.lane_width
         radius = 0.0 if at_loop else edge_cross_section(e, cross_section, loop).radius
         arms.append(Arm(e.id, heading, lc, rc, lo, ro, radius, graph.edge_length(e.id)))
     return arms

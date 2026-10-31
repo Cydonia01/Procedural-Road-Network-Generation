@@ -41,6 +41,13 @@ corner closes the junction surface only where a movement drives that turn
 some surface between the curb and the movements stays without a lane.
 Corner roads are not movements: nothing drives them.
 
+Lane use (stage B8, lane_use): which movement kinds each incoming lane
+feeds. A left-turn pocket (a lane of kind "pocket" in RoadEnd.cross, from
+the turn lanes of the cross-section) feeds only the left turns (and a
+U-turn); the other lanes then feed no left turn. Banned turns (B8,
+plan_movements' banned: pairs of road ends) are left out of an approach's
+exits. Without pockets and bans the movements are those of before stage B.
+
 U-turns (stage C7, JunctionParams.u_turns, off by default): at a junction of
 three or more roads, the innermost incoming lane of a road may turn back
 into the first outgoing lane of the same road whose centre is at least
@@ -124,6 +131,16 @@ class RoadEnd:
     # Stage B: every lane at the contact point as (id, kind, inner t, outer t, height);
     # () = driving lanes only (no corner roads).
     cross: tuple[tuple[int, str, float, float, float], ...] = ()
+
+    @property
+    def key(self) -> tuple[int, str]:
+        return self.road_id, self.contact
+
+    @property
+    def pocket_lanes(self) -> list[int]:
+        """Incoming left-turn pocket lanes (wider than 0 at the contact point)."""
+        incoming = set(self.in_lanes)
+        return [x[0] for x in self.cross if x[1] == "pocket" and x[0] in incoming and abs(x[3] - x[2]) > 1e-6]
 
     def _ids(self, right: bool) -> list[int]:
         if self.lane_t:
@@ -276,18 +293,22 @@ def u_turn_lane(a: RoadEnd, radius: float) -> Optional[tuple[int, int]]:
 
 
 def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
-                   params: JunctionParams = JunctionParams(), ramp: bool = False) -> list[Movement]:
+                   params: JunctionParams = JunctionParams(), ramp: bool = False,
+                   banned: frozenset = frozenset()) -> list[Movement]:
     """All lane movements through a junction, excluding U-turns, with road ids assigned.
 
     With exactly two arms the junction is just a bend or a lane-count change,
     so every lane continues regardless of the turn angle. With more arms the
     standard rules apply (right turns from the rightmost lane, left turns from
     the leftmost, straight lane-to-lane), and any incoming lane still without
-    a movement is given one by fill_pair.
+    a movement is given one by fill_pair. A left-turn pocket takes the left
+    turns; banned: (from road end key, to road end key) pairs left out.
     """
     movements: list[Movement] = []
     continuation = len(ends) == 2
     for a in ends:
+        pocket = [] if continuation else a.pocket_lanes
+        through = [lane for lane in a.in_lanes if lane not in pocket]
         pairs: dict[int, list[tuple[int, int]]] = {}
         kinds: dict[int, MovementKind] = {}
         options: dict[MovementKind, list[int]] = {}
@@ -295,7 +316,7 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
         turns = {
             idx: wrap_angle(b.heading_out - a.heading_in)
             for idx, b in enumerate(ends)
-            if a.edge_id != b.edge_id and b.out_lanes
+            if a.edge_id != b.edge_id and b.out_lanes and (a.key, b.key) not in banned
         }
         exit_kinds = classify_exits(turns, RAMP_STRAIGHT if ramp else STRAIGHT_THRESHOLD)
         if ramp:  # no left turns, no ramp to ramp
@@ -309,17 +330,20 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
             kinds[idx] = kind
             if continuation:
                 pairs[idx] = continuation_pairs(a.in_lanes, b.out_lanes)
+            elif pocket and kind == "left":
+                pairs[idx] = lane_pairs(kind, pocket, b.out_lanes)
             else:
                 # No lane split at a ramp node: the acceleration lane is the entry ramp's.
-                pairs[idx] = lane_pairs(kind, a.in_lanes, b.out_lanes, "none" if ramp else params.lane_split)
+                pairs[idx] = lane_pairs(kind, through, b.out_lanes, "none" if ramp else params.lane_split)
             if kind not in options:
                 options[kind], option_end[kind] = b.out_lanes, idx
 
         covered = {lane for ps in pairs.values() for lane, _ in ps}
-        for k, lane in enumerate(a.in_lanes):
+        fill_options = {k: v for k, v in options.items() if k != "left"} if pocket else options
+        for k, lane in enumerate(through):
             if lane in covered:
                 continue
-            fill = fill_pair(k, a.in_lanes, options)
+            fill = fill_pair(k, through, fill_options)
             if fill is not None:
                 kind, out_lane = fill
                 pairs[option_end[kind]].append((lane, out_lane))
@@ -347,9 +371,20 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
     return movements
 
 
+def lane_use(movements: list[Movement]) -> dict[tuple[int, int], dict[int, list[str]]]:
+    """(road, side: -1 arriving at the road's end, +1 at its start) -> incoming lane -> the
+    movement kinds it feeds, sorted; from a junction's movements."""
+    out: dict[tuple[int, int], dict[int, set[str]]] = {}
+    for m in movements:
+        out.setdefault((m.from_road, -1 if m.from_lane < 0 else 1), {}).setdefault(m.from_lane, set()).add(m.kind)
+    return {k: {lane: sorted(kinds) for lane, kinds in sorted(v.items(), key=lambda kv: abs(kv[0]))}
+            for k, v in out.items()}
+
+
 def build_junction(
     junction_id: int, ends: list[RoadEnd], first_road_id: int, plane: Optional[JunctionPlane] = None,
     params: JunctionParams = JunctionParams(), ramp: bool = False, paths: Optional[dict] = None,
+    banned: frozenset = frozenset(),
 ) -> tuple[xodr.Junction, list[xodr.Road], list[Movement]]:
     """Junction, connecting roads and movements; with plane, connecting roads lie on it
     (height, grade and superelevation); ramp: an interchange ramp node. paths, if given,
@@ -357,7 +392,7 @@ def build_junction(
     by_edge = {e.edge_id: e for e in ends}
     junction = xodr.Junction(f"junction_{junction_id}", junction_id)
     roads: list[xodr.Road] = []
-    movements = plan_movements(junction_id, ends, first_road_id, params, ramp)
+    movements = plan_movements(junction_id, ends, first_road_id, params, ramp, banned)
     built = []
     for m in movements:
         a, b = by_edge[m.from_edge], by_edge[m.to_edge]
@@ -432,7 +467,7 @@ def corner_roads(junction_id: int, ends: list[RoadEnd], first_road_id: int,
 
 def _side_lanes(end: RoadEnd, sign: int) -> list[tuple[int, str, float, float, float]]:
     """Side lanes (not driving, not median, wider than 0) on one side of a road end, outward."""
-    lanes = [x for x in end.cross if (x[0] > 0) == (sign > 0) and x[1] not in ("driving", "median")
+    lanes = [x for x in end.cross if (x[0] > 0) == (sign > 0) and x[1] not in ("driving", "median", "pocket")
              and abs(x[3] - x[2]) > WIDTH_EPS]
     return sorted(lanes, key=lambda x: abs(x[0]))
 

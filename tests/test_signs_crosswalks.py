@@ -89,7 +89,7 @@ def test_crosswalks_span_the_carriageway_with_stop_lines_behind(tmp_path):
 def test_zebras_only_on_dense_avenue_arms_by_default(tmp_path, zebras, profile, expected):
     hd = dataclasses.replace(HD, control=dataclasses.replace(HD.control, zebras=zebras),
                              cross_section=dataclasses.replace(HD.cross_section, profile=profile))
-    path, root, sidecar, _ = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, hd)
+    path, root, _, _ = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, hd)
     assert check_hdmap(path) == []
     walks = [o for o in root.iter("object") if o.get("type") == "crosswalk"]
     assert len(walks) == expected
@@ -144,8 +144,12 @@ def _t_one_way_stem(profile: str = "urban") -> RoadGraph:
     return g
 
 
+NO_POCKETS = dataclasses.replace(HD, turn_lanes=dataclasses.replace(HD.turn_lanes, left_pockets=False))
+
+
 def test_single_phase_lights_with_crosswalks_get_a_pedestrian_phase(tmp_path):
-    path, _, sidecar, _ = _build(_t_one_way_stem(), tmp_path)
+    # (with left-turn pockets the plan has a protected left phase, in which pedestrians cross)
+    path, _, sidecar, _ = _build(_t_one_way_stem(), tmp_path, NO_POCKETS)
     assert check_hdmap(path) == []
     (plan,) = sidecar["signal_plans"]
     kinds = [p["kind"] for p in plan["phases"]]

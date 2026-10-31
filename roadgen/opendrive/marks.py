@@ -190,6 +190,10 @@ def lane_marks(rm: RoadMarks, sec: LaneSection, side: str, position: int,
         def spec(s: float) -> Spec:
             return ("solid", rm.width(s)) if _wide(piece, s) else ("none",)
         cuts = rm.cuts() | _piece_cuts(piece)
+    elif kind == "pocket":  # a lane line to the through lanes, solid in the zone
+        def spec(s: float) -> Spec:
+            return ("solid", rm.width(s)) if _in(zones, s) else rm.broken(s)
+        cuts = rm.cuts()
     elif kind == "driving" and position == outer_driving:
         def spec(s: float) -> Spec:
             return ("solid", rm.width(s))

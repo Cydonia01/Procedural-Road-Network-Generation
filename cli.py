@@ -119,8 +119,9 @@ def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: flo
         known = frozenset(stub_roads(graph, design, junction_margin, dead_ends=True))
         n = repair_short_edges(graph, design, junction_margin, max_degree, cross_section, known,
                                dead_ends=True)
-    if n:
-        graph.metadata["fit"] = {"repaired_edges": n, "profile": cross_section.profile}
+    if n or graph.metadata.get("no_pockets"):
+        graph.metadata["fit"] = {"repaired_edges": n, "profile": cross_section.profile,
+                                 "dropped_pockets": len(graph.metadata.get("no_pockets", []))}
     return graph
 
 
