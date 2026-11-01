@@ -120,7 +120,7 @@ class ObjectRecord:
     junction: int
     type: str = "roadMark"  # OpenDRIVE object type: roadMark | crosswalk
     edges: bool = False  # crosswalk at lights: two edge lines instead of zebra stripes
-    segments: tuple = ()  # an arrow: ((u0, v0), (u1, v1)) lines in the object frame [m]
+    segments: tuple = ()  # an arrow: polylines, each ((u, v), ...) in the object frame [m]
     hdg: float = 0.0  # object heading relative to the road (pi: for traffic against s) [rad]
 
 
@@ -300,17 +300,26 @@ ARROW_DISTANCES = (20.0,)  # lane arrows this far before the stop line [m] (prom
 ARROW_LINE = 0.15  # [m]
 ARROW_MIN_LANES = 2  # approaches with at least this many incoming lanes get arrows
 ARROW_SHAFT = ((-2.5, 0.0), (0.5, 0.0))
-ARROW_PARTS = {  # Z 297, 5 m long, in the lane's frame (u ahead, v left) [m]
-    "straight": (((0.5, 0.0), (2.5, 0.0)), ((2.5, 0.0), (1.4, 0.45)), ((2.5, 0.0), (1.4, -0.45))),
-    "left": (((0.5, 0.0), (1.7, 0.8)), ((1.7, 0.8), (0.8, 0.85)), ((1.7, 0.8), (1.35, 0.0))),
-    "right": (((0.5, 0.0), (1.7, -0.8)), ((1.7, -0.8), (0.8, -0.85)), ((1.7, -0.8), (1.35, 0.0))),
+ARROW_PARTS = {  # Z 297, 5 m long, in the lane's frame (u ahead, v left): stem from the shaft, head [m]
+    "straight": (((0.5, 0.0), (2.5, 0.0)), ((1.4, 0.45), (2.5, 0.0), (1.4, -0.45))),
+    "left": (((0.5, 0.0), (1.7, 0.8)), ((0.8, 0.85), (1.7, 0.8), (1.35, 0.0))),
+    "right": (((0.5, 0.0), (1.7, -0.8)), ((0.8, -0.85), (1.7, -0.8), (1.35, 0.0))),
 }
 
 
 def arrow_segments(kinds: list[str]) -> tuple:
-    """Lines of a lane arrow for the movement kinds of a lane (U-turns are not drawn)."""
-    parts = [p for k in ("left", "straight", "right") if k in kinds for p in ARROW_PARTS[k]]
-    return (ARROW_SHAFT, *parts) if parts else ()
+    """Polylines of a lane arrow for the movement kinds of a lane (U-turns are not drawn):
+    the shaft running on into the first stem (straight before left before right), the
+    other stems, and the heads. Fewer, longer polylines over shared corners (B9): esmini
+    draws a marking through all its corners and OSI reports it as one road marking."""
+    order = [k for k in ("straight", "left", "right") if k in kinds]
+    if not order:
+        return ()
+    stems = [ARROW_PARTS[k][0] for k in order]
+    first = ARROW_SHAFT + stems[0][1:]
+    if order[0] == "straight":  # shaft and stem on one line: no corner where they meet
+        first = (ARROW_SHAFT[0], stems[0][-1])
+    return (first, *stems[1:], *(ARROW_PARTS[k][1] for k in order))
 
 
 def lane_arrows(junction_id: int, geom: EndGeometry, lane_kinds: dict[int, list[str]],

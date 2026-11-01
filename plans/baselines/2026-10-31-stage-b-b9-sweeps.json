@@ -1,0 +1,74 @@
+{
+  "city_hd": {
+    "preset": "city",
+    "hd": true,
+    "seeds": [
+      0,
+      199
+    ],
+    "failed": 0,
+    "failures": []
+  },
+  "mixed_city_hd": {
+    "preset": "mixed_city",
+    "hd": true,
+    "seeds": [
+      0,
+      199
+    ],
+    "failed": 0,
+    "failures": []
+  },
+  "mixed_city_hd_off": {
+    "preset": "mixed_city",
+    "hd": false,
+    "seeds": [
+      0,
+      199
+    ],
+    "failed": 10,
+    "failures": [
+      {
+        "seed": 15,
+        "error": "edge 146 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 15.882"
+      },
+      {
+        "seed": 26,
+        "error": "edge 558 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 16.107"
+      },
+      {
+        "seed": 38,
+        "error": "edge 571 is too short for its junctions: trims 5.500 + 9.026 exceed segment length 12.599"
+      },
+      {
+        "seed": 84,
+        "error": "edge 261 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 17.410"
+      },
+      {
+        "seed": 87,
+        "error": "edge 658 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 16.964"
+      },
+      {
+        "seed": 98,
+        "error": "edge 522 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 17.597"
+      },
+      {
+        "seed": 106,
+        "error": "edge 602 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 14.223"
+      },
+      {
+        "seed": 108,
+        "error": "edge 462 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 17.168"
+      },
+      {
+        "seed": 176,
+        "error": "edge 290 is too short for its junctions: trims 9.000 + 9.000 exceed segment length 16.511"
+      },
+      {
+        "seed": 186,
+        "error": "edge 320 is too short for its junctions: trims 9.000 + 9.215 exceed segment length 17.830"
+      }
+    ]
+  },
+  "note": "Final B9 sweeps after prompt 13 (bare road ends, incremental fit). Before prompt 13: city 3, mixed_city 21 with HD."
+}

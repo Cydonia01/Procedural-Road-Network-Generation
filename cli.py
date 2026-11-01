@@ -99,30 +99,21 @@ def hd_params(args: argparse.Namespace) -> HdMapParams:
     profile = getattr(args, "cross_section", None)
     if profile is not None:
         hd = dataclasses.replace(hd, cross_section=dataclasses.replace(hd.cross_section, profile=profile))
+    if getattr(args, "no_corner_roads", False):
+        hd = dataclasses.replace(hd, cross_section=dataclasses.replace(hd.cross_section, corner_roads=False))
     return hd
 
 
 def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: float) -> RoadGraph:
     """With HD maps on, repair the edges too short for the junction trims of roads with
     their side lanes (generators only know the driving lanes); unchanged otherwise."""
-    from roadgen.generators.repair import MAX_DEGREE, repair_short_edges, stub_roads
+    from roadgen.generators.repair import fit_cross_sections
 
-    cross_section = hd.active_cross_section
-    if cross_section is None or not graph.edges:
+    if hd.active_cross_section is None or not graph.edges:
         return graph
-    design = DesignParams(**section(cfg, "design"))
-    # Never join more roads at a node than the generator already does (at least MAX_DEGREE),
-    # and leave the stub roads the network already has (they build): fix only what the
-    # side lanes make too short.
-    max_degree = max([MAX_DEGREE] + [graph.degree(n) for n in graph.nodes])
     with timed("fit cross-sections"):
-        known = frozenset(stub_roads(graph, design, junction_margin, dead_ends=True))
-        n = repair_short_edges(graph, design, junction_margin, max_degree, cross_section, known,
-                               dead_ends=True)
-    if n or graph.metadata.get("no_pockets"):
-        graph.metadata["fit"] = {"repaired_edges": n, "profile": cross_section.profile,
-                                 "dropped_pockets": len(graph.metadata.get("no_pockets", []))}
-    return graph
+        return fit_cross_sections(graph, DesignParams(**section(cfg, "design")), junction_margin,
+                                  hd.active_cross_section)
 
 
 def build_and_validate(
@@ -668,11 +659,10 @@ def cmd_view(args: argparse.Namespace) -> int:
 
 
 def cmd_drive_check(args: argparse.Namespace) -> int:
-    from roadgen.sim.drive_check import drive_lanes, drive_movements
+    from roadgen.sim.drive_check import drive_all
 
     try:
-        results = drive_movements(args.input)
-        lanes = drive_lanes(args.input)
+        results, lanes = drive_all(args.input)
     except FileNotFoundError as e:
         log.error("%s", e)
         return 1
@@ -727,17 +717,18 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     if args.sweep:
         seeds = range(args.first_seed, args.first_seed + args.sweep)
         with timed("build sweep"):
-            results = build_sweep(args.generator, args.preset, seeds, args.cfg)
+            hd = HdMapParams.from_config(args.cfg, enabled=True) if args.hd else None
+            results = build_sweep(args.generator, args.preset, seeds, args.cfg, hd, args.jobs)
         failed = [r for r in results if not r.ok]
-        log.info("build sweep (%s, preset %s): %d of %d networks failed to build",
-                 args.generator, args.preset, len(failed), len(results))
+        log.info("build sweep (%s, preset %s%s): %d of %d networks failed to build",
+                 args.generator, args.preset, ", HD maps" if args.hd else "", len(failed), len(results))
         for key in ("cnr", "skewed_share", "orientation_entropy"):
             values = [r.network[key] for r in results if r.network]
             if values:
                 log.info("build sweep: %s median %.3f (min %.3f, max %.3f)", key,
                          statistics.median(values), min(values), max(values))
         report["sweep"] = {
-            "generator": args.generator, "preset": args.preset, "seeds": list(seeds),
+            "generator": args.generator, "preset": args.preset, "hd": bool(args.hd), "seeds": list(seeds),
             "failed": len(failed),
             "results": [dataclasses.asdict(r) for r in results],
         }
@@ -870,6 +861,11 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
              "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
     )
+    p.add_argument(
+        "--no-corner-roads", action="store_true",
+        help="leave out the corner roads (side lanes around junction corners) with --hd: esmini loads "
+             "them slowly, so for throughput benchmarks (default: cross_section.corner_roads)",
+    )
     p.set_defaults(func=cmd_build_xodr)
 
     p = sub.add_parser("plot-xodr", help="draw an .xodr's lanes coloured by lane type")
@@ -916,6 +912,11 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
             "--cross-section", choices=PROFILES, metavar="PROFILE",
             help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
                  "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
+        )
+        g.add_argument(
+            "--no-corner-roads", action="store_true",
+            help="leave out the corner roads (side lanes around junction corners) with --hd: esmini loads "
+                 "them slowly, so for throughput benchmarks (default: cross_section.corner_roads)",
         )
         g.add_argument(
             "--drive-check", action="store_true",
@@ -1089,11 +1090,13 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("--json", metavar="OUT", help="write the full report as JSON")
     p.add_argument("--hd", action="store_true",
                    help="also count the .xodr files' HD-map content: lane types, road marks, "
-                        "signals, objects, controllers (and junction control from the sidecar)")
+                        "signals, objects, controllers (and junction control from the sidecar); "
+                        "with --sweep, build the sweep's networks with HD maps (annotate, fit, build)")
     p.add_argument("--sweep", type=int, metavar="N",
                    help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
                         "and count how many the builder rejects")
     p.add_argument("--first-seed", type=int, default=0, help="first sweep seed (default %(default)s)")
+    p.add_argument("--jobs", type=int, default=1, help="sweep networks built in parallel (default %(default)s)")
     p.add_argument("--generator", default="lsystem", choices=generator_names(),
                    help="sweep generator (default %(default)s)")
     p.add_argument("--preset", default="city", help="sweep generator preset (default %(default)s)")

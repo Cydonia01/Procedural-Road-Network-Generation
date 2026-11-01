@@ -25,10 +25,13 @@ from __future__ import annotations
 
 import ctypes
 import json
+import logging
 import math
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Iterator, Optional, Union
 
 from lxml import etree
 
@@ -37,6 +40,8 @@ from roadgen.sim.esmini import esmini_library
 from roadgen.validate.continuity import RoadEval
 
 PathLike = Union[str, Path]
+
+log = logging.getLogger(__name__)
 
 APPROACH = 20.0  # m before the junction (at most half the incoming road)
 STEP = 0.5  # m per move
@@ -103,30 +108,62 @@ class DriveResult:
         )
 
 
+@contextmanager
+def _road_manager(xodr_path: Path, lib_path: Optional[PathLike] = None) -> Iterator[ctypes.CDLL]:
+    """esmini's RoadManager with xodr_path loaded; logs the load's wall and CPU time (a
+    wall time far above the CPU time means the host, not esmini, was slow)."""
+    if not xodr_path.exists():
+        raise FileNotFoundError(f"{xodr_path} not found")
+    lib = _load_rm(lib_path)
+    wall, cpu = time.perf_counter(), time.process_time()
+    if lib.RM_Init(str(xodr_path).encode()) != 0:
+        raise RuntimeError(f"esmini RoadManager failed to load {xodr_path}")
+    log.info("drive-check: RoadManager load %.1f s (CPU %.1f s)", time.perf_counter() - wall,
+             time.process_time() - cpu)
+    try:
+        yield lib
+    finally:
+        lib.RM_Close()
+
+
+def drive_all(xodr_path: PathLike, lib_path: Optional[PathLike] = None
+              ) -> tuple[list[DriveResult], list[LaneDriveResult]]:
+    """drive_movements and drive_lanes on one load of the RoadManager (the load is most
+    of the time on large networks)."""
+    xodr_path = Path(xodr_path)
+    sidecar = sidecar_path(xodr_path)
+    if not sidecar.exists():  # before the (long) load: the movements come from it
+        raise FileNotFoundError(f"{sidecar} not found")
+    with _road_manager(xodr_path, lib_path) as lib:
+        return _movements(lib, xodr_path), _lanes(lib, xodr_path)
+
+
 def drive_movements(xodr_path: PathLike, lib_path: Optional[PathLike] = None) -> list[DriveResult]:
     xodr_path = Path(xodr_path)
+    with _road_manager(xodr_path, lib_path) as lib:
+        return _movements(lib, xodr_path)
+
+
+def _movements(lib: ctypes.CDLL, xodr_path: Path) -> list[DriveResult]:
     movements = json.loads(sidecar_path(xodr_path).read_text())["movements"]
     roads = {int(r.get("id")): r for r in etree.parse(str(xodr_path)).getroot().findall("road")}
     evals = {rid: RoadEval(r) for rid, r in roads.items()}
     lengths = {rid: float(r.get("length")) for rid, r in roads.items()}
-    lib = _load_rm(lib_path)
-    if lib.RM_Init(str(xodr_path).encode()) != 0:
-        raise RuntimeError(f"esmini RoadManager failed to load {xodr_path}")
+    wall, cpu = time.perf_counter(), time.process_time()
     splits: dict[tuple[int, int, int], list[tuple[int, int]]] = {}
     for m in movements:
         splits.setdefault((m["from_road"], m["from_lane"], m["to_road"]), []).append(
             (m["connecting_road"], m["to_lane"]))
-    try:
-        results = []
-        for m in movements:
-            r = _drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]],
-                       _full_width_run(roads[m["from_road"]], m["from_lane"]),
-                       _full_width_run(roads[m["to_road"]], m["to_lane"], at_exit=False), evals)
-            r.accepted = tuple(splits[(m["from_road"], m["from_lane"], m["to_road"])])
-            results.append(r)
-        return results
-    finally:
-        lib.RM_Close()
+    results = []
+    for m in movements:
+        r = _drive(lib, m, lengths[m["from_road"]], lengths[m["connecting_road"]],
+                   _full_width_run(roads[m["from_road"]], m["from_lane"]),
+                   _full_width_run(roads[m["to_road"]], m["to_lane"], at_exit=False), evals)
+        r.accepted = tuple(splits[(m["from_road"], m["from_lane"], m["to_road"])])
+        results.append(r)
+    log.info("drive-check: %d movements %.1f s (CPU %.1f s)", len(results), time.perf_counter() - wall,
+             time.process_time() - cpu)
+    return results
 
 
 def _lane_step(evals: Optional[dict], before: tuple[int, int, float], after: tuple[int, int, float]) -> float:
@@ -248,15 +285,18 @@ def drive_lanes(xodr_path: PathLike, lib_path: Optional[PathLike] = None) -> lis
     lane offsets and widths, elevation and superelevation).
     """
     xodr_path = Path(xodr_path)
+    with _road_manager(xodr_path, lib_path) as lib:
+        return _lanes(lib, xodr_path)
+
+
+def _lanes(lib: ctypes.CDLL, xodr_path: Path) -> list[LaneDriveResult]:
     roads = [RoadEval(r) for r in etree.parse(str(xodr_path)).getroot().findall("road")
              if r.get("junction", "-1") == "-1"]
-    lib = _load_rm(lib_path)
-    if lib.RM_Init(str(xodr_path).encode()) != 0:
-        raise RuntimeError(f"esmini RoadManager failed to load {xodr_path}")
-    try:
-        return [_drive_lane(lib, road, lane) for road in roads for lane in _whole_lanes(road)]
-    finally:
-        lib.RM_Close()
+    wall, cpu = time.perf_counter(), time.process_time()
+    results = [_drive_lane(lib, road, lane) for road in roads for lane in _whole_lanes(road)]
+    log.info("drive-check: %d lanes %.1f s (CPU %.1f s)", len(results), time.perf_counter() - wall,
+             time.process_time() - cpu)
+    return results
 
 
 def _whole_lanes(road) -> list[int]:

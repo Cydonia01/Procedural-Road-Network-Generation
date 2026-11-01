@@ -61,8 +61,10 @@ import numpy as np
 from roadgen.geometry import design
 from roadgen.geometry.alignment import ChainAlignment
 from roadgen.geometry.cross_section import (
+    BARE_DROP,
     SHOULDERS_END,
     CrossSectionParams,
+    bare_ends,
     edge_cross_section,
     pocket_ends,
 )
@@ -344,7 +346,7 @@ def _extra_positions(graph: RoadGraph, ca: ChainAlignment, side: Side, cs: Cross
     median: list[tuple[WidthPiece, ...]] = []
     if any(medians):
         pieces = _role_pieces(medians, ranges, median_taper)
-        for at_start, _, _ in ends:  # medians end before every junction
+        for at_start, _, _, _ in ends:  # medians end before every junction
             w = max(medians)
             pieces = _cut_end(pieces, ca.length, at_start, cs.side_taper, median_taper(w))
         if _present(pieces, 2 * cs.side_taper):
@@ -359,9 +361,12 @@ def _extra_positions(graph: RoadGraph, ca: ChainAlignment, side: Side, cs: Cross
         widths = [r.get(role, (0.0, 0.0))[0] for r in per_edge]
         height = next((r[role][1] for r in per_edge if role in r), 0.0)
         pieces = _role_pieces(widths, ranges, side_taper)
-        for at_start, ramp, at_loop in ends:
+        for at_start, ramp, at_loop, bare in ends:
             profile = xs[0 if at_start else -1].profile
-            if kind == "parking":
+            if bare and kind in BARE_DROP:  # a bare road end: only the curb reaches the junction
+                pieces = _cut_end(pieces, ca.length, at_start,
+                                  cs.parking_clear if kind == "parking" else 0.0, cs.side_taper)
+            elif kind == "parking":
                 pieces = _cut_end(pieces, ca.length, at_start, cs.parking_clear, cs.side_taper)
             elif (kind == "shoulder" and (ramp or profile in SHOULDERS_END)) or (kind == "biking" and at_loop):
                 pieces = _cut_end(pieces, ca.length, at_start, 0.0, cs.side_taper)
@@ -417,15 +422,17 @@ def _pocket(graph: RoadGraph, ca: ChainAlignment, side: Side, cs: CrossSectionPa
 
 
 def _junction_ends(graph: RoadGraph, ca: ChainAlignment, junctions: frozenset[int],
-                   loops: frozenset[int]) -> list[tuple[bool, bool, bool]]:
-    """(at chain start, ramp node, a loop starts there) for each chain end at a junction."""
+                   loops: frozenset[int]) -> list[tuple[bool, bool, bool, bool]]:
+    """(at chain start, ramp node, a loop starts there, the road ends bare there) for each
+    chain end at a junction."""
     out = []
     for at_start, node in ((True, ca.chain.start), (False, ca.chain.end)):
         if node not in junctions:
             continue
         at_loop = any(e.id in loops for e in graph.incident_edges(node)) and not all(
             e.id in loops for e in graph.incident_edges(node))
-        out.append((at_start, graph.nodes[node].kind == "ramp", at_loop))
+        edge = ca.chain.edge_ids[0 if at_start else -1]
+        out.append((at_start, graph.nodes[node].kind == "ramp", at_loop, edge in bare_ends(graph, node)))
     return out
 
 

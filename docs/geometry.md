@@ -133,15 +133,20 @@ Widths in metres; curbs and sidewalks are 0.15 m high.
   - shoulders end before it in the `urban` and `suburban` profiles, and before
     ramp nodes in every profile (`rural` roads keep them through the corner);
   - bike lanes end before roundabout entries;
-  - medians end.
+  - medians end;
+  - at a **bare** road end (set by the repair where the side lanes would
+    leave a block too short) all of parking, bike lanes, sidewalks and
+    shoulders end, only the curb reaches the junction, and its corners get
+    no curb return.
 
   The [junction trims](#junction-trims) use these widths.
 - **Too-short edges.** Wider trims leave some edges too short, which
   generators (unaware of cross-sections) can't foresee. With HD maps on,
   `pipeline` and `build-xodr` run the
   [repair](generators.md#repair-edges-too-short-for-their-junctions) again
-  with the cross-sections before the build. It fixes only what the side lanes
-  make too short, and records `metadata.fit` in the graph.
+  with the cross-sections before the build. What the side lanes make too
+  short it fixes with bare road ends, never by removing roads, and records
+  `metadata.fit` in the graph.
 
 ## Chains
 

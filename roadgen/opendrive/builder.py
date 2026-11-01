@@ -162,6 +162,11 @@ def _cubic_at(records: list, s: float) -> float:
     return rec[1] + rec[2] * ds + rec[3] * ds * ds + rec[4] * ds ** 3
 
 
+def _lane_width(lane: ET.Element) -> float:
+    """A lane's widest width record start [m] (0 for the centre lane)."""
+    return max((float(w.get("a")) for w in lane.findall("width")), default=0.0)
+
+
 def sidecar_path(xodr_path: PathLike) -> Path:
     """Path of the graph->OpenDRIVE id mapping written next to an .xodr file."""
     return Path(xodr_path).with_suffix(".roadmap.json")
@@ -273,8 +278,10 @@ class OpenDriveBuilder:
                 road = odr.roads[str(end.road_id)]
                 link = road.add_successor if end.contact == "end" else road.add_predecessor
                 link(xodr.ElementType.junction, junction_id)
-            corner, corner_conns, corner_recs = corner_roads(junction_id, ends[node_id],
-                                                             junction_id + 1 + len(roads), plane, tuple(moves))
+            corner, corner_conns, corner_recs = [], [], []
+            if self.hd.active_cross_section is None or self.hd.active_cross_section.corner_roads:
+                corner, corner_conns, corner_recs = corner_roads(junction_id, ends[node_id],
+                                                                 junction_id + 1 + len(roads), plane, tuple(moves))
             for conn in corner_conns:
                 junction.add_connection(conn)
             roads += corner
@@ -556,17 +563,20 @@ class OpenDriveBuilder:
 
             base = surface(0.0, 0.0)
             outline = xodr.Outline(closed=False)
-            if rec.segments:  # an arrow: a marking per line
-                for j, ((u0, v0), (u1, v1)) in enumerate(rec.segments):
-                    for c, (u, v) in enumerate(((u0, v0), (u1, v1))):
-                        outline.add_corner(xodr.CornerLocal(u, v, round(surface(u, v) - base + MARK_LIFT, 6), 0.0,
-                                                            id=2 * j + c))
+            if rec.segments:  # an arrow: a marking per polyline, over corners they share
+                corners: dict[tuple[float, float], int] = {}
+                for line in rec.segments:
+                    for u, v in line:
+                        if (u, v) not in corners:
+                            corners[(u, v)] = len(corners)
+                            outline.add_corner(xodr.CornerLocal(u, v, round(surface(u, v) - base + MARK_LIFT, 6),
+                                                                0.0, id=corners[(u, v)]))
                 obj.add_outline(outline)
-                for j in range(len(rec.segments)):
+                for line in rec.segments:
                     marking = xodr.Marking(xodr.RoadMarkColor.white, 10.0, xodr.SideType.front, 0.0, 0.0, 0.0,
                                            width=rec.depth, zOffset=0.01)
-                    marking.add_cornerReference(2 * j)
-                    marking.add_cornerReference(2 * j + 1)
+                    for point in line:
+                        marking.add_cornerReference(corners[point])
                     obj.add_marking(marking)
                 obj.add_validity(*rec.validity)
                 odr.roads[str(rec.road)].add_object(obj)
@@ -614,7 +624,9 @@ class OpenDriveBuilder:
             self._fill_junction_surfaces(root)
         # scenariogeneration's prettyprint round-trips through minidom, which
         # dominates write time on large networks; ET.indent is equivalent and fast.
-        ET.indent(root, space="    ")
+        # With HD maps one space per level: indentation was a third of the file (B9);
+        # with HD off the output stays as before.
+        ET.indent(root, space=" " if self.hd.enabled else "    ")
         ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
         sidecar = sidecar_path(path)
         sidecar.write_text(
@@ -672,32 +684,59 @@ class OpenDriveBuilder:
         hole in it larger than FILL_MIN_AREA inside the junction's hull becomes a flat
         <object type="patch"> with a closed asphalt outline, on the junction's first
         connecting road, its corners on the junction plane."""
-        from shapely.geometry import Polygon
+        from shapely.geometry import Point, Polygon
         from shapely.ops import unary_union
 
         from roadgen.opendrive.plot import lane_polygons
         from roadgen.validate.continuity import RoadEval
 
         roads = {r.get("id"): r for r in root.findall("road")}
-        polys: dict[str, object] = {}
+        members_of: dict[str, list[str]] = {}
+        for rid, r in roads.items():
+            members_of.setdefault(r.get("junction", "-1"), []).append(rid)
+        polys: dict[tuple, object] = {}
 
-        def poly(rid: str):
-            if rid not in polys:
-                parts = [Polygon(p).buffer(0) for _, p in lane_polygons(roads[rid], FILL_STEP) if len(p) >= 3]
-                polys[rid] = unary_union([p for p in parts if not p.is_empty])
-            return polys[rid]
+        def poly(rid: str, s_range: Optional[tuple[float, float]] = None):
+            if (rid, s_range) not in polys:
+                parts = [Polygon(p).buffer(0) for _, p in lane_polygons(roads[rid], FILL_STEP, s_range)
+                         if len(p) >= 3]
+                polys[(rid, s_range)] = unary_union([p for p in parts if not p.is_empty])
+            return polys[(rid, s_range)]
+
+        def near_end(rid: str, jid: str, area) -> list[tuple[float, float]]:
+            """The stretch of an arm, from each of its ends at the junction, whose reference
+            line runs within `area` (the hull grown by the arm's half width): only lanes
+            there can reach the hull (B9: sampling whole arms was most of the write time)."""
+            road, ev = roads[rid], RoadEval(roads[rid])
+            offset = max((abs(float(o.get("a"))) for o in road.findall("lanes/laneOffset")), default=0.0)
+            reach = area.buffer(offset + max((sum(_lane_width(lane) for lane in sec.findall(f"{side}/lane"))
+                                              for sec in road.findall("lanes/laneSection")
+                                              for side in ("left", "right")), default=0.0))
+            out = []
+            for tag, at_start in (("predecessor", True), ("successor", False)):
+                link = road.find(f"link/{tag}")
+                if link is None or link.get("elementType") != "junction" or link.get("elementId") != jid:
+                    continue
+                d = 0.0
+                while d < ev.length and reach.contains(Point(ev.reference(d if at_start else ev.length - d)[:2])):
+                    d += FILL_STEP
+                d = min(d + FILL_STEP, ev.length)
+                out.append((0.0, d) if at_start else (ev.length - d, ev.length))
+            return out
 
         next_id = self._next_object_id
         self.fills = 0
         for junction in root.findall("junction"):
             jid = junction.get("id")
-            members = [rid for rid, r in roads.items() if r.get("junction") == jid]
+            members = members_of.get(jid, [])
             if not members:
                 continue
             inner = unary_union([poly(r) for r in members])
             hull = inner.convex_hull
             arms = {c.get("incomingRoad") for c in junction.findall("connection")}
-            surface = unary_union([inner] + [poly(r).intersection(hull.buffer(1.0)) for r in arms if r in roads])
+            grown = hull.buffer(1.0)
+            surface = unary_union([inner] + [poly(r, rng).intersection(grown) for r in sorted(arms) if r in roads
+                                             for rng in near_end(r, jid, grown)])
             holes = [Polygon(ring) for g in getattr(surface, "geoms", [surface]) for ring in g.interiors]
             holes = [h.simplify(FILL_SIMPLIFY) for h in holes
                      if h.area >= FILL_MIN_AREA and h.intersection(hull).area >= 0.95 * h.area]

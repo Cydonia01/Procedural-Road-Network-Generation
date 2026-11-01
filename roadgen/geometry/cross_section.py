@@ -18,7 +18,11 @@ urban and suburban profiles (rural roads keep their paved shoulder through
 the corner) and before every ramp node (the gore between highway and ramp),
 bike lanes before roundabout entries
 (FHWA roundabout guide), and medians taper out (or, later, become turn
-pockets).
+pockets). Where the side lanes leave a block too short for its junctions,
+the repair makes that road end bare (graph metadata "no_side_lanes",
+[node, edge] pairs; bare_ends): parking, bike lanes, sidewalks and shoulders
+all end before the junction, the curb stays, and its corners get no class curb
+return (stage B9, prompt 13).
 
 Loops (roundabout rings and cul-de-sac bulbs, listed in the graph metadata)
 are one-way and run counter-clockwise around an island: outside they keep
@@ -52,6 +56,7 @@ SIDE_KINDS = ("parking", "biking", "curb", "sidewalk", "shoulder", "border")
 CARRIAGEWAY_KINDS = frozenset({"parking", "biking", "shoulder"})  # paved, inside the curb line
 PROFILES = ("urban", "suburban", "rural", "none")
 SHOULDERS_END = frozenset({"urban", "suburban"})  # profiles whose shoulders end before junctions
+BARE_DROP = frozenset({"parking", "biking", "sidewalk", "shoulder"})  # side lanes a bare road end leaves out
 CLASSES = ("street", "avenue", "highway")
 
 _D = section(DEFAULTS, "cross_section")
@@ -105,6 +110,7 @@ class CrossSectionParams:
     tunnel_shoulder: float = _D["tunnel_shoulder"]  # shoulders inside tunnels [m]
     corner_radius: tuple[float, float, float] = _D["corner_radius"]  # street, avenue, highway [m]
     max_corner_share: float = _D["max_corner_share"]  # most of the shorter arm a curb return takes
+    corner_roads: bool = _D["corner_roads"]  # side lanes around junction corners (off: throughput benchmarks)
     # Turn pockets (stage B8; not a config key: HdMapParams sets it from turn_lanes); None = none.
     turn_lanes: Optional[TurnLaneParams] = field(default=None, metadata={"config": False})
 
@@ -151,23 +157,23 @@ class EdgeCrossSection:
     radius: float  # curb-return radius at its junctions [m]; 0 = none
 
     def side(self, side: str, at_junction: bool = False, ramp: bool = False,
-             at_loop: bool = False) -> tuple[SideLane, ...]:
+             at_loop: bool = False, bare: bool = False) -> tuple[SideLane, ...]:
         """Side lanes of one side; at a junction without parking, without shoulders (at a
         ramp node, or in the urban and suburban profiles) and without bike lanes where a
-        loop starts (at_loop)."""
+        loop starts (at_loop); at a bare road end (see bare_ends) only the curb."""
         lanes = self.right if side == "right" else self.left
         if not at_junction:
             return lanes
-        gone = {"parking"} | ({"biking"} if at_loop else set())
+        gone = {"parking"} | ({"biking"} if at_loop else set()) | (set(BARE_DROP) if bare else set())
         if ramp or self.profile in SHOULDERS_END:
             gone.add("shoulder")
         return tuple(s for s in lanes if s.kind not in gone)
 
     def widths(self, side: str, at_junction: bool = False, ramp: bool = False,
-               at_loop: bool = False) -> tuple[float, float, float]:
+               at_loop: bool = False, bare: bool = False) -> tuple[float, float, float]:
         """(median half width, carriageway side width, outer side width) [m]: what the road
         adds on one side to its driving lanes, inside the curb line and in all."""
-        lanes = self.side(side, at_junction, ramp, at_loop)
+        lanes = self.side(side, at_junction, ramp, at_loop, bare)
         inner = 0.0
         for s in lanes:
             if s.kind not in CARRIAGEWAY_KINDS:
@@ -205,14 +211,15 @@ def edge_cross_section(edge: Edge, params: CrossSectionParams, loop: bool = Fals
 
 def side_half_widths(edge: Edge, params: CrossSectionParams, right_lanes: int, left_lanes: int,
                      at_junction: bool = False, ramp: bool = False, loop: bool = False,
-                     at_loop: bool = False) -> tuple[float, float, float, float]:
+                     at_loop: bool = False, bare: bool = False) -> tuple[float, float, float, float]:
     """(right curb, left curb, right outer, left outer) half widths of the edge's road [m],
     from its reference line, given its driving lanes on each side (see oriented_lanes).
-    loop: the edge is on a loop; at_loop: the junction is where a loop starts."""
+    loop: the edge is on a loop; at_loop: the junction is where a loop starts; bare: a
+    bare road end (see bare_ends)."""
     xs = edge_cross_section(edge, params, loop)
     rw, lw = right_lanes * edge.lane_width, left_lanes * edge.lane_width
-    rm, ri, ro = xs.widths("right", at_junction, ramp, at_loop)
-    lm, li, lo = xs.widths("left", at_junction, ramp, at_loop)
+    rm, ri, ro = xs.widths("right", at_junction, ramp, at_loop, bare)
+    lm, li, lo = xs.widths("left", at_junction, ramp, at_loop, bare)
     return rw + rm + ri, lw + lm + li, rw + rm + ro, lw + lm + lo
 
 
@@ -224,6 +231,12 @@ def outer_half_width(edge: Edge, params: CrossSectionParams, loop: bool = False)
         right, left = edge.lanes_forward, edge.lanes_backward
     _, _, r_out, l_out = side_half_widths(edge, params, right, left, loop=loop)
     return max(r_out, l_out)
+
+
+def bare_ends(graph: RoadGraph, node_id: int) -> frozenset[int]:
+    """Edges whose road ends bare at node_id: only the curb reaches the junction (the
+    repair's graph metadata "no_side_lanes")."""
+    return frozenset(e for n, e in graph.metadata.get("no_side_lanes", []) if n == node_id)
 
 
 def pocket_ends(graph: RoadGraph, node_id: int, params: TurnLaneParams) -> frozenset[int]:

@@ -207,7 +207,16 @@ def test_drive_check_through_pockets(tmp_path):
     from_pockets = [r for r in results if (r.movement["from_road"], r.movement["from_lane"]) in pockets]
     assert len(from_pockets) == 4 and all(r.movement["kind"] == "left" for r in from_pockets)
     assert all(r.ok for r in results)
-    assert all(r.ok for r in drive_lanes(path))
+    lanes = drive_lanes(path)
+    assert all(r.ok for r in lanes)
+    # one load of the RoadManager for both passes (the CLI's drive-check) drives the same
+    from roadgen.sim.drive_check import drive_all
+
+    both, both_lanes = drive_all(path)
+    assert [(r.route, r.final_lane, r.max_jump) for r in both] == [(r.route, r.final_lane, r.max_jump)
+                                                                   for r in results]
+    assert [(r.road, r.lane, r.max_deviation) for r in both_lanes] == [(r.road, r.lane, r.max_deviation)
+                                                                       for r in lanes]
 
 
 def test_bans_only_on_approaches_with_arriving_traffic(tmp_path):
@@ -292,3 +301,20 @@ def test_pockets_left_out_only_with_turn_lanes():
     assert stub_roads(g, cross_section=no_pockets) == []
     assert repair_short_edges(g, cross_section=no_pockets) == 0
     assert "no_pockets" not in g.metadata
+
+
+def test_arrows_are_polylines_over_shared_corners(tmp_path):
+    """B9: each arrow is a few markings through shared outline corners (esmini draws a
+    marking through all its corners, OSI reports it as one road marking)."""
+    _, root, _, _ = _build(_cross(), tmp_path)
+    arrows = [o for o in root.iter("object") if o.get("name", "").startswith("arrow")]
+    assert arrows
+    for a in arrows:
+        corners = [(c.get("u"), c.get("v")) for c in a.findall("outlines/outline/cornerLocal")]
+        ids = {c.get("id") for c in a.findall("outlines/outline/cornerLocal")}
+        assert len(set(corners)) == len(corners)  # no corner twice
+        refs = [[r.get("id") for r in m.findall("cornerReference")] for m in a.findall("markings/marking")]
+        assert all(len(r) >= 2 and set(r) <= ids for r in refs)
+        assert {i for r in refs for i in r} == ids  # every corner is used
+        if a.get("name") == "arrow_straight":
+            assert len(corners) == 4 and len(refs) == 2

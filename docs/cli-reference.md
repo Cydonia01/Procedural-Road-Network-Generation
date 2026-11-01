@@ -162,8 +162,9 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2) |
-| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are repaired before the build (turn pockets that would make an edge too short are left out instead). Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
+| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are fixed before the build: turn pockets that would make them too short are left out, and road ends whose side lanes would are made bare ([repair](generators.md#repair-edges-too-short-for-their-junctions)). Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
 | `--cross-section PROFILE` | Default profile with `--hd`: `urban`, `suburban`, `rural` or `none` (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
+| `--no-corner-roads` | With `--hd`, leave out the [corner roads](opendrive.md#lanes) (the side lanes around junction corners; `cross_section.corner_roads: false`). esmini loads them slowly (on `city` 57 s instead of 31 s), so this is for throughput benchmarks; the corners' side lanes are then missing from the map |
 | `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
 | `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |
 | `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
@@ -223,10 +224,10 @@ are the config sections `align:`, `drape:` and `grade_separation:`.
 ## build-xodr
 
 ```bash
-python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd] [--cross-section PROFILE]   # default: <input>.xodr
+python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd] [--cross-section PROFILE] [--no-corner-roads]   # default: <input>.xodr
 ```
 
-`--hd` / `--no-hd` and `--cross-section` as for [pipeline](#pipeline).
+`--hd` / `--no-hd`, `--cross-section` and `--no-corner-roads` as for [pipeline](#pipeline).
 
 Builds and validates. Traffic connectivity problems are only warnings here,
 since hand-made test graphs often have dead ends.
@@ -243,7 +244,7 @@ See [Validation → Drive-check](validation.md#drive-check).
 
 ```bash
 python -m cli metrics A.xodr [B.xodr ...] [--hd] [--graph A.json ...] [--json OUT.json]
-python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city]
+python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd] [--jobs 1]
 ```
 
 - Geometry metrics of each `.xodr`.
@@ -254,7 +255,9 @@ python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset
   control mix, signal plans, lane-use records and banned movements.
 - `--graph` (repeatable) adds the network metrics of a RoadGraph.
 - `--sweep N` generates N networks, as `pipeline --maps` would, and counts the
-  ones the builder rejects.
+  ones the builder rejects. With `--hd` they are built with HD maps, after
+  `annotate` and the cross-section fit, as in `pipeline --hd`. `--jobs N`
+  builds N at a time.
 
 The report is informational: the command succeeds whatever the numbers are.
 Thresholds are in `defaults.yaml` under `metrics` and `network_metrics`. The

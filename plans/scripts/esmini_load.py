@@ -3,6 +3,7 @@ roads costs it.
 
   python plans/scripts/esmini_load.py FILE.xodr ...           # esmini --headless, a scenario
                                                                # without vehicles, best of 3
+                                                               # (median and worst too)
   python plans/scripts/esmini_load.py --rm FILE.xodr ...      # esmini's RoadManager only (RM_Init)
   python plans/scripts/esmini_load.py --variants FILE.xodr    # write variants of FILE without or
                                                                # with simplified corner roads to
@@ -27,7 +28,7 @@ from roadgen.sim.screenshot import still_xosc
 OUT = Path("out/esmini_load")
 
 
-def load_time(path: Path, runs: int = 3) -> float:
+def load_times(path: Path, runs: int = 3) -> list[float]:
     xosc = still_xosc(path, OUT / f"{path.parent.name}_{path.stem}_still.xosc", 0.1)
     times = []
     for _ in range(runs):
@@ -35,7 +36,7 @@ def load_time(path: Path, runs: int = 3) -> float:
         subprocess.run([str(esmini_binary("esmini")), "--osc", str(xosc.resolve()), "--headless",
                         "--fixed_timestep", "0.1"], capture_output=True, check=False)
         times.append(time.time() - t0)
-    return min(times)
+    return sorted(times)
 
 
 def rm_init_time(path: Path) -> float:
@@ -136,9 +137,13 @@ def main():
         return
     rm = bool(args) and args[0] == "--rm"
     for p in map(Path, args[1:] if rm else args):
-        t = rm_init_time(p) if rm else load_time(p)
-        print(f"{p.parent.name}/{p.name}: {p.stat().st_size / 1e6:.1f} MB, "
-              f"{'RM_Init' if rm else 'load'} {t:.1f} s", flush=True)
+        if rm:
+            print(f"{p.parent.name}/{p.name}: {p.stat().st_size / 1e6:.1f} MB, RM_Init {rm_init_time(p):.1f} s",
+                  flush=True)
+            continue
+        ts = load_times(p)
+        print(f"{p.parent.name}/{p.name}: {p.stat().st_size / 1e6:.1f} MB, load {ts[0]:.1f} s "
+              f"(median {ts[len(ts) // 2]:.1f}, worst {ts[-1]:.1f})", flush=True)
 
 
 if __name__ == "__main__":

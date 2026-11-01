@@ -184,10 +184,16 @@ def test_graph_json_round_trip_with_overrides():
 
 
 def test_repair_with_cross_sections():
+    """B9 (prompt 13): an edge only the side lanes make too short is never collapsed or
+    removed; its road ends become bare (side lanes end before the junction, no curb
+    return) until it fits."""
     g = two_junctions(16.0)  # today: trims 5.5 + 5.5; with sidewalks and curb returns 8.5 + 8.5
     assert short_edges(g) == [] and short_edges(g, cross_section=CS) == [1]
-    assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g))) == 1
-    assert 1 not in g.edges
+    assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g))) == 0
+    assert 1 in g.edges and set(g.nodes) == {1, 2, 3, 4, 5, 6}
+    bare = g.metadata["no_side_lanes"]
+    assert bare and {n for n, _ in bare} <= {1, 2}
+    assert short_edges(g, cross_section=CS) == []
     network_alignment(g, cross_section=CS)
 
 
@@ -234,18 +240,49 @@ def test_fit_also_repairs_dead_end_stubs():
     known = frozenset(stub_roads(g, dead_ends=True))
     assert known == {3}  # 3.5 m today: a stub already, so left alone ...
     assert repair_short_edges(g, cross_section=CS, keep_stubs=known, dead_ends=True) == 0
-    g.nodes[4].y = 12.0  # ... but at 12 m it has 6.5 m today and 3.5 m with sidewalks
+    g.nodes[4].y = 12.0  # ... but at 12 m it has 6.5 m today and 3.5 m with sidewalks:
+    # its side lanes make it a stub, so road ends at its junction become bare (B9, prompt 13):
+    # at a T the stem's trim comes from the through road, whose ends there lose theirs
     assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g, dead_ends=True)),
-                              dead_ends=True) == 1
-    assert 3 not in g.edges
+                              dead_ends=True) == 0
+    assert 3 in g.edges and g.metadata["no_side_lanes"] == [[1, 1], [1, 2]]
+    assert stub_roads(g, cross_section=CS, dead_ends=True) == []
 
 
 def test_collapse_keeps_bridges_on_their_edges():
-    g = two_junctions(16.0)  # edge 5 runs from node 2 (x = 16) to x = 116
+    g = two_junctions(8.0)  # too short even without side lanes; edge 5 runs from x = 8 to x = 108
     g.edges[5].bridges = [(80.0, 95.0)]
     assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g))) == 1
-    length = g.edge_length(5)  # node 2 merged into node 1 at x = 8: 108 m now
-    assert length == pytest.approx(108.0)
+    length = g.edge_length(5)  # node 2 merged into node 1 at x = 4: 104 m now
+    assert length == pytest.approx(104.0)
     (s0, s1), = g.edges[5].bridges
-    assert (s0, s1) == pytest.approx((80.0 * 1.08, 95.0 * 1.08)) and s1 <= length
+    assert (s0, s1) == pytest.approx((80.0 * 1.04, 95.0 * 1.04)) and s1 <= length
     assert g.validate() == []
+
+
+def test_bare_road_ends_build(tmp_path):
+    """The block the repair kept with bare ends builds with HD maps and validates; no
+    sidewalk reaches either junction (0 m wide at the road's ends, if any is left)."""
+    from lxml import etree
+
+    from roadgen.opendrive.builder import OpenDriveBuilder
+    from roadgen.validate.continuity import RoadEval, _width, check_continuity
+    from roadgen.validate.hdmap import check_hdmap
+    from roadgen.validate.topology import check_topology
+
+    g = two_junctions(18.0)  # 7 m of road today, 1 m with side lanes, 6.7 m with bare ends (curbs stay)
+    hd = HdMapParams(enabled=True)
+    assert repair_short_edges(g, cross_section=hd.active_cross_section, keep_stubs=frozenset(stub_roads(g))) == 0
+    assert g.metadata["no_side_lanes"] and stub_roads(g, cross_section=hd.active_cross_section) == []
+    path = tmp_path / "bare.xodr"
+    b = OpenDriveBuilder(hd=hd)
+    b.build(g)
+    b.write(path)
+    assert check_topology(path) == [] and check_continuity(path) == [] and check_hdmap(path) == []
+    road = next(r for r in etree.parse(str(path)).getroot().findall("road")
+                if r.get("id") == str(b.edge_to_road[1]))
+    ev = RoadEval(road)
+    sections = road.findall("lanes/laneSection")
+    for sec, ds in ((sections[0], 0.0), (sections[-1], ev.length - float(sections[-1].get("s")))):
+        walks = [lane for lane in sec.iter("lane") if lane.get("type") == "sidewalk"]
+        assert all(_width(lane, ds) == pytest.approx(0.0, abs=1e-6) for lane in walks)

@@ -111,7 +111,9 @@ Each is fixed by the first option that works:
    - the merged node joins at most `max_degree` (default 5) roads (Teng &
      Bidarra's vertex-degree rule);
    - no two roads would join the same pair of nodes;
-   - its arms stay at least 10° apart.
+   - its arms stay at least 10° apart, and so do those of the nodes next to
+     it, whose roads turn with the moved node (two-road bends included: a
+     bend that tight would become an unbuildable junction).
 2. **Remove** the edge, if its two nodes stay connected.
 3. **Leave** it and log a warning (the builder reports it).
 
@@ -127,8 +129,35 @@ widens its arm and so the trims of the arms beside it. Before such an edge
 is collapsed or removed, the pockets at its two junctions are left out one
 at a time until it fits; those it fits without are put back. The pockets
 left out are kept in the graph metadata (`no_pockets`, `[node, edge]`
-pairs), and their count in `fit.dropped_pockets`. Only an edge that is too
-short even without pockets is repaired.
+pairs), and their count in `fit.dropped_pockets`.
+
+An edge too short only because of the side lanes (it fits with the driving
+lanes alone; every stub in that pass is one, since the old stubs are left
+alone, but an old stub the alignment now finds too short for a bend it keeps
+as a junction is checked like a too-short edge) is **never collapsed or
+removed**. Instead road ends at its two
+junctions become **bare**, one at a time until it fits: its own ends first,
+then the other arms there (at an acute junction the neighbour's width sets
+the trim); those it fits without are put back. A bare end's parking, bike
+lanes, sidewalks and shoulders end before the junction, its curb stays, and
+its corners get no class curb return, so it takes the room it took without
+HD maps (plus the curb). Bare ends are kept in the graph metadata
+(`no_side_lanes`, `[node, edge]` pairs) and counted in `fit.bare_ends`.
+Where both are needed (two highways leaving a junction at an acute angle,
+both with pockets and shoulders), the bare ends are tried with every pocket
+there left out, and the pockets it fits without go back. If that is not
+enough and one end is a two-road bend, which the side lanes
+turned into a junction (its curve no longer clears the sidewalks around),
+the bend is **straightened**: its two edges, the same road, become one edge
+between the junctions on either side, and the bend node goes
+(`straightened_bends`, `fit.straightened_bends`). The road stays. An edge
+still too short is left for the builder to report. Only edges too short
+with the driving lanes alone are collapsed or removed, as above.
+
+The pass recomputes only what a change touches: junction trims are memoised
+on the graph (keyed on everything they read), pockets and bare ends are
+tried for all edges of one scan before the network is aligned again, and a
+trial re-checks a stub from its trims (a single-edge road is straight).
 
 ## Graph transforms
 

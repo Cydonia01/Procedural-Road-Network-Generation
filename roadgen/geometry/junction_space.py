@@ -21,6 +21,7 @@ from roadgen.geometry.cross_section import (
     CrossSectionParams,
     edge_cross_section,
     loop_edges,
+    bare_ends,
     pocket_ends,
     side_half_widths,
 )
@@ -158,6 +159,7 @@ def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSecti
     # Where a loop starts (roundabout entry, cul-de-sac stem) its transform designed the
     # corners: no class curb returns there, and bike lanes end before it.
     at_loop = any(e.id in loops for e in incident)
+    bare = bare_ends(graph, node_id) if cross_section is not None else frozenset()
     pockets = (pocket_ends(graph, node_id, cross_section.turn_lanes)
                if cross_section is not None and cross_section.turn_lanes is not None else frozenset())
     arms = []
@@ -175,19 +177,55 @@ def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSecti
             continue
         loop = e.id in loops
         rc, lc, ro, lo = side_half_widths(e, cross_section, right, left, at_junction=True,
+                                          bare=e.id in bare,
                                           ramp=node.kind == "ramp", loop=loop, at_loop=at_loop)
         if node_id != start_node:
             rc, lc, ro, lo = lc, rc, lo, ro
         if e.id in pockets:  # a left-turn pocket widens the incoming side: the arm's left
             lc, lo = lc + e.lane_width, lo + e.lane_width
-        radius = 0.0 if at_loop else edge_cross_section(e, cross_section, loop).radius
+        # No class curb return where a loop starts (its transform designed the corner) or at
+        # a bare road end (B9: without its side lanes it takes the room it takes today).
+        radius = 0.0 if at_loop or e.id in bare else edge_cross_section(e, cross_section, loop).radius
         arms.append(Arm(e.id, heading, lc, rc, lo, ro, radius, graph.edge_length(e.id)))
     return arms
 
 
 def node_trims(graph: RoadGraph, node_id: int, margin: float = DEFAULT_MARGIN,
                cross_section: Optional[CrossSectionParams] = None) -> dict[int, float]:
-    """Per incident edge: how far from the junction node its road stops [m]."""
+    """Per incident edge: how far from the junction node its road stops [m].
+
+    The result is memoised on the graph, keyed on everything it reads (_trims_key): the
+    HD repair asks for every junction's trims after each change, and most of them are
+    unchanged (B9)."""
+    cache = graph.__dict__.setdefault("_trims_cache", {})
+    key = _trims_key(graph, node_id, margin, cross_section)
+    if key not in cache:
+        cache[key] = _node_trims(graph, node_id, margin, cross_section)
+    return dict(cache[key])
+
+
+def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Optional[CrossSectionParams]) -> tuple:
+    """What node_trims reads with a cross-section: the node, each incident edge with its
+    far node's position and loop membership, roundabout entries, the pockets left out
+    and the bare road ends there, the margin and the parameters."""
+    node = graph.nodes[node_id]
+    rings = graph.metadata.get("roundabouts", [])
+    loops = [set(r["ring"]) for r in rings] + [set(c["loop"]) for c in graph.metadata.get("culdesacs", [])]
+    arms = []
+    for e in graph.incident_edges(node_id):
+        other = graph.nodes[e.to_node if e.from_node == node_id else e.from_node]
+        arms.append((e.id, e.from_node, e.to_node, other.x, other.y, e.road_class, e.lanes_forward,
+                     e.lanes_backward, e.lane_width, e.cross_section,
+                     any(e.from_node in s and e.to_node in s for s in loops)))
+    if cross_section is None:  # only the driving lanes count
+        return node_id, node.x, node.y, margin, tuple(sorted(arms))
+    left_out = tuple(sorted(e for n, e in graph.metadata.get("no_pockets", []) if n == node_id))
+    return (node_id, node.x, node.y, node.kind, node.control, margin, repr(cross_section), tuple(sorted(arms)),
+            any(node_id in r.get("entries", []) for r in rings), left_out, tuple(sorted(bare_ends(graph, node_id))))
+
+
+def _node_trims(graph: RoadGraph, node_id: int, margin: float,
+                cross_section: Optional[CrossSectionParams]) -> dict[int, float]:
     arms = node_arms(graph, node_id, cross_section)
     try:
         if cross_section is None:

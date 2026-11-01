@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B7 and the lane-section merge (moved from B9) done (2026-10-30), the zebra rule and B8 done (2026-10-31), B9 next.** Discussion,
+Status: **approved 2026-10-30; B0–B7 and the lane-section merge (moved from B9) done (2026-10-30), the zebra rule, B8 and B9 done (2026-10-31), B10 next.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -231,6 +231,23 @@ The user's answers to the four questions of the discussion (also in its
 > 1. Arrows: try one outline per arrow first and check it in esmini (render and OSI). If it renders correctly, use it; if not, place arrows at 20 m only. Report the file sizes.
 > 2. City repairs: don't repair for pockets. Leave turn pockets off on edges too short for them, as real designs do on short blocks, and report how many pockets that drops.
 > Record both decisions in the plan, then commit B8. Stop and report before B9.
+
+**2026-10-31, prompt 12** (answers to the B8 report)
+
+> Implement B9. Besides what the plan lists, cover the items deferred to it:
+> 1. Drive-check run-time variance (up to 5× on the same file): first rule out the Docker VM (log memory and CPU with docker stats during a run, check swapping) before profiling esmini.
+> 2. esmini load cost of the B3 corner roads (~26 s on city): find the cause if you can; otherwise add the switch that leaves corner roads out of throughput benchmarks.
+> 3. .xodr write time (1.5 → 7.4 s since B8): profile and fix if cheap.
+> 4. A size breakdown of B8's growth (manhattan_like +55 %) by element type, and any cheap reductions that keep OSI and esmini output correct.
+> 5. Explain the 5th esmini warning on mixed_city.
+> Measure with best-of-three and report the spread. Stop after B9 and report.
+
+**2026-10-31, prompt 13** (answers to the B9 report)
+
+> 1. Build failures: where HD causes the failure, drop the side lanes (sidewalk, shoulder, parking, bike) at that junction end, then retry; never remove roads. The 10 mixed_city failures that also happen with HD off are a roundabout-generator gap: record them as an open item for stage D and restate the exit criterion as "no failures added by HD". Rerun both 200-seed sweeps.
+> 2. Build time: time-box 1 day to make the width fitting incremental (recompute only around each repair). If the pipeline still isn't within 2 × B0, record the measured ratio and keep the 2 × target for the build step alone.
+> 3. Don't build or profile esmini. Instead, put a minimal reproducing .xodr and an issue draft for both esmini findings (corner-road load cost, 3× load-time variance) under plans/; I'll decide whether to file it.
+> Record the decisions in the plan, commit B9, and stop before B10.
 
 ## Context
 
@@ -1279,6 +1296,204 @@ Helper scripts: `b8_turns.py`, `b8_closeups.py`, `b8_arrow_outline.py`.
 - **Tests:** each validator check on a broken fixture (a sign outside the road, a missing stop line, a sidewalk linked to a driving lane, conflicting greens).
 - **Docs:** `docs/validation.md`, `docs/cli-reference.md`.
 
+#### B9 result (done 2026-10-31)
+
+Delivered as planned:
+- **Validator** (`validate/hdmap.py`, `_check_lane_types`):
+  - a lane linked to the next lane section, or across a road-to-road link (connecting roads' ends too), keeps its type;
+  - every junction `<laneLink>` joins two lanes of the same type, so no driving lane leads into a sidewalk;
+  - (sidecar) every lane of a movement's connecting road is a driving lane.
+
+  It runs with the other HD checks and passes on all 11 examples. Tests on broken fixtures: `tests/test_hdmap_lane_types.py` (a sidewalk linked to a driving lane, a type change between lane sections and across a road link, a shoulder on a movement's road). A sign outside the road, a missing stop line and conflicting greens were already tested (B5, B6).
+- **`metrics --sweep N --hd`:** each network goes through `annotate` and the cross-section fit, then the HD build, seeded like a pipeline run. `--jobs N` builds N at a time. The fit moved from `cli.fit_graph` to `repair.fit_cross_sections`, so the pipeline and the sweep share it.
+- **`metrics --hd`** needed nothing new: B4–B8 already added each count as its content arrived.
+- **Performance against B0** (`b9_perf.py`): below.
+
+Changes against the plan, and choices it left open:
+- **B0 measured with today's code:** with HD off, the builder's output is byte-identical to B0's (identity guard), so `pipeline --no-hd` builds B0's network. B0's own numbers had the drive-check and a parallel test suite in them.
+- **The drive-check loads esmini's RoadManager once for both passes** (`drive_check.drive_all`); before, each pass loaded it again. The load is most of the time on large networks. It logs wall and CPU time for the load and each pass.
+
+**Items deferred to B9 (prompt 12):**
+
+1. **Drive-check run-time variance** (`b9_drive_variance.sh`, `b9_load_variance.py`, `b9_road_order.py`):
+   - **The Docker VM is ruled out.** Three drive-checks of `mixed_city` (final B8 file), with `docker stats` every 2 s and the VM's swap and pressure counters:
+     - 379–386 s (1.7 % spread);
+     - no page swapped in or out, zero memory-pressure stall time;
+     - the container held one core at 100 % and at most 1.0 GB of 7.7 GB;
+     - the host's swap did not grow.
+
+     The first B8 run's file, whose drive-check once took 2,278 s, took 399 s.
+   - **Where the time goes:** the RoadManager load (`RM_Init`), about 170 s per load on `mixed_city`, against 54 s for 4,140 movements and 12 s for 2,228 lanes. Two loads were most of every drive-check, hence the single load above.
+   - **The load itself varies, and it is CPU time.** `city`'s roads written in reverse order load in 105.8 s once and 329–335 s twice. CPU time equals wall time in every run, so the extra is computation inside esmini, not waiting. As built, `city` stays within 57–60 s over six runs. The 2,278 s drive-check was most likely such a slow load, not the host, as the B8 report supposed.
+   - **Cause not found:**
+     - Disabling address-space randomisation (`setarch -R`), to test whether the slow runs depend on memory layout, is not allowed by Docker's default seccomp profile.
+     - Profiling needs esmini's RoadManager built from source with gprof. The build (cloning esmini v3.9.0 and installing g++ in a throwaway root container) was denied by the session's permission check and is left to the user. Sampling profilers cannot see esmini under Rosetta.
+2. **Corner roads' esmini load cost** (`b9_osi_points.py`, `b9_road_order.py`):
+   - On `city` they are 5 % of the lane length (39 of 798 km) but 26.7 s of a 57.5 s load: 30.8 s without them (best of 3; spreads 0.4 and 0.3 s). That is about 17 times the load per lane metre of the other roads.
+   - **Not the OSI point density:** esmini exports no OSI lanes for them (same 11,220 lanes and 136,089 centre-line points with and without), and their 21,868 boundary points are 0.55 per lane metre against 0.29 elsewhere.
+   - **Not their place in the file:** corner roads first 60.2 s, last 61.3 s, as built 56.8 s.
+   - **Road order matters in general:** esmini finds roads by id with a linear scan (`OpenDrive::GetRoadById`). Reversed, the load doubles; by OSI work, largest first, it is 51.9 s (−9 %). As built, long normal roads come first, close to that best order, so the order is left alone.
+   - The cause lies in how esmini evaluates positions on these roads and needs the profiler. So the switch was added: `cross_section.corner_roads: false` / `--no-corner-roads` (`pipeline`, `build-xodr`) leaves them out. The network still passes every validator (test `test_corner_roads_switch.py`).
+3. **`.xodr` write time** (`b9_write_profile.py`): on `city`, 70 % of `write()` was the junction-surface fill, mostly sampling every lane of every arm road along its whole length. Changes:
+   - arms are sampled only near their junction ends, on the same 1 m grid, from the end until the reference line leaves the hull grown by the road's half-width;
+   - lane widths and offsets are evaluated with numpy;
+   - the per-junction scan of all roads went.
+
+   `city`'s write went from 7.1 to 5.8 s (best of 3; 7.0–7.4 before). The patches are unchanged on `manhattan_like`, `grid` and the junction presets. On `city` they keep their count (579) and area (6,000.8 m²); a few corners differ in the last decimal. The rest is spiral evaluation in Python and XML serialisation, which grows with the file; not cheap to cut further.
+4. **Size breakdown and cheap reductions** (`b9_size.py` → `baselines/2026-10-31-stage-b-b9-size.json`):
+   - B8's growth on `manhattan_like` (15.09 → 23.52 MB) was arrows 5.74 MB (68 %) and fill patches 2.51 MB (30 %).
+   - Indentation was 35 % of every file (8.29 MB).
+   - Two reductions, both checked in esmini:
+     - **One space of indentation per level with HD maps** (four with HD off, so the identity guard is untouched). Whitespace only: esmini and OSI read the same content.
+     - **Arrows as polylines over shared corners:** the shaft runs on into one stem, the other stems and the heads are polylines through shared corners. A straight arrow has 4 corners and 2 markings instead of 8 and 4. esmini draws a marking through all its corners with mitred joints, and OSI reports one road marking per polyline (`b9_arrow_check.py`: renders white, 32 arrow road markings of 2–3 vertices instead of 60 of 2).
+   - `manhattan_like` is now 16.55 MB (−30 %; arrows 2.79 MB, indentation 2.75 MB), +9.7 % over B7z instead of +55.9 %.
+   - `city` 32.1 → 25.4 MB, `mixed_city` 41.1 → 33.2 MB.
+   - Load times do not follow the size: `manhattan_like` 43.7 s, `city` 50.8 s (B8: 42.4, 50.1; best of 3, spread under 1.5 s). Patches stay as they are; rounding their corners to cm would save little more.
+5. **The fifth esmini warning on `mixed_city`:** all five "No connecting lane" warnings (and those of B7z and B8) are cars at the end of a dropped lane. A driving lane −2 narrows from 3.5 m to 0 over its section and has no successor, where a road goes from two lanes to one along a chain (a correct OpenDRIVE lane drop). esmini's default driver does not merge first, so it snaps the car to lane −1 and warns. B8 added no lane drops. The count (3, 4, 4, 5 over the runs) is how many of the 50 randomly placed cars reach a dropped lane in 30 s.
+
+**Performance against B0** (`b9_perf.py`, best of 3 with median and worst; `baselines/2026-10-31-stage-b-b9-perf.json`):
+
+Times in s as best (median, worst) of 3, one after the other in one container; the real-time factor as its lowest and highest. HD off is B0's output.
+
+| | city, B0 | city, HD | mixed_city, B0 | mixed_city, HD |
+|---|---|---|---|---|
+| pipeline (no drive-check) | 16.1 (16.2, 16.4) | 51.1 (51.4, 51.5) | 25.5 (25.8, 26.2) | 87.2 (87.7, 88.2) |
+| fit cross-sections (repair) | – | 18.9 (19.0, 19.0) | – | 40.2 (40.4, 40.5) |
+| build xodr | 3.3 (3.3, 3.4) | 7.0 (7.1, 7.1) | 5.3 (5.4, 5.6) | 10.5 (10.6, 11.1) |
+| write xodr | 1.0 (1.0, 1.0) | 5.0 (5.0, 5.0) | 1.3 (1.3, 1.3) | 6.6 (6.7, 6.8) |
+| validate | 5.5 (5.6, 5.6) | 9.2 (9.3, 9.4) | 6.7 (6.9, 6.9) | 13.2 (13.3, 13.3) |
+| plot lanes (`PREFIX_hd.png`) | – | 4.5 (4.5, 4.6) | – | 4.9 (4.9, 4.9) |
+| `.xodr` size | 18.3 MB | 25.4 MB | 23.2 MB | 33.2 MB |
+| esmini load (`simulate`, 50 cars) | 17.3 (17.3, 17.5) | 49.0 (49.1, 49.5) | 47.4 (47.7, 48.4) | 136.0 (136.3, 136.6) |
+| stepping, × real time | 86.5–87.9 | 59.1–60.1 | 65.0–66.0 | 38.3–39.6 |
+| esmini peak memory | 135 MB | 201 MB | 147 MB | 244 MB |
+
+- **The exit target "build time ≤ 2 × B0" is not met.** Build alone is 2.1× (`city`) and 2.0× (`mixed_city`); with the write, 2.8× and 2.6×; with the cross-section fit, 7.2× and 7.4×; the whole pipeline 3.2× and 3.4×.
+- **The fit is the largest new cost** (`b9_fit_profile.py`, `mixed_city`):
+  - `repair_short_edges` recomputes every junction's trims (`short_edges`, 14 times, 18.9 s) or the whole network's alignment (`stub_roads`, 8 times, 34.1 s) after every repair and every pocket trial (13 trials, 22.6 s).
+  - Making it incremental (trims per node, cached on the node's neighbourhood) is the lever. It is not cheap enough for this phase: the cache key must cover everything the trims read, pockets left out included. Proposed for B10 (decision below).
+- **esmini's load** is 2.8× B0's on both networks, most of it the corner roads (above). Stepping stays above 38× real time.
+
+**Build-failure sweeps with HD maps** (`metrics --sweep 200 --hd --jobs 4` → `baselines/2026-10-31-stage-b-b9-sweeps.json`):
+
+| Preset | HD off (= B0) | HD on | Time, 4 jobs |
+|---|---|---|---|
+| city (seeds 0–199) | 0 of 200 (stage C) | 3 of 200 (5 before the collapse fix below) | 1,607 s |
+| mixed_city (seeds 0–199) | 10 of 200 (392 s) | 21 of 200 | 4,039 s |
+
+- **Repair fix found by the sweep:** a collapse moves the surviving node, which turns the roads at its neighbours. Only the merged node was checked, so a collapse could leave a neighbour's two roads 1.7° apart (`city` seed 33, a two-road bend) or two arms 8.7° apart (seed 146). Now every neighbour must stay buildable (`repair._collapse`; test `test_collapse_keeps_the_neighbours_buildable`). The lsystem identity test and the builder identity guard still pass.
+- **`city`'s 3 (seeds 16, 96, 153):** two wide roads leave one node at an acute angle, e.g. two 2+2 highways 17° apart (seed 16, node 23). Keeping them apart takes trims of 60–124 m, longer than the next edge. That edge can be neither collapsed nor removed. With HD off the roads are narrower and fit.
+- **`mixed_city`'s 21:** mostly short avenue spurs (13–24 m) between a roundabout entry and a two-road bend the builder keeps as a junction, its bend too tight for the inner lane at HD widths (seeds 15, 19, 22, 24 checked). Their trims (9 + 10.5 m) exceed them. Collapsing would move a roundabout entry and removing would cut off the arm, so the repair leaves them. With HD off, 10 of the same kind fail already (trims 9 + 9 m; `sweep_mixed_city_b0`): a gap of the generator's roundabout transform that no sweep had measured, since stage C's 0 of 200 was on `city`. HD widens the spurs and adds 11. Turn pockets are not the cause (the same seeds fail without them), nor the collapse fix (they fail with B8's collapse).
+- **The exit target (0 failures with HD) is not met;** see the decisions below.
+
+**Example set with `--hd`** (`stage_b_examples.sh out/stage_b/b9 --hd`):
+- All 11 networks build and pass every validator (the lane-type checks included) and the drive-check wherever it runs (`city` 3,150 movements and 1,922 lanes; `mixed_city` 4,140 and 2,228).
+- esmini simulates `city` with 0 errors and 0 warnings, and `mixed_city` with 0 errors and the 5 lane-drop warnings.
+- Pipeline times with the single load: `city` 137 s (B8 225 s), `mixed_city` 268 s (B8 481 / 731 s), `manhattan_like` 106 s (160 s).
+- After the collapse fix all 11 were rebuilt (no drive-check) and their `.xodr` files are byte-identical to these.
+- **Final run after prompt 13** (`out/stage_b/b9` rebuilt): all 11 build, validate and pass the drive-check (`city` 3,208 movements and 1,958 lanes; `mixed_city` 4,159 and 2,252).
+  - esmini simulates both with 0 errors and 2 lane-drop warnings each.
+  - Pipeline with drive-check: `city` 141 s, `mixed_city` 166 s (B8: 225 and 481–731 s).
+  - The last two repair fixes (pockets with bare ends, old stubs becoming too short) changed no example: same file sizes.
+
+Exit of B9 (after prompt 13): full suite 737 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); identity guards pass; ruff clean on touched files apart from the project's style. Docs updated:
+- `validation.md`: lane types, drive-check single load and timings, sweep `--hd` / `--jobs`;
+- `cli-reference.md`: `--no-corner-roads`, sweep options;
+- `opendrive.md`: corner roads' load cost, arrows as polylines;
+- `architecture.md`: indentation;
+- `development.md`: esmini load time.
+
+Helper scripts: `b9_drive_variance.sh`, `b9_load_variance.py`, `b9_road_order.py`, `b9_osi_points.py`, `b9_write_profile.py`, `b9_size.py`, `b9_arrow_check.py`, `b9_perf.py`, `b9_fit_profile.py`, `b9_esmini_repro.py` (`b9_esmini_profile.sh` was written but never run, then deleted after prompt 13). `esmini_load.py` now prints median and worst too.
+`b9_fit_profile.py` profiles the cross-section fit.
+
+**Decisions for the user (end of B9; answered by prompt 13, below):**
+1. **Build failures with HD maps** (`city` 3, `mixed_city` 21 of 200). Options:
+   - (a) the repair also tries removing the acute partner edge, or a roundabout spur together with its bend;
+   - (b) roads leave out their side lanes at the ends where the junction is too acute or the spur too short;
+   - (c) accept them as a generator gap and leave them to stage D (spurs at roundabout entries, highways leaving a node at acute angles).
+2. **Build time above 2 × B0.** The cross-section fit is 19–40 s. Options:
+   - an incremental repair, caching trims per node in B10;
+   - or relax the target to the build step alone, which is at 2.0–2.1×.
+3. **Profiling esmini's load** (the variance and the corner roads) needs esmini's RoadManager built from source with gprof (`b9_esmini_profile.sh`: clones esmini v3.9.0 into `out/`, installs g++ in a throwaway root container). The session's permission check refused it. Allow it, or report the two findings to esmini instead?
+
+#### Prompt 13 decisions (after the B9 report)
+
+**1. Build failures: bare road ends, never removed roads** (user). In the HD fit (`repair_short_edges` with a cross-section), an edge too short only because of the side lanes is never collapsed or removed. An edge counts as HD-caused when it is not too short with the driving lanes alone. Every stub in that pass counts too, because the stubs the network had before are `keep_stubs`.
+
+Such an edge is fixed instead by:
+- **Bare road ends** (`cross_section.bare_ends`, graph metadata `no_side_lanes`), tried one at a time until it fits, then those it fits without are put back. The edge's own ends come first, then the other arms of its two junctions: at an acute junction the neighbour's width sets the trim. A bare end loses parking, bike lane, sidewalk and shoulder before the junction (the user's list), keeps its curb, and gets no class curb return at its corners.
+- **Curb returns** go with them *(choice left to Claude)*: without that, bare ends do not free enough room. On the B1 test block (16 m, trims 8.5 + 8.5) the curb returns alone keep it too short. With it, a bare end takes the room the road takes with HD off, plus its 0.15 m curb.
+- **Straightening a two-road bend** *(deviation, for the user to confirm)*: on `suburb`, two edges stayed too short even with bare ends. A two-road bend (node 353) was curved with HD off; with HD its curve no longer clears the sidewalks around, so the alignment keeps it as a junction, leaving two stubs of 0.7 and 0.2 m that esmini cannot drive (the drive-check failed). Bare ends cannot help there, since they change trims, not whether a bend becomes a junction.
+
+  Where an edge is still too short and one end is such a bend, the bend's two edges (the same road: class, lanes each way, lane width, speed, profile; no bridges or tunnels) become one edge between the junctions on either side, and the bend node goes (`_dissolve_bend`, metadata `straightened_bends`). The road stays, only its vertex goes; both junctions must stay buildable.
+
+  Without this `suburb` fails; the alternative would be the old collapse, which removes a road segment and moves a junction.
+- **Pockets and bare ends together** (found by the sweep: `city` seeds 60, 162, 168, two highways leaving a junction 13–20° apart): pockets alone and bare ends alone are each not enough, so the bare ends are also tried with every pocket at the two junctions left out, then the pockets the edge fits without go back (`_bare_without_pockets`).
+- **Old stubs that become too short** (found by the sweep: `mixed_city` seeds 19, 22, 24, 36, 67, 76, 110): a spur between a roundabout entry and a two-road bend the alignment keeps as a junction is a stub with HD off (18.3 m against trims of 9 + 9 m), so the fit left it alone as one the network already had. With HD its trims grow to 10.5 + 10.5 m and it is too short. An edge the alignment reports too short is now not treated as a stub: `keep_stubs` does not apply, and whether HD caused it is checked against the alignment without side lanes.
+- **Otherwise** the edge is left and the builder reports it.
+
+Tests:
+- the B1 test block keeps its road with bare ends;
+- a dead-end stub at a T bares the through road's ends;
+- an 18 m block builds and validates with no sidewalk at its ends;
+- bend straightening (lanes reoriented, heights resampled, other classes refused);
+- the bridge test now uses a block too short without HD.
+
+On the examples (`out/stage_b/b9`, graph metadata `fit`), every example keeps every road:
+
+| | repaired edges (B8 → now) | bare ends | pockets left out | bends straightened |
+|---|---|---|---|---|
+| paris | 2 → 0 | 2 | 1 | 0 |
+| suburb | 12 → 0 | 9 | 0 | 1 |
+| city | 10 → 0 | 11 | 2 | 0 |
+| mixed_city | 11 → 0 | 13 | 1 | 0 |
+| highway_corridor | 2 → 0 | 2 | 0 | 0 |
+| junction_diamond | 2 → 0 | 2 | 0 | 0 |
+
+The ≤ 1 % repair criterion is now 0 % everywhere (`suburb`'s and `city`'s accepted overshoots are gone).
+
+**Exit criterion restated** (user): "no build failures added by HD" (exit-criteria table). The 10 `mixed_city` failures with HD off are recorded as a stage D item (open items).
+
+**Sweeps after the changes** (`metrics --sweep 200 --hd --jobs 4`, the final code; `baselines/2026-10-31-stage-b-b9-sweeps.json`):
+
+| Preset | HD off (= B0) | HD on, B9 as reported | HD on, now | Time, 4 jobs |
+|---|---|---|---|---|
+| city | 0 of 200 | 3 | **0** | 937 s |
+| mixed_city | 10 of 200 | 21 | **0** | 1,967 s |
+
+- **No failures added by HD:** the restated exit criterion is met.
+- `mixed_city`'s 10 HD-off failures build with HD maps, since the HD fit can straighten the spurs' bends. With HD off they still fail: the stage D item stays.
+- Each fix above was found by a sweep run and confirmed on its seeds; the final sweeps ran on the final code.
+
+**2. Incremental width fitting** (user: time-box one day; recompute only around each repair). Done within the time-box:
+- **Junction trims are memoised on the graph** (`junction_space.node_trims`, key `_trims_key`: the node, its incident edges and their far nodes, loop membership, roundabout entries, pockets left out and bare ends there, margin and parameters). Every caller benefits, the whole-network alignment included.
+- **Pocket and bare-end trials re-check a stub from its trims** (`repair._stub_here`: a single-edge road is straight) instead of aligning the whole network; the next scan confirms.
+- **All edges of one scan are worked through before the network is aligned again**, since pockets and bare ends change only trims. A collapse or removal still forces a rescan.
+- The lsystem identity test and the builder identity guard pass (HD off unchanged).
+- Profiled on `mixed_city`, the fit went from 75 s (B9 as reported) to 17.6 s.
+
+Measured again after all prompt 13 changes (`b9_perf.py`, best (median, worst) of 3; `baselines/2026-10-31-stage-b-b9-perf.json`, replacing the first B9 numbers above):
+
+| | city, B0 | city, HD | mixed_city, B0 | mixed_city, HD |
+|---|---|---|---|---|
+| pipeline (no drive-check) | 16.0 (16.1, 16.2) | 39.3 (39.4, 39.4) | 25.4 (25.8, 26.0) | 60.9 (61.4, 61.6) |
+| fit cross-sections | – | 6.8 (6.8, 6.8) *(was 18.9)* | – | 15.0 (15.3, 15.3) *(was 40.2)* |
+| build xodr | 3.3 (3.3, 3.3) | 6.9 (7.0, 7.0) | 5.3 (5.4, 5.7) | 9.5 (9.7, 9.9) |
+| write xodr | 1.0 (1.1, 1.1) | 5.0 (5.0, 5.1) | 1.3 (1.3, 1.4) | 6.6 (6.6, 6.7) |
+| validate | 5.5 (5.5, 5.6) | 9.3 (9.4, 9.5) | 6.8 (6.8, 6.9) | 13.0 (13.0, 13.0) |
+| esmini load | 17.4 (17.5, 17.6) | 51.7 (52.0, 52.3) | 47.7 (48.0, 49.1) | 136.7 (139.1, 141.2) |
+| stepping, × real time | 86.4–87.3 | 60.0–60.8 | 62.4–65.9 | 41.8–42.5 |
+
+- **Build step:** `mixed_city` 1.78×, within the 2× target. `city` is at the target: 2.13× in this run, 1.99× in the run before. Its HD build time is the same in both (6.9–7.0 s); B0's varies, 3.25 against 3.51 s.
+- **Whole pipeline: 2.5× (`city`) and 2.4× (`mixed_city`), recorded** as the user asked. The rest is the larger file's write and validation, the HD lane plot (4.5–4.8 s) and the fit. The target stays on the build step alone.
+
+**3. esmini: no build, no profiling** (user). A minimal reproduction and an issue draft are in [`2026-10-31-esmini-issue-draft.md`](2026-10-31-esmini-issue-draft.md), with the files in `plans/esmini-issue/` (`b9_esmini_repro.py`). Five `RM_Init` runs each:
+- **Corner roads:** on `grid` they are 7 % of the lane length and add 34 % to the load (3.66 s against 2.73 s, spread under 4 %). On `city` they add 86 % (56.8 s against 30.6 s).
+- **Order:** reversed road order doubles the load deterministically on `grid` (7.40 s).
+- **Variance:** reproduced on today's `city` reversed: 98.5, 99.9, 100.4, 178.7 and 302.5 s, CPU time equal to wall time.
+- The two `city` files are 4.5 MB gzipped each; the `grid` files 0.1–0.24 MB.
+- `b9_esmini_profile.sh` is deleted, since profiling is not wanted.
+
 ### B10 · Default flip, docs, examples, final measurement
 
 - **Flip:** `hdmap.enabled: true` in `defaults.yaml`; `HDMAP_VERSION = 1` in `roadgen/opendrive/__init__.py`, written to the sidecar (and `0` / absent with HD off); `--no-hd` gives today's output.
@@ -1305,7 +1520,7 @@ Helper scripts: `b8_turns.py`, `b8_closeups.py`, `b8_arrow_outline.py`.
 |---|---|
 | Builder output with HD off | byte-identical `.xodr` and sidecar to B0 (guard networks), through B9; with `--no-hd` after B10 |
 | lsystem identity test | unchanged |
-| Build failures, 200 seeds, `city` and `mixed_city`, HD on | 0 |
+| Build failures, 200 seeds, `city` and `mixed_city`, HD on | none added by HD: no seed that builds with HD off fails with HD on *(restated by prompt 13: `mixed_city`'s roundabout spurs fail with HD off too, a stage D item)* |
 | Edges removed or merged by the cross-section repair | ≤ 1 % of junction roads per example |
 | Validators (incl. `hdmap`) | pass on every example |
 | Drive-check | passes on every example it ran on before stage B (interchanges still open) |
@@ -1313,10 +1528,11 @@ Helper scripts: `b8_turns.py`, `b8_closeups.py`, `b8_arrow_outline.py`.
 | Controlled approaches with a stop or yield line and a sign or light | 100 % |
 | Lights switch in esmini | yes, shown in OSI output or screenshots |
 | Control mix | lights at every at-grade avenue × avenue and highway × avenue junction; yield and stop present in `city` and `mixed_city`; yield, stop and right-before-left together in `mixed_city` *(changed by prompt 8: `city` has no street × street junctions)* |
-| Build time | ≤ 2 × B0 on `city` and `mixed_city` |
+| Build time | ≤ 2 × B0 on `city` and `mixed_city` for the build step (`build xodr`); the whole pipeline's ratio is recorded *(prompt 13)* |
 
 ## Open items for later stages
 
+- **Stage D (roundabout spurs):** `mixed_city` (lsystem preset `mixed_city`, maps) fails to build on 10 of 200 seeds with HD maps off (B9 sweep, `baselines/2026-10-31-stage-b-b9-sweeps.json`). In each, an avenue spur of 13–24 m runs from a roundabout entry to a two-road bend that is too tight to stay a curve, so both ends are junctions whose trims (9 + 9 m) exceed it. The repair cannot collapse it (that would move the roundabout entry) or remove it (that would cut off the arm). This is a gap of the roundabout transform (spur length or bend), not of stage B *(prompt 13)*.
 - **Stage D (diversity of the generator):** `city` (lsystem preset `city`, seed 7) has no street × street junctions at all: every junction touches an avenue or a highway (B5 measurement, `baselines/2026-10-30-stage-b-after-b5-hd.json`), so right before left never occurs there. That is a gap of the generator's diversity, not of stage B *(prompt 8)*.
 
 ## Risks

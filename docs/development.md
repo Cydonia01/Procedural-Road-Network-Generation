@@ -132,3 +132,27 @@ autonomous cars, and `simulate` reports what a single run costs
   - Terrain can't see elevation, so forests don't prefer steep or high
     ground. That would need a post-step on the terrain.
   - Style `zones` reads only density and slope, not water or parks.
+
+### esmini load time
+
+esmini 3.9's RoadManager does most of its work while loading: it computes
+OSI points along every lane (`SetLaneOSIPoints`, 1 m steps that shrink
+where the surface's pitch or roll changes). On large HD networks that is
+the bulk of a drive-check or simulation start (`city` about 57 s,
+`mixed_city` about 170 s). Measured in stage B9
+(`plans/2026-10-29-stage-b-implementation.md`, B9 result):
+
+- **Corner roads** are 5 % of `city`'s lane length but 27 s of its load.
+  Neither their OSI point density (about twice the rest) nor their place in
+  the file explains it. `cross_section.corner_roads: false`
+  (`--no-corner-roads`) leaves them out for throughput benchmarks.
+- **Road order:** esmini finds roads by id with a linear scan, so the load
+  depends on where roads stand in the file. Long normal roads first (as
+  built) is about the best order; reversed it takes about twice as long.
+- **The same load varies** on some files by up to three times between runs,
+  all of it CPU time inside esmini (not the Docker VM: no swapping, no
+  memory or CPU pressure). Address-space randomisation could not be ruled
+  out: Docker's default seccomp profile does not allow `setarch -R`.
+- **Not done:** profiling esmini's load needs a build of its RoadManager
+  with profiling (gprof); esmini runs under Rosetta on Apple Silicon, so
+  sampling profilers do not see its code.

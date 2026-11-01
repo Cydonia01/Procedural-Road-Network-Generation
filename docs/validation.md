@@ -141,6 +141,11 @@ with HD maps on.
   edge (signs up to 2 m outside it), with `<validity>` lanes that exist at
   their station.
 - **Unique ids:** signal ids, and object ids (bridges and tunnels included).
+- **Lane types along links:** a lane linked to the next lane section, or
+  across a road-to-road link (a connecting road's ends too), keeps its type;
+  every junction `<laneLink>` joins two lanes of the same type, so no
+  driving lane leads into a sidewalk or the other way round; and (sidecar)
+  every lane of a movement's connecting road is a driving lane.
 - **Controlled approaches** (from the sidecar's `junctions`): every `stop`,
   `yield` or `signal` approach with incoming lanes has a stop or yield line
   within 8 m of the road end (behind a crosswalk), and every `stop` and
@@ -216,6 +221,14 @@ angles were calibrated against esmini 3.9.
 This confirms that esmini reads the spirals, lane sections, tapers,
 elevation and superelevation exactly as roadgen does.
 
+Both passes share one load of the RoadManager (`drive_all`): on large
+networks the load is most of the time (on `mixed_city` about 170 s of the
+load against 66 s of driving). The log gives the load's and each pass's wall
+and CPU time; a wall time far above the CPU time means the host, not esmini,
+was slow. esmini's load itself varies: on some files the same load takes
+up to three times as long in some runs, all of it CPU time
+([development notes](development.md#esmini-load-time)).
+
 ## Metrics
 
 Measurements, not pass/fail checks: `metrics` always succeeds. Thresholds and
@@ -226,6 +239,7 @@ parameters are in `defaults.yaml` under `metrics` and `network_metrics`.
 ```bash
 python -m cli metrics out/<hash>/net.xodr --json net_metrics.json
 python -m cli metrics --sweep 200            # lsystem city on maps, seeds 0..199
+python -m cli metrics --sweep 200 --hd --jobs 4 --preset mixed_city   # with HD maps
 ```
 
 How drivable and smooth a network is (`metrics/geometry.py`). It reads only
@@ -247,7 +261,10 @@ the `.xodr`, so any network is measured the same way.
   Roads that only match in position and heading (G1) show up here.
 - **Build-failure sweep** (`--sweep N`): generates N networks as `pipeline
   --maps` would and builds each, reporting the ones the builder rejects
-  (usually an edge shorter than its junction trims).
+  (usually an edge shorter than its junction trims). With `--hd` each
+  network first goes through what `pipeline --hd` does before the build
+  (`annotate` from the maps, the cross-section fit) and is built with HD
+  maps. `--jobs N` builds N networks at a time.
 
 ### Network metrics
 

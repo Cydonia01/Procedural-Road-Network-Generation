@@ -19,7 +19,7 @@ import json
 import logging
 import math
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 from lxml import etree
@@ -61,8 +61,10 @@ MIN_MARK_POINTS = 0.3  # thinnest drawn mark [pt]
 MAX_PIXELS = 4000  # longest side of the image [px]
 
 
-def lane_polygons(road: etree._Element, step: float = 2.0) -> list[tuple[str, np.ndarray]]:
-    """(lane type, (n, 2) outline) of every lane of a road, per lane section."""
+def lane_polygons(road: etree._Element, step: float = 2.0,
+                  s_range: Optional[tuple[float, float]] = None) -> list[tuple[str, np.ndarray]]:
+    """(lane type, (n, 2) outline) of every lane of a road, per lane section; with s_range
+    only over that stretch, on the same samples (one beyond each end) as the whole road."""
     ev = RoadEval(road)
     sections = ev.sections
     bounds = [float(sec.get("s")) for sec in sections] + [ev.length]
@@ -72,14 +74,21 @@ def lane_polygons(road: etree._Element, step: float = 2.0) -> list[tuple[str, np
         if s1 - s0 <= 1e-6:
             continue
         ss = np.linspace(s0, s1, max(2, int(np.ceil((s1 - s0) / step)) + 1))
+        if s_range is not None:
+            keep = np.flatnonzero((ss >= s_range[0]) & (ss <= s_range[1]))
+            if not len(keep):
+                if s1 < s_range[0] or s0 > s_range[1]:
+                    continue
+                keep = np.flatnonzero(ss <= s_range[0])[-1:]  # the range lies between two samples
+            ss = ss[max(keep[0] - 1, 0):keep[-1] + 2]
         ref = np.array([ev.reference(s) for s in ss])
-        offset = np.array([_offset(ev, s) for s in ss])
+        offset = _cubics(ev.offsets, ss, "s")
         normal = np.column_stack([-np.sin(ref[:, 2]), np.cos(ref[:, 2])])
         for side, sign in (("right", -1.0), ("left", 1.0)):
             lanes = sorted(sec.findall(f"{side}/lane"), key=lambda lane: abs(int(lane.get("id"))))
             inner = offset.copy()
             for lane in lanes:
-                widths = np.array([_width(lane, s - s0) for s in ss])
+                widths = _cubics(lane.findall("width"), ss - s0, "sOffset")
                 outer = inner + sign * widths
                 if np.max(widths) > 1e-6:
                     a = ref[:, :2] + normal * inner[:, None]
@@ -148,12 +157,15 @@ def furniture(road: etree._Element) -> tuple[list, list, list, list[tuple[str, f
             pts = [(float(x.get("u")), float(x.get("v"))) for x in obj.findall("outlines/outline/cornerLocal")]
             patches.append(np.array([(x0 + u * math.cos(h0) - v * math.sin(h0), y0 + u * math.sin(h0)
                                       + v * math.cos(h0)) for u, v in pts]))
-        elif obj.get("name", "").startswith("arrow"):  # a lane arrow: its lines, turned by the heading
+        elif obj.get("name", "").startswith("arrow"):  # a lane arrow: its marking polylines, turned
             c, sn = math.cos(float(obj.get("hdg", "0"))), math.sin(float(obj.get("hdg", "0")))
-            pts = [(float(x.get("u")), float(x.get("v"))) for x in obj.findall("outlines/outline/cornerLocal")]
-            for (u0, v0), (u1, v1) in zip(pts[::2], pts[1::2]):
-                lines.append(np.array([_road_point(ev, s + u * c - v * sn, t + u * sn + v * c)
-                                       for u, v in ((u0, v0), (u1, v1))]))
+            pts = {x.get("id"): (float(x.get("u")), float(x.get("v")))
+                   for x in obj.findall("outlines/outline/cornerLocal")}
+            for marking in obj.findall("markings/marking"):
+                line = [pts[r.get("id")] for r in marking.findall("cornerReference")]
+                for (u0, v0), (u1, v1) in zip(line, line[1:]):
+                    lines.append(np.array([_road_point(ev, s + u * c - v * sn, t + u * sn + v * c)
+                                           for u, v in ((u0, v0), (u1, v1))]))
         elif obj.get("type") == "roadMark":
             lines.append(np.array([_road_point(ev, s, t + v) for v in (lo, hi)]))
         elif obj.get("type") == "crosswalk":
@@ -180,6 +192,20 @@ def _border(ev: RoadEval, sides: dict[int, list[etree._Element]], s0: float, lan
 def _offset(ev: RoadEval, s: float) -> float:
     rec = _piecewise(ev.offsets, s, "s")
     return _poly(rec, s - float(rec.get("s"))) if rec is not None else 0.0
+
+
+def _cubics(records: list[etree._Element], xs: np.ndarray, key: str) -> np.ndarray:
+    """Piecewise cubic records (start attribute key; a, b, c, d) at every x of xs, as
+    _piecewise and _poly pick and evaluate them one x at a time (0 without records)."""
+    if not records:
+        return np.zeros(len(xs))
+    starts = np.array([float(r.get(key)) for r in records])
+    coef = np.array([[float(r.get(k, 0)) for k in ("a", "b", "c", "d")] for r in records])
+    # the last record starting at or before x (+1e-9); before the first, the first
+    idx = np.maximum(np.searchsorted(starts, xs + 1e-9, side="right") - 1, 0)
+    ds = xs - starts[idx]
+    a, b, c, d = coef[idx].T
+    return a + b * ds + c * ds * ds + d * ds ** 3
 
 
 def _width(lane: etree._Element, ds: float) -> float:

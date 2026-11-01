@@ -26,6 +26,13 @@ Traffic lights (B6):
   least the plan's min_green; and no two conflicting movements are green in
   one phase, unless one yields to the other (a permissive left turn).
 
+Lane types (B9):
+- a lane linked to the next lane section, or across a road-to-road link, keeps
+  its type;
+- every junction <laneLink> joins two lanes of the same type, so no driving
+  lane leads into a sidewalk or the other way round;
+- with the sidecar: every lane of a movement's connecting road is a driving lane.
+
 Lane use and banned turns (B8), with the sidecar:
 - every lane_use record matches the movements of its approach;
 - left-turn pockets feed only left turns and U-turns;
@@ -69,6 +76,7 @@ def check_hdmap_tree(tree: etree._ElementTree, sidecar: Optional[dict] = None) -
     errors: list[str] = []
     root = tree.getroot()
     errors += _check_furniture(root)
+    errors += _check_lane_types(root, sidecar)
     if sidecar is not None:
         errors += _check_approaches(root, sidecar)
     errors += _check_priorities(root)
@@ -148,6 +156,70 @@ def _check_furniture(root: etree._Element) -> list[str]:
                     errors.append(f"{where}: validity lanes {sorted(missing)} do not exist at s={s:.3f}")
     errors += [f"signal id {i} used {n} times" for i, n in sorted(signal_ids.items()) if n > 1]
     errors += [f"object id {i} used {n} times" for i, n in sorted(object_ids.items()) if n > 1]
+    return errors
+
+
+def _lane_types(road: etree._Element) -> list[dict[int, str]]:
+    """Per lane section of a road: lane id -> type (centre lane left out)."""
+    return [{int(lane.get("id")): lane.get("type") for lane in sec.iter("lane") if lane.get("id") != "0"}
+            for sec in road.findall("lanes/laneSection")]
+
+
+def _check_lane_types(root: etree._Element, sidecar: Optional[dict] = None) -> list[str]:
+    errors = []
+    roads = {r.get("id"): r for r in root.findall("road")}
+    types = {rid: _lane_types(r) for rid, r in roads.items()}
+
+    def lane_at(rid: str, contact: str) -> dict[int, str]:
+        secs = types.get(rid) or [{}]
+        return secs[0] if contact == "start" else secs[-1]
+
+    for rid, road in roads.items():
+        secs = road.findall("lanes/laneSection")
+        for k, sec in enumerate(secs):
+            for lane in sec.iter("lane"):
+                lid = int(lane.get("id"))
+                if lid == 0:
+                    continue
+                kind = lane.get("type")
+                for tag, step in (("successor", 1), ("predecessor", -1)):
+                    link = lane.find(f"link/{tag}")
+                    if link is None:
+                        continue
+                    target = int(link.get("id"))
+                    if 0 <= k + step < len(secs):  # the neighbouring section of the same road
+                        other, where = types[rid][k + step].get(target), f"section {k + step}"
+                    else:  # across the road's own link (a junction link has no lane links here)
+                        rlink = road.find(f"link/{tag}")
+                        if rlink is None or rlink.get("elementType") != "road":
+                            continue
+                        to = rlink.get("elementId")
+                        other = lane_at(to, rlink.get("contactPoint", "start")).get(target)
+                        where = f"road {to}"
+                    if other is not None and other != kind:
+                        errors.append(f"road {rid} section {k} lane {lid} ({kind}) links to lane {target} "
+                                      f"({other}) of {where}")
+    for junction in root.findall("junction"):
+        for c in junction.findall("connection"):
+            inc, con = c.get("incomingRoad"), c.get("connectingRoad")
+            if inc not in roads or con not in roads:
+                continue  # topology reports it
+            # The incoming road's end at this junction: the end its link names the junction.
+            jid = junction.get("id")
+            end = "end" if any(lk.get("elementType") == "junction" and lk.get("elementId") == jid
+                               for lk in roads[inc].findall("link/successor")) else "start"
+            from_types = lane_at(inc, end)
+            to_types = lane_at(con, c.get("contactPoint", "start"))
+            for ll in c.findall("laneLink"):
+                a, b = from_types.get(int(ll.get("from"))), to_types.get(int(ll.get("to")))
+                if a is not None and b is not None and a != b:
+                    errors.append(f"junction {jid} connection {c.get('id')}: lane {ll.get('from')} ({a}) of road "
+                                  f"{inc} links to lane {ll.get('to')} ({b}) of connecting road {con}")
+    if sidecar is not None:
+        for rid in sorted({str(m["connecting_road"]) for m in sidecar.get("movements", [])}, key=int):
+            other = {t for sec in types.get(rid, []) for t in sec.values()} - {"driving"}
+            if other:
+                errors.append(f"connecting road {rid} of a movement has non-driving lanes: {sorted(other)}")
     return errors
 
 

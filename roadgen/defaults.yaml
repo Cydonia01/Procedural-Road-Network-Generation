@@ -275,6 +275,8 @@ cross_section:  # lanes beside the driving lanes, per profile and road class (ro
   tunnel_shoulder: 1.0      # shoulders inside tunnels [m]
   corner_radius: [3.0, 4.9, 7.6]  # curb return at a junction, street, avenue, highway (StreetGen) [m]
   max_corner_share: 0.3     # a curb return takes at most this share of the shorter arm (else its radius shrinks)
+  corner_roads: true        # corner roads carry the side lanes around junction corners; false leaves them
+                            # out (esmini loads them slowly: for throughput benchmarks, B9)
 
 road_marks:  # HD road marks, German catalogue (StVO, RMS), all white (roadgen/opendrive/marks.py)
   enabled: true             # with HD maps on; false keeps the marks of before stage B

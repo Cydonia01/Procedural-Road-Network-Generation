@@ -1,0 +1,292 @@
+{
+  "city, HD off (= B0)": {
+    "pipeline_s": {
+      "best": 16.01,
+      "median": 16.1,
+      "worst": 16.17
+    },
+    "steps_s": {
+      "generate lsystem": {
+        "best": 0.99,
+        "median": 0.99,
+        "worst": 1.0
+      },
+      "align": {
+        "best": 1.0,
+        "median": 1.01,
+        "worst": 1.02
+      },
+      "drape": {
+        "best": 0.7,
+        "median": 0.71,
+        "worst": 0.71
+      },
+      "traffic connectivity": {
+        "best": 0.01,
+        "median": 0.01,
+        "worst": 0.01
+      },
+      "plot": {
+        "best": 0.6,
+        "median": 0.63,
+        "worst": 0.63
+      },
+      "build xodr": {
+        "best": 3.25,
+        "median": 3.27,
+        "worst": 3.29
+      },
+      "write xodr": {
+        "best": 1.04,
+        "median": 1.07,
+        "worst": 1.09
+      },
+      "validate": {
+        "best": 5.47,
+        "median": 5.48,
+        "worst": 5.55
+      }
+    },
+    "xodr_mb": 18.33,
+    "esmini_load_s": {
+      "best": 17.38,
+      "median": 17.45,
+      "worst": 17.55
+    },
+    "real_time_factor": {
+      "best": 86.4,
+      "median": 87.0,
+      "worst": 87.3
+    },
+    "peak_memory_mb": {
+      "best": 135.0,
+      "median": 135.0,
+      "worst": 135.0
+    }
+  },
+  "city, HD on": {
+    "pipeline_s": {
+      "best": 39.34,
+      "median": 39.36,
+      "worst": 39.37
+    },
+    "steps_s": {
+      "generate lsystem": {
+        "best": 0.99,
+        "median": 0.99,
+        "worst": 1.0
+      },
+      "align": {
+        "best": 1.0,
+        "median": 1.0,
+        "worst": 1.0
+      },
+      "drape": {
+        "best": 0.69,
+        "median": 0.69,
+        "worst": 0.69
+      },
+      "annotate": {
+        "best": 0.34,
+        "median": 0.34,
+        "worst": 0.34
+      },
+      "fit cross-sections": {
+        "best": 6.81,
+        "median": 6.82,
+        "worst": 6.83
+      },
+      "traffic connectivity": {
+        "best": 0.03,
+        "median": 0.03,
+        "worst": 0.03
+      },
+      "plot": {
+        "best": 0.6,
+        "median": 0.6,
+        "worst": 0.6
+      },
+      "build xodr": {
+        "best": 6.93,
+        "median": 6.95,
+        "worst": 7.03
+      },
+      "write xodr": {
+        "best": 4.99,
+        "median": 4.99,
+        "worst": 5.07
+      },
+      "validate": {
+        "best": 9.29,
+        "median": 9.44,
+        "worst": 9.49
+      },
+      "plot lanes": {
+        "best": 4.52,
+        "median": 4.55,
+        "worst": 4.57
+      }
+    },
+    "xodr_mb": 25.61,
+    "esmini_load_s": {
+      "best": 51.72,
+      "median": 52.03,
+      "worst": 52.28
+    },
+    "real_time_factor": {
+      "best": 60.0,
+      "median": 60.7,
+      "worst": 60.8
+    },
+    "peak_memory_mb": {
+      "best": 202.0,
+      "median": 202.0,
+      "worst": 202.0
+    }
+  },
+  "mixed_city, HD off (= B0)": {
+    "pipeline_s": {
+      "best": 25.4,
+      "median": 25.8,
+      "worst": 25.97
+    },
+    "steps_s": {
+      "generate lsystem": {
+        "best": 2.06,
+        "median": 2.08,
+        "worst": 2.26
+      },
+      "align": {
+        "best": 3.14,
+        "median": 3.19,
+        "worst": 3.21
+      },
+      "drape": {
+        "best": 1.87,
+        "median": 1.88,
+        "worst": 1.9
+      },
+      "traffic connectivity": {
+        "best": 0.01,
+        "median": 0.01,
+        "worst": 0.01
+      },
+      "plot": {
+        "best": 1.72,
+        "median": 1.72,
+        "worst": 1.75
+      },
+      "build xodr": {
+        "best": 5.34,
+        "median": 5.35,
+        "worst": 5.73
+      },
+      "write xodr": {
+        "best": 1.31,
+        "median": 1.32,
+        "worst": 1.39
+      },
+      "validate": {
+        "best": 6.76,
+        "median": 6.82,
+        "worst": 6.91
+      }
+    },
+    "xodr_mb": 23.21,
+    "esmini_load_s": {
+      "best": 47.72,
+      "median": 47.95,
+      "worst": 49.06
+    },
+    "real_time_factor": {
+      "best": 62.4,
+      "median": 65.6,
+      "worst": 65.9
+    },
+    "peak_memory_mb": {
+      "best": 147.0,
+      "median": 147.0,
+      "worst": 147.0
+    }
+  },
+  "mixed_city, HD on": {
+    "pipeline_s": {
+      "best": 60.85,
+      "median": 61.37,
+      "worst": 61.58
+    },
+    "steps_s": {
+      "generate lsystem": {
+        "best": 2.05,
+        "median": 2.07,
+        "worst": 2.08
+      },
+      "align": {
+        "best": 3.17,
+        "median": 3.19,
+        "worst": 3.23
+      },
+      "drape": {
+        "best": 1.17,
+        "median": 1.19,
+        "worst": 1.19
+      },
+      "annotate": {
+        "best": 0.49,
+        "median": 0.5,
+        "worst": 0.51
+      },
+      "fit cross-sections": {
+        "best": 15.0,
+        "median": 15.28,
+        "worst": 15.3
+      },
+      "traffic connectivity": {
+        "best": 0.01,
+        "median": 0.01,
+        "worst": 0.01
+      },
+      "plot": {
+        "best": 1.73,
+        "median": 1.73,
+        "worst": 1.74
+      },
+      "build xodr": {
+        "best": 9.53,
+        "median": 9.7,
+        "worst": 9.87
+      },
+      "write xodr": {
+        "best": 6.56,
+        "median": 6.56,
+        "worst": 6.68
+      },
+      "validate": {
+        "best": 12.95,
+        "median": 13.02,
+        "worst": 13.02
+      },
+      "plot lanes": {
+        "best": 4.77,
+        "median": 4.83,
+        "worst": 4.85
+      }
+    },
+    "xodr_mb": 33.22,
+    "esmini_load_s": {
+      "best": 136.71,
+      "median": 139.11,
+      "worst": 141.22
+    },
+    "real_time_factor": {
+      "best": 41.8,
+      "median": 42.1,
+      "worst": 42.5
+    },
+    "peak_memory_mb": {
+      "best": 243.0,
+      "median": 243.0,
+      "worst": 243.0
+    }
+  }
+}

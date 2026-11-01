@@ -125,6 +125,10 @@ reference line, and left lanes (positive ids) drive against it.
   - The sidecar lists them under `corner_roads`, with `closes` true where a
     movement drives the turn. They are not movements: drive-check, scenarios
     and esmini's traffic never use them.
+  - **esmini loads them slowly:** on `city` they are 5 % of the lane length
+    but 27 s of its 57 s load (`plans/scripts/b9_osi_points.py`).
+    `cross_section.corner_roads: false` (`--no-corner-roads`) leaves them
+    out for throughput benchmarks.
 - **Road marks** (without HD maps). A solid centre line, broken lines between
   lanes (3 m dash, 9 m gap), and a solid line on the outermost driving lane's
   edge.
@@ -227,13 +231,16 @@ movement**:
   - a sign 209 / 214 at the stop line says what the approach keeps (209-20
     right only, 214 straight and right, ...);
   - sidecar `banned`: junction, from / to road end, reason.
-- **Lane arrows** (Z 297): `roadMark` objects drawn as white lines (one
-  marking per stroke), 20 m before the stop line in each incoming lane of an
-  approach with 2 or more lanes, at junctions with priority control or
-  lights, shaped by the lane's movement kinds. esmini has no sign type 297,
-  so they are objects only. One closed outline per arrow would halve their
-  size, but esmini draws closed outlines in a flat grey, and its OSI output
-  then holds no road markings for them; each stroke is one there.
+- **Lane arrows** (Z 297): `roadMark` objects drawn as white lines, 20 m
+  before the stop line in each incoming lane of an approach with 2 or more
+  lanes, at junctions with priority control or lights, shaped by the lane's
+  movement kinds. Each is a few polylines over shared outline corners: the
+  shaft running on into one stem, the other stems, and each head through
+  its tip (a straight arrow: 4 corners, 2 markings). esmini draws a marking
+  through all its corners (mitred), and its OSI output has one road marking
+  per polyline. esmini has no sign type 297, so they are objects only. One
+  closed outline per arrow would be smaller still, but esmini draws closed
+  outlines in a flat grey and then exports no road markings for them.
 - **Junction-surface fill:** surface inside a junction that no lane covers
   (between the curb and the movements at corners no turn follows, slivers
   between turning lanes, the middle of large junctions) becomes a flat

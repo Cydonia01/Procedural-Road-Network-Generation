@@ -94,7 +94,8 @@ Details are in [Heights](heights.md).
    (fallback `./esmini`) in `roadgen/sim/esmini.py`, never by a hard-coded
    path. `scenariogeneration` is only used inside the builders, so it can be
    replaced. Its geometry auto-adjustment and slow pretty-printer are
-   bypassed, and XML is indented with `ET.indent`.
+   bypassed, and XML is indented with `ET.indent`: one space per level with
+   HD maps (indentation was a third of the file), four without.
 7. **Conventions:**
    - OpenDRIVE 1.6, right-hand traffic;
    - SI units (m, rad, m/s);
