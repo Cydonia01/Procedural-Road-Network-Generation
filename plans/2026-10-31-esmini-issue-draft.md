@@ -6,11 +6,17 @@
 
 > 3. Don't build or profile esmini. Instead, put a minimal reproducing .xodr and an issue draft for both esmini findings (corner-road load cost, 3× load-time variance) under plans/; I'll decide whether to file it.
 
+**2026-11-01, prompt 14** (item 2)
+
+> 2. Don't commit the 9.3 MB esmini repro: keep only the small grid files in plans/esmini-issue/, move the city files to out/ (git-ignored), and add a script in plans/scripts/ that regenerates them from the seed. Update the issue draft to say so.
+
 ## Decisions
 
 - Not filed: the user decides (prompt 13).
 - Two findings, written as two issues so they can be filed separately; both are about `RoadManager` load time (`RM_Init`, `roadmanager::Position::LoadOpenDrive`) in esmini v3.9.0.
-- Reproducing files in `plans/esmini-issue/` (gzipped OpenDRIVE 1.6, made by `plans/scripts/b9_esmini_repro.py` from the `grid` and `city` examples of stage B9). The city files are the only ones on which the variance showed; they are 4.5 MB gzipped each.
+- Reproducing files (gzipped OpenDRIVE 1.6, made by `plans/scripts/b9_esmini_repro.py` from the `grid` and `city` examples of stage B9):
+  - the three `grid` files (0.6 MB) are committed in `plans/esmini-issue/`;
+  - the two `city` files (4.5 MB gzipped each) are not committed (prompt 14). They are the only ones on which the variance showed. `plans/scripts/esmini_repro_city.sh` regenerates them from the seed into `out/esmini-issue/`; the files measured below were moved there. To file the issue, attach them from there (or regenerate them).
 - Measured with esmini's prebuilt Linux x86_64 binaries (`esmini-bin_Linux.zip`, v3.9.0) in Docker (Debian, Python ctypes calling `RM_Init` of `libesminiRMLib.so`), on an Apple Silicon Mac under Rosetta. The draft says so: the maintainers may not see the same absolute times natively.
 
 ---
@@ -105,12 +111,29 @@ Is there something in the load (for example an iteration whose length depends on
 
 ---
 
-## Files (`plans/esmini-issue/`)
+## Files
 
-| File | Size (gzipped) | Roads / junctions | For |
-|---|---|---|---|
-| `grid_with_corners.xodr.gz` | 0.24 MB | 1,645 / 96 (352 corner roads) | issue 1 |
-| `grid_without_corners.xodr.gz` | 0.12 MB | 1,293 / 96 | issue 1 |
-| `grid_reversed.xodr.gz` | 0.24 MB | as `grid_with_corners`, roads reversed | issue 2 (order) |
-| `city_as_built.xodr.gz` | 4.5 MB | 4,365 / 348 | issues 1, 2 |
-| `city_reversed.xodr.gz` | 4.5 MB | as above, roads reversed | issue 2 |
+| File | Size (gzipped) | Roads / junctions | For | Where |
+|---|---|---|---|---|
+| `grid_with_corners.xodr.gz` | 0.24 MB | 1,645 / 96 (352 corner roads) | issue 1 | `plans/esmini-issue/` |
+| `grid_without_corners.xodr.gz` | 0.12 MB | 1,293 / 96 | issue 1 | `plans/esmini-issue/` |
+| `grid_reversed.xodr.gz` | 0.24 MB | as `grid_with_corners`, roads reversed | issue 2 (order) | `plans/esmini-issue/` |
+| `city_as_built.xodr.gz` | 4.5 MB | 4,365 / 348 | issues 1, 2 | `out/esmini-issue/` (not committed) |
+| `city_reversed.xodr.gz` | 4.5 MB | as above, roads reversed | issue 2 | `out/esmini-issue/` (not committed) |
+
+The two `city` files are not in the repository. To regenerate them (dev container, repo root):
+
+```bash
+bash plans/scripts/esmini_repro_city.sh out/esmini-issue
+```
+
+It builds the `city` example (lsystem preset `city`, seed 7, on generated maps) with HD maps and writes it as built and with its roads reversed.
+
+The regenerated files are the same network, but not byte for byte the files measured above: those were written before the last two repair fixes of stage B9 (prompt 13), which shift some junction, object and signal ids. They show the same behaviour (`RM_Init`, five fresh processes each, wall / CPU [s], 2026-11-01):
+
+| Regenerated file | Runs |
+|---|---|
+| `city_as_built.xodr` | 59.6 / 59.6, 59.0 / 59.0, 58.6 / 58.6, 60.5 / 60.5, 60.4 / 60.4 |
+| `city_reversed.xodr` | 234.7 / 234.7, 330.8 / 330.7, 304.5 / 304.4, 350.4 / 350.3, 349.8 / 349.7 |
+
+On this run the reversed file had no fast run of about 100 s: 235–350 s, all CPU time, with the as-built file steady within 3 %.

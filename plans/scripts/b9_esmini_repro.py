@@ -3,6 +3,8 @@
   python plans/scripts/b9_esmini_repro.py GRAPH.json SEED OUTDIR [RUNS]
   e.g. python plans/scripts/b9_esmini_repro.py out/stage_b/b9/grid.json 0 out/b9/repro 5
 
+RUNS 0 only writes the files (esmini_repro_city.sh uses that).
+
 Builds the graph with HD maps three ways into OUTDIR:
 - <name>_with_corners.xodr: as built (corner roads around the junction corners);
 - <name>_without_corners.xodr: cross_section.corner_roads false, otherwise the same;
@@ -78,6 +80,8 @@ def main() -> None:
     files = [build(graph_path, seed, outdir / f"{name}_with_corners.xodr", True),
              build(graph_path, seed, outdir / f"{name}_without_corners.xodr", False)]
     files.append(reverse(files[0], outdir / f"{name}_reversed.xodr"))
+    if runs == 0:
+        return
     for path in files:
         times = []
         for _ in range(runs):

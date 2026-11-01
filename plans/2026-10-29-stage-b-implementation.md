@@ -249,6 +249,12 @@ The user's answers to the four questions of the discussion (also in its
 > 3. Don't build or profile esmini. Instead, put a minimal reproducing .xodr and an issue draft for both esmini findings (corner-road load cost, 3× load-time variance) under plans/; I'll decide whether to file it.
 > Record the decisions in the plan, commit B9, and stop before B10.
 
+**2026-11-01, prompt 14** (answers to the final B9 report)
+
+> 1. Confirmed: straightening the bend on suburb (same road, both junctions stay) is fine; record it in the plan as an accepted deviation.
+> 2. Don't commit the 9.3 MB esmini repro: keep only the small grid files in plans/esmini-issue/, move the city files to out/ (git-ignored), and add a script in plans/scripts/ that regenerates them from the seed. Update the issue draft to say so.
+> Commit that, then implement B10. Stop after B10 and report, including the final exit-criteria table.
+
 ## Context
 
 Stage A (geometry) and stage C (diversity) of `Roadgen AV Readiness
@@ -1423,7 +1429,7 @@ Helper scripts: `b9_drive_variance.sh`, `b9_load_variance.py`, `b9_road_order.py
 Such an edge is fixed instead by:
 - **Bare road ends** (`cross_section.bare_ends`, graph metadata `no_side_lanes`), tried one at a time until it fits, then those it fits without are put back. The edge's own ends come first, then the other arms of its two junctions: at an acute junction the neighbour's width sets the trim. A bare end loses parking, bike lane, sidewalk and shoulder before the junction (the user's list), keeps its curb, and gets no class curb return at its corners.
 - **Curb returns** go with them *(choice left to Claude)*: without that, bare ends do not free enough room. On the B1 test block (16 m, trims 8.5 + 8.5) the curb returns alone keep it too short. With it, a bare end takes the room the road takes with HD off, plus its 0.15 m curb.
-- **Straightening a two-road bend** *(deviation, for the user to confirm)*: on `suburb`, two edges stayed too short even with bare ends. A two-road bend (node 353) was curved with HD off; with HD its curve no longer clears the sidewalks around, so the alignment keeps it as a junction, leaving two stubs of 0.7 and 0.2 m that esmini cannot drive (the drive-check failed). Bare ends cannot help there, since they change trims, not whether a bend becomes a junction.
+- **Straightening a two-road bend** *(deviation, accepted by the user in prompt 14)*: on `suburb`, two edges stayed too short even with bare ends. A two-road bend (node 353) was curved with HD off; with HD its curve no longer clears the sidewalks around, so the alignment keeps it as a junction, leaving two stubs of 0.7 and 0.2 m that esmini cannot drive (the drive-check failed). Bare ends cannot help there, since they change trims, not whether a bend becomes a junction.
 
   Where an edge is still too short and one end is such a bend, the bend's two edges (the same road: class, lanes each way, lane width, speed, profile; no bridges or tunnels) become one edge between the junctions on either side, and the bend node goes (`_dissolve_bend`, metadata `straightened_bends`). The road stays, only its vertex goes; both junctions must stay buildable.
 
@@ -1493,6 +1499,12 @@ Measured again after all prompt 13 changes (`b9_perf.py`, best (median, worst) o
 - **Variance:** reproduced on today's `city` reversed: 98.5, 99.9, 100.4, 178.7 and 302.5 s, CPU time equal to wall time.
 - The two `city` files are 4.5 MB gzipped each; the `grid` files 0.1–0.24 MB.
 - `b9_esmini_profile.sh` is deleted, since profiling is not wanted.
+
+#### Prompt 14 decisions (after the final B9 report)
+
+- **Bend straightening is an accepted deviation** (user): the road and both junctions stay, only the bend vertex goes.
+- **The `city` repro files are not committed** (user). They moved to `out/esmini-issue/` (git-ignored); `plans/esmini-issue/` keeps the three `grid` files (0.6 MB). `plans/scripts/esmini_repro_city.sh` regenerates them from the seed: the `city` example (preset `city`, seed 7, maps) built with HD maps, written as built and with its roads reversed.
+- The regenerated files are not byte-identical to the measured ones: those were written from the `city` graph before the last two repair fixes of prompt 13, which shift some junction and signal ids. The draft quotes the load times of both. On the regenerated files (five `RM_Init` runs each): as built 58.6–60.5 s; reversed 234.7, 330.8, 304.5, 350.4 and 349.8 s, CPU time equal to wall time. The variance shows on them too.
 
 ### B10 · Default flip, docs, examples, final measurement
 
