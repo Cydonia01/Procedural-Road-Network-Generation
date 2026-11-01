@@ -470,6 +470,7 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `movements` | Every connecting road: kind, `turn_angle` (radians, counter-clockwise positive, in (−π, π]), `path`, and from / to edge, road and lane |
 | `corners` | Every fitted bend: `road`, `node`, `s_start`, `s_end`, reference `radius`, innermost `lane_radius`, `design_speed`, `max_speed`, `advisory_speed` (null at design radius), in m and m/s |
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
+| `hdmap_version` | HD maps on only: 1 for the stage B content (`HDMAP_VERSION`, `roadgen/opendrive/__init__.py`); absent with `--no-hd` |
 | `cross_sections` | HD maps on only: each edge's cross-section profile |
 | `signal_plans` | HD maps on only, per junction with lights: `junction`, `node`, `controller`, `cycle` and `offset` [s], `min_green`, `groups` (`[road, contact]` per phase), `lights` (signal id → its approach), `phases` (`group`, `kind` green / yellow / all_red / pedestrian, `duration`, `states`: signal id → `"on;off;off"` red, `"off;on;off"` yellow, `"off;off;on"` green), and the junction's `conflicts` and `permissive` (high, low) connecting-road pairs |
 | `lane_use` | HD maps on only, per approach: `junction`, `road`, `contact`, `lanes` (incoming lane → movement kinds), `pockets` |

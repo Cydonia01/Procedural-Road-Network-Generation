@@ -1,6 +1,5 @@
-"""Stage B features are off unless hdmap.enabled: the builder writes exactly the .xodr
-and sidecar it wrote before stage B (tests/hdmap_identity.py, recorded in B0)."""
-
+"""With HD maps off (`--no-hd`; on by default since B10) the builder writes exactly the
+.xodr and sidecar it wrote before stage B (tests/hdmap_identity.py, recorded in B0)."""
 from __future__ import annotations
 
 import json

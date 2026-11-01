@@ -1,6 +1,6 @@
 # Stage B (HD-map completeness): implementation plan
 
-Status: **approved 2026-10-30; B0–B7 and the lane-section merge (moved from B9) done (2026-10-30), the zebra rule, B8 and B9 done (2026-10-31), B10 next.** Discussion,
+Status: **approved 2026-10-30; B0–B7 and the lane-section merge (moved from B9) done (2026-10-30), the zebra rule, B8 and B9 done (2026-10-31), B10 done (2026-11-01): stage B complete.** Discussion,
 measurements, options and decisions:
 [2026-10-29-stage-b-discussion.md](2026-10-29-stage-b-discussion.md).
 
@@ -1526,21 +1526,54 @@ Measured again after all prompt 13 changes (`b9_perf.py`, best (median, worst) o
 - **Final measurement:** `plans/baselines/<date>-stage-b-after-hd.json` (`metrics --hd` and the geometry and network metrics of the example set); sweeps of 200 seeds with HD on.
 - **Summary:** `plans/<date>-stage-b-summary.md`, a supervisor summary like those of stages A and C.
 
+#### B10 result (done 2026-11-01)
+
+Delivered as planned:
+- **Flip:** `hdmap.enabled: true`; `HDMAP_VERSION = 1` in `roadgen/opendrive/__init__.py`, written to the sidecar as `hdmap_version` with HD maps on and left out with them off (so the identity guard's sidecars are unchanged). `--no-hd` gives B0's output: the builder identity guard now builds with `--no-hd` and passes.
+- **Tests** (31 failed after the flip, 30 of them from it):
+  - files written for driving lanes only build with `PLAIN = HdMapParams(enabled=False)` (`test_chain_roads`, `test_culdesac`, `test_elevation`, `test_grade_separation`, `test_junctions`, `test_lsystem_maps`, `test_opendrive`, `test_repair`). Most of them failed with `ShortEdgeError`: they build generated graphs directly, without the HD fit that `pipeline` runs first;
+  - the "HD off" tests of B5, B6 and B8 and `test_hd_params_from_config` set it off explicitly;
+  - CLI tests that compare networks or expect a build failure pass `--no-hd`;
+  - new `tests/test_hdmap_default.py`: the default is on, `hdmap_version` only with HD maps, `pipeline` default against `--no-hd`.
+- **History:** `docs/cli-reference.md#run-folders-history-replay-run` says what the plan lists. Hashes do not change: `--hd` / `--no-hd` default to `None`, so runs recorded before the flip keep their hash and replay with HD maps.
+- **Docs:** `cli-reference.md` (pipeline, build-xodr, generate, metrics, run folders), `README.md` index, `architecture.md` (module map, `net_hd.png`), `opendrive.md` (`hdmap_version`), `geometry.md`, `heights.md`, `scene.md`, `validation.md`, `development.md#project-history`, `.github/copilot-instructions.md` repo layout, `CLAUDE.md`.
+- **Examples:** phase 10 in `runs/examples.sh` (`city_hd` with ground, buildings, drive-check and simulate; `city_plain` with `--no-hd`; HD metrics; `manhattan_hd`; `suburb_hd` with the suburban profile; `junction_k_hd`; a 20-seed HD sweep), two GUI views, and a chain and phase title in `runs/make_readme.py`. The phase 10 runs are recorded (`city_hd` `afc1b580a59b`, `city_plain` `acb3a7fdb3c2`, `manhattan_hd` `71510c98c995`, `suburb_hd` `09b95a16780e`, `junction_k_hd` `14dc435522e8`, HD sweep of 20: 0 failed) and their section and chain were added to `runs/README.md`. `make_readme.py` was not rerun over the whole page: this checkout's `out/` lacks the earlier phases' run folders, so it would have dropped them.
+- **Final measurement:** `baselines/2026-11-01-stage-b-after-hd.json` (`b10_baseline.py`: per example its status, times, size, simulate numbers, HD and geometry metrics, fit counts and network metrics), sweeps below.
+- **Summary:** [`2026-11-01-stage-b-summary.md`](2026-11-01-stage-b-summary.md).
+
+Changes against the plan, and choices it left open:
+- **`metrics --hd` became `--hd / --no-hd`, default `hdmap.enabled`** *(choice left to Claude)*: a plain flag could not be turned off after the flip. HD counts and HD sweeps are now the default; `--no-hd` gives the plain ones.
+- **`generate` got `--hd / --no-hd`** *(choice left to Claude)*. It drapes and grade-separates with the HD widths (B3), so after the flip its graphs differed from `pipeline --no-hd`'s with no way to turn that off.
+- **The lsystem identity test now builds with `--no-hd`.** The plan expected it unaffected, but its map cases (`city_maps`, `hill_town_maps`) hash the graph `pipeline` writes, which `annotate` and the HD fit change. The test is about the generator, so it takes the network as grown.
+- **The sweep's HD-off build** (`metrics/sweep.py`) passes `HdMapParams(enabled=False)`: it relied on the builder's default.
+- **Bug found by the flip:** `pipeline` with HD maps on an empty network (a 2 × 2 grid outside its maps) failed drawing `PREFIX_hd.png`; the plot is skipped when the graph has no edges.
+
+**Example set** (`stage_b_examples.sh out/stage_b/b10`, no `--hd`: the default):
+- all 11 build, pass every validator and the drive-check wherever it runs (`city` 3,208 movements and 1,958 lanes; `mixed_city` 4,159 and 2,252);
+- **every `.xodr` is byte-identical to B9's `--hd` build;** the sidecars differ only by `hdmap_version`;
+- esmini simulates `city` with 0 errors and 2 lane-drop warnings, `mixed_city` with 0 errors and 3 (B9: 2 on the same `.xodr` and `.xosc`; the count varies between esmini runs, see B9 item 5);
+- **vehicles only on driving lanes** (`b10_lane_check.py`, independent of esmini's lane lookup: each vehicle's position at every step against the lane outlines of the `.xodr`): 30,100 of 30,100 positions on a driving lane in `city`, and in `mixed_city`. (The bounding-box centre is not used: cars stopped at a dead end have it 1.4 m past the road's end.)
+- **control mix** (`b10_control_check.py`): every at-grade junction where an avenue or highway meets another (after the two arms of the road through, a third arm of at least avenue class; roundabouts and ramps aside) has lights: `city` 94 of 94, `mixed_city` 37 of 37, `manhattan_like` 20 of 20. Yield and stop approaches in `city` (121, 108) and `mixed_city` (239, 150); right before left in `mixed_city` (17 junctions).
+
+**Sweeps** (`metrics --sweep 200 --jobs 4`, HD maps by default; `baselines/2026-11-01-stage-b-after-hd-sweeps.json`): `city` **0 of 200** (933 s), `mixed_city` **0 of 200** (1,979 s), as in B9's final sweeps. With HD off (B9) `city` fails 0 and `mixed_city` 10 (the stage D item), so no failures are added by HD.
+
+Exit of B10: full suite 740 passed, 1 failed (the known `test_monitor_memory_cap_and_peak`); builder identity guard (with `--no-hd`) and lsystem identity test pass; ruff: no new findings on touched files. Helper scripts: `b10_baseline.py`, `b10_lane_check.py`, `b10_control_check.py`. Not committed: waiting for the user's approval.
+
 ## Exit criteria
 
-| Metric | Target |
-|---|---|
-| Builder output with HD off | byte-identical `.xodr` and sidecar to B0 (guard networks), through B9; with `--no-hd` after B10 |
-| lsystem identity test | unchanged |
-| Build failures, 200 seeds, `city` and `mixed_city`, HD on | none added by HD: no seed that builds with HD off fails with HD on *(restated by prompt 13: `mixed_city`'s roundabout spurs fail with HD off too, a stage D item)* |
-| Edges removed or merged by the cross-section repair | ≤ 1 % of junction roads per example |
-| Validators (incl. `hdmap`) | pass on every example |
-| Drive-check | passes on every example it ran on before stage B (interchanges still open) |
-| Vehicles in `scenario` / `simulate` | only on driving lanes (positions checked on `city`) |
-| Controlled approaches with a stop or yield line and a sign or light | 100 % |
-| Lights switch in esmini | yes, shown in OSI output or screenshots |
-| Control mix | lights at every at-grade avenue × avenue and highway × avenue junction; yield and stop present in `city` and `mixed_city`; yield, stop and right-before-left together in `mixed_city` *(changed by prompt 8: `city` has no street × street junctions)* |
-| Build time | ≤ 2 × B0 on `city` and `mixed_city` for the build step (`build xodr`); the whole pipeline's ratio is recorded *(prompt 13)* |
+| Metric | Target | Result (B10, 2026-11-01) |
+|---|---|---|
+| Builder output with HD off | byte-identical `.xodr` and sidecar to B0 (guard networks), through B9; with `--no-hd` after B10 | **met:** the guard passes with `--no-hd` |
+| lsystem identity test | unchanged | **met:** passes (its map cases now with `--no-hd`, see the B10 result) |
+| Build failures, 200 seeds, `city` and `mixed_city`, HD on | none added by HD: no seed that builds with HD off fails with HD on *(restated by prompt 13: `mixed_city`'s roundabout spurs fail with HD off too, a stage D item)* | **met:** `city` 0 and `mixed_city` 0 of 200 with HD (HD off: 0 and 10, the stage D item) |
+| Edges removed or merged by the cross-section repair | ≤ 1 % of junction roads per example | **met:** 0 on every example (bare road ends instead; one bend straightened on `suburb`, accepted by prompt 14) |
+| Validators (incl. `hdmap`) | pass on every example | **met:** all 11 |
+| Drive-check | passes on every example it ran on before stage B (interchanges still open) | **met:** all 8 it runs on |
+| Vehicles in `scenario` / `simulate` | only on driving lanes (positions checked on `city`) | **met:** 30,100 of 30,100 positions on driving lanes in `city` and in `mixed_city` |
+| Controlled approaches with a stop or yield line and a sign or light | 100 % | **met:** the `hdmap` validator requires it for every approach and passes on all 11 |
+| Lights switch in esmini | yes, shown in OSI output or screenshots | **met:** screenshots, red then green (B6); the `.xosc` light events are unchanged since |
+| Control mix | lights at every at-grade avenue × avenue and highway × avenue junction; yield and stop present in `city` and `mixed_city`; yield, stop and right-before-left together in `mixed_city` *(changed by prompt 8: `city` has no street × street junctions)* | **met:** lights at 94 of 94 (`city`) and 37 of 37 (`mixed_city`); yield and stop in both; right before left at 17 `mixed_city` junctions |
+| Build time | ≤ 2 × B0 on `city` and `mixed_city` for the build step (`build xodr`); the whole pipeline's ratio is recorded *(prompt 13)* | **at the target:** `mixed_city` 1.78×; `city` 1.99× and 2.13× in two runs (its HD time is steady, B0's varies). Pipeline 2.5× and 2.4× (B9) |
 
 ## Open items for later stages
 

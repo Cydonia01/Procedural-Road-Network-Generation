@@ -27,16 +27,18 @@ Repo layout:
   roadgen/        (full module map: docs/architecture.md#module-map)
     graph/        model.py, io.py, plot.py
     maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py,
-                  image.py, plot.py, align.py, drape.py
+                  image.py, plot.py, align.py, drape.py, annotate.py
     generators/   base.py, lsystem.py, patterns.py, junction.py, repair.py,
                   transforms/ (drop, culdesac, stagger, roundabout, interchange)
     geometry/     planar.py, junction_space.py, design.py, primitives.py, clothoid.py, chains.py,
-                  alignment.py, profiles.py, vertical.py, grade_separation.py
-    opendrive/    builder.py, lanes.py, junctions.py
-    validate/     connectivity.py, topology.py, continuity.py, dynamics.py, clearance.py, schema.py
-    metrics/      geometry.py, network.py, sweep.py
+                  alignment.py, profiles.py, vertical.py, grade_separation.py, cross_section.py
+    opendrive/    builder.py, lanes.py, junctions.py, marks.py, control.py, furniture.py, lights.py,
+                  hdmap.py, plot.py
+    validate/     connectivity.py, topology.py, continuity.py, dynamics.py, clearance.py, hdmap.py,
+                  schema.py
+    metrics/      geometry.py, network.py, hdmap.py, sweep.py
     scenario/     xosc_builder.py
-    sim/          esmini.py, runner.py, drive_check.py
+    sim/          esmini.py, runner.py, drive_check.py, screenshot.py
     scene/        ground.py, buildings.py, osgt.py
     config.py, history.py, defaults.yaml
   cli.py

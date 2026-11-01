@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Records example runs, phase by phase: input maps -> road network ->
 # OpenDRIVE -> 3D scene -> scenario -> headless simulation -> road geometry
-# (stage A) -> esmini GUI. Run from the repository root on the host:
+# (stage A) -> diversity (stage C) -> HD maps (stage B) -> esmini GUI. HD maps
+# are on by default, so every network below has them unless run with --no-hd. Run from the repository root on the host:
 #
 #   bash runs/examples.sh            # everything (the GUI phase opens windows)
 #   NO_GUI=1 bash runs/examples.sh   # skip phase 7
@@ -259,6 +260,24 @@ cli --note "9 diversity | metrics --graph: network metrics of manhattan_like, th
     metrics --graph $ML --graph $CC --graph $PA.json --graph $OT.json --graph $SG.json --graph $SB.json \
     --graph $MC.json --graph $HC.json --graph $JR.json --json network_metrics.json
 
+echo "== 10 HD maps (stage B)"
+cli --note "10 hd | pipeline: lsystem city on maps with HD maps (side lanes, marks, signs, lights, turn lanes), ground, buildings, drive-check, esmini run" \
+    pipeline lsystem --preset city --maps --seed 7 --allow-traps --ground --buildings --drive-check --simulate -o city_hd
+HDC=$RUN/city_hd
+cli --note "10 hd | pipeline: the same city with --no-hd (driving lanes only, as before stage B)" \
+    pipeline lsystem --preset city --maps --seed 7 --allow-traps --no-hd -o city_plain
+cli --note "10 hd | metrics: HD-map content of the city (lane types, marks, signals, objects, control mix)" \
+    metrics $HDC.xodr --json city_hd_metrics.json
+cli --note "10 hd | pipeline: lsystem manhattan_like with HD maps (one-way avenues, lights, arrows), drive-check" \
+    pipeline lsystem --preset manhattan_like --seed 1 --allow-traps --drive-check -o manhattan_hd
+HDM=$RUN/manhattan_hd
+cli --note "10 hd | pipeline: lsystem suburb with the suburban cross-section (no parking, narrower sidewalks), drive-check" \
+    pipeline lsystem --preset suburb --seed 1 --allow-traps --cross-section suburban --drive-check -o suburb_hd
+cli --note "10 hd | pipeline: junction preset k with HD maps (priority and right before left, crosswalks, lane use), drive-check" \
+    pipeline junction --preset k --allow-traps --drive-check -o junction_k_hd
+cli --note "10 hd | metrics: build-failure sweep over 20 cities on maps with HD maps (annotate, fit, build)" \
+    metrics --sweep 20 --jobs 4 --json sweep20_hd.json
+
 [ -n "${NO_GUI:-}" ] && exit 0
 echo "== 7 esmini GUI (views stay open until you close the window)"
 gui --note "7 gui | odrviewer: manhattan_like with buildings, random cars" \
@@ -277,5 +296,8 @@ gui --note "7 gui | odrviewer: diamond interchange" view $DM.xodr
 gui --note "7 gui | odrviewer: cloverleaf interchange" view $CL.xodr
 gui --note "7 gui | odrviewer: freeway corridor with its diamond, on its ground" view $HC.xodr --scenegraph ${HC}_scene.osgt
 gui --note "7 gui | odrviewer: hilly city with a highway tunnel, on its ground" view $TC.xodr --scenegraph ${TC}_scene.osgt
+gui --note "7 gui | odrviewer: HD city (sidewalks, marks, signs, lights) on its ground + buildings" \
+    view $HDC.xodr --scenegraph ${HDC}_scene.osgt
+gui --note "7 gui | odrviewer: HD manhattan_like (lights and arrows)" view $HDM.xodr
 gui --note "7 gui | esmini: manhattan_like with buildings, top camera" simulate $S4 --gui
 gui --note "7 gui | esmini: coastal city on its ground + buildings" simulate $S5 --gui

@@ -393,7 +393,8 @@ def test_validator_catches_broken_furniture(tmp_path):
 
 
 def test_hd_off_has_no_control(tmp_path):
-    _, root, sidecar = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, HdMapParams())
+    _, root, sidecar = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path,
+                              HdMapParams(enabled=False))
     assert not list(root.iter("signal")) and not root.findall("junction/priority")
     assert "junctions" not in sidecar and "movement_control" not in sidecar
 

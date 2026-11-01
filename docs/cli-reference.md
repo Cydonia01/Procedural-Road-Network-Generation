@@ -136,6 +136,7 @@ python -m cli generate <lsystem|junction> [options] [-o OUT.json]     # default:
 | `--set KEY=VALUE` | Override one parameter (repeatable) |
 | `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`, `style`). Repeatable. Only `lsystem` reads maps |
 | `--flat` | No heights, even with an elevation map |
+| `--hd`, `--no-hd` | Drape and grade-separate with the roads' HD widths, side lanes included (default `hdmap.enabled`, on), as `pipeline` does; `--no-hd` uses the driving lanes only |
 
 Generator parameters have no flags of their own. Use `--set`, e.g. `--set
 extent=[500,240] --set boundary=ring`. The parameters are listed in
@@ -162,9 +163,9 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2) |
-| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, off): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are fixed before the build: turn pockets that would make them too short are left out, and road ends whose side lanes would are made bare ([repair](generators.md#repair-edges-too-short-for-their-junctions)). Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
-| `--cross-section PROFILE` | Default profile with `--hd`: `urban`, `suburban`, `rural` or `none` (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
-| `--no-corner-roads` | With `--hd`, leave out the [corner roads](opendrive.md#lanes) (the side lanes around junction corners; `cross_section.corner_roads: false`). esmini loads them slowly (on `city` 57 s instead of 31 s), so this is for throughput benchmarks; the corners' side lanes are then missing from the map |
+| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, on; `--no-hd` writes the plain driving-lane network, byte for byte what the builder wrote before HD maps): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are fixed before the build: turn pockets that would make them too short are left out, and road ends whose side lanes would are made bare ([repair](generators.md#repair-edges-too-short-for-their-junctions)). Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
+| `--cross-section PROFILE` | Default profile with HD maps: `urban`, `suburban`, `rural` or `none` (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
+| `--no-corner-roads` | With HD maps, leave out the [corner roads](opendrive.md#lanes) (the side lanes around junction corners; `cross_section.corner_roads: false`). esmini loads them slowly (on `city` 57 s instead of 31 s), so this is for throughput benchmarks; the corners' side lanes are then missing from the map |
 | `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
 | `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |
 | `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
@@ -243,20 +244,20 @@ See [Validation → Drive-check](validation.md#drive-check).
 ## metrics
 
 ```bash
-python -m cli metrics A.xodr [B.xodr ...] [--hd] [--graph A.json ...] [--json OUT.json]
-python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd] [--jobs 1]
+python -m cli metrics A.xodr [B.xodr ...] [--hd | --no-hd] [--graph A.json ...] [--json OUT.json]
+python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd | --no-hd] [--jobs 1]
 ```
 
 - Geometry metrics of each `.xodr`.
-- `--hd` adds its HD-map content: lane km per road km by lane type, road
+- With HD maps (`--hd`, default `hdmap.enabled`, on; `--no-hd` leaves it out) each report adds its HD-map content: lane km per road km by lane type, road
   marks by type and colour (and any on connecting roads), signals and
   objects by type, per km and per junction, controllers and junction
   priority records; from the `.roadmap.json`, where present, the junction
   control mix, signal plans, lane-use records and banned movements.
 - `--graph` (repeatable) adds the network metrics of a RoadGraph.
 - `--sweep N` generates N networks, as `pipeline --maps` would, and counts the
-  ones the builder rejects. With `--hd` they are built with HD maps, after
-  `annotate` and the cross-section fit, as in `pipeline --hd`. `--jobs N`
+  ones the builder rejects. With HD maps they are built after `annotate` and
+  the cross-section fit, as in `pipeline`; with `--no-hd` as in `pipeline --no-hd`. `--jobs N`
   builds N at a time.
 
 The report is informational: the command succeeds whatever the numbers are.
@@ -373,6 +374,12 @@ python -m cli run my_run.yaml           # a run file written by hand
 - **Replay** uses today's code and defaults with the run's non-default
   arguments and parameters, so its result follows the pipeline as the code
   changes. `--show` only prints the command and the folder.
+- **HD maps since the default changed.** `hdmap.enabled` is on by default
+  since stage B. A run recorded before that holds no `hd` argument and no
+  `hdmap` parameter, so its replay gives HD output. A new run of the same
+  command has the same spec and hash and replaces the old folder. To get the
+  old output, add `--no-hd` (or `--set hdmap.enabled=false`); that is a
+  different spec with its own folder. Old `run.yaml` files are not migrated.
 - **Input files.** A command reads its input files from where they are now,
   so replay the runs that write them first.
 - **Run files.** Only `command` is required. `args` uses argument names as in

@@ -10,6 +10,9 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.base import make_map
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapSet
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 
 def two_junctions(gap: float) -> RoadGraph:
@@ -30,7 +33,7 @@ def test_short_edge_between_junctions_is_collapsed():
     assert 1 not in g.edges and 2 not in g.nodes
     assert g.nodes[1].x == pytest.approx(4.0)
     assert g.degree(1) == 4 and short_edges(g) == []
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 def test_long_enough_edges_are_untouched():
@@ -70,7 +73,7 @@ def _sweep_graph(seed: int):
 def test_sweep_seed_60_now_builds():
     g = _sweep_graph(60)  # 42 m between two junctions needing 21 m each (A0 sweep)
     assert short_edges(g) == []
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 def test_buildable_networks_are_unchanged(monkeypatch):
@@ -93,7 +96,7 @@ def test_stub_road_between_junctions_is_merged():
     assert stub_roads(g) == [1]
     assert repair_short_edges(g) == 1
     assert stub_roads(g) == [] and 1 not in g.edges
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 def test_collapse_keeps_the_neighbours_buildable():

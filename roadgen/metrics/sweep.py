@@ -76,7 +76,7 @@ def build_one(generator: str, preset: Optional[str], seed: int, cfg: dict = DEFA
             fit_cross_sections(graph, DesignParams(**section(cfg, "design")), margin, hd.active_cross_section)
             OpenDriveBuilder(junction_margin=margin, hd=hd).build(graph)
         else:
-            OpenDriveBuilder(junction_margin=margin).build(graph)
+            OpenDriveBuilder(junction_margin=margin, hd=HdMapParams(enabled=False)).build(graph)
         error = None
     except ValueError as e:
         error = str(e)

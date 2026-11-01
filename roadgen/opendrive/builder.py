@@ -68,6 +68,7 @@ from roadgen.geometry.vertical import (
     junction_planes,
 )
 from roadgen.graph.model import RoadGraph
+from roadgen.opendrive import HDMAP_VERSION
 from roadgen.opendrive.control import (
     BAN_SIGNS,
     Control,
@@ -639,6 +640,7 @@ class OpenDriveBuilder:
                     },
                     "movements": [asdict(m) for m in self.movements],
                     "geometry_version": GEOMETRY_VERSION,
+                    **({"hdmap_version": HDMAP_VERSION} if self.hd.enabled else {}),
                     "edge_s_range": {
                         str(e): [r, round(s0, 6), round(s1, 6)]
                         for e, (r, s0, s1) in sorted(self.edge_s_range.items())

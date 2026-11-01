@@ -238,8 +238,8 @@ parameters are in `defaults.yaml` under `metrics` and `network_metrics`.
 
 ```bash
 python -m cli metrics out/<hash>/net.xodr --json net_metrics.json
-python -m cli metrics --sweep 200            # lsystem city on maps, seeds 0..199
-python -m cli metrics --sweep 200 --hd --jobs 4 --preset mixed_city   # with HD maps
+python -m cli metrics --sweep 200 --jobs 4   # lsystem city on maps, seeds 0..199, HD maps
+python -m cli metrics --sweep 200 --no-hd --preset mixed_city   # without HD maps
 ```
 
 How drivable and smooth a network is (`metrics/geometry.py`). It reads only
@@ -261,10 +261,10 @@ the `.xodr`, so any network is measured the same way.
   Roads that only match in position and heading (G1) show up here.
 - **Build-failure sweep** (`--sweep N`): generates N networks as `pipeline
   --maps` would and builds each, reporting the ones the builder rejects
-  (usually an edge shorter than its junction trims). With `--hd` each
-  network first goes through what `pipeline --hd` does before the build
-  (`annotate` from the maps, the cross-section fit) and is built with HD
-  maps. `--jobs N` builds N networks at a time.
+  (usually an edge shorter than its junction trims). With HD maps (the
+  default) each network first goes through what `pipeline` does before the
+  build (`annotate` from the maps, the cross-section fit); `--no-hd` builds
+  the plain network. `--jobs N` builds N networks at a time.
 
 ### Network metrics
 
@@ -290,7 +290,7 @@ from the RoadGraph alone, for comparison with real-city statistics:
 ### HD-map metrics
 
 ```bash
-python -m cli metrics NETWORK.xodr --hd [--json OUT.json]
+python -m cli metrics NETWORK.xodr [--json OUT.json]   # HD counts unless --no-hd
 ```
 
 `roadgen/metrics/hdmap.py`, from the `.xodr` (and its sidecar, if present):

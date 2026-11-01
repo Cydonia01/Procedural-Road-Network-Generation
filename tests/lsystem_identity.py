@@ -56,7 +56,8 @@ def build(preset, seed: int, maps: bool) -> RoadGraph:
 
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "net"
-        argv = ["--no-history", "pipeline", "lsystem", "--maps", "--allow-traps",
+        # --no-hd: the network as grown (with HD maps, annotate and the cross-section fit change it)
+        argv = ["--no-history", "pipeline", "lsystem", "--maps", "--allow-traps", "--no-hd",
                 "--seed", str(seed), "-o", str(out)]
         if preset:
             argv[3:3] = ["--preset", preset]

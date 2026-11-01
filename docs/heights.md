@@ -69,7 +69,7 @@ lsystem keeps its own roads under `max_grade` while growing.
 
 Stretches of an edge's fitted road over water become `Edge.bridges`. The
 terrain map is sampled at its own resolution to find them. With HD maps
-(`pipeline --hd`) a stretch is a bridge where any part of the road's width,
+(the default; not with `--no-hd`) a stretch is a bridge where any part of the road's width,
 [sidewalks](geometry.md#cross-sections) included, is over water, not only its
 centre line.
 

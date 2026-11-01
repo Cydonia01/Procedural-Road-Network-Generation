@@ -147,6 +147,7 @@ roadgen/
     vertical.py            elevation fits, junction planes, banking
     grade_separation.py    overpasses where roads cross without a junction
   opendrive/
+    __init__.py            HDMAP_VERSION, written to the sidecar with HD maps on
     builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
     junctions.py           movement planning and connecting roads
     lanes.py               lane sections (lane types, heights) and road marks
@@ -198,6 +199,7 @@ per successful command
 | `net.png` | `pipeline`, `plot-graph` | Top-down plot: highways orange, avenues red, streets blue, one-way arrows |
 | `net.xodr` | `build-xodr`, `pipeline` | OpenDRIVE 1.6 road network |
 | `net.roadmap.json` | same | Edge → road and node → junction ids, every junction movement ([sidecar](opendrive.md#the-roadmapjson-sidecar)) |
+| `net_hd.png` | `pipeline` (HD maps on), `plot-xodr` | The built lanes coloured by type, with their marks ([plot-xodr](cli-reference.md#plot-map-plot-graph-plot-xodr)) |
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
 | `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
 | `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh plus buildings |

@@ -19,6 +19,7 @@ what you need.
 | Understand road shapes, curves and speeds | [Road geometry](geometry.md) |
 | Understand slopes, bridges, tunnels and overpasses | [Heights](heights.md) |
 | Understand the `.xodr` the builder writes | [OpenDRIVE builder](opendrive.md) |
+| Understand the HD-map content (side lanes, road marks, signs, lights, right of way, turn lanes), or turn it off with `--no-hd` | [OpenDRIVE builder](opendrive.md), [CLI reference → pipeline](cli-reference.md#pipeline) |
 | Know what is checked, and measure a network | [Validation and metrics](validation.md) |
 | Put traffic on a network and run esmini | [Scenarios and simulation](scenarios-and-simulation.md) |
 | Add ground and buildings to the 3D view | [3D scene](scene.md) |

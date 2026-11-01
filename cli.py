@@ -396,7 +396,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
     errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd)
-    if hd.enabled and xodr.exists():
+    if hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
         from roadgen.opendrive.plot import plot_xodr
 
         with timed("plot lanes"):
@@ -696,12 +696,13 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     params = GeometryMetricsParams(**section(args.cfg, "metrics"))
     net_params = network.NetworkMetricsParams(**section(args.cfg, "network_metrics"))
     report: dict = {"networks": []}
+    hd_on = section(args.cfg, "hdmap")["enabled"] if args.hd is None else args.hd
     for path in args.inputs:
         with timed(f"metrics {path}"):
             m = geometry_metrics(path, params)
         for line in summary_lines(m):
             log.info("%s", line)
-        if args.hd:
+        if hd_on:
             m["hdmap"] = hdmap.hdmap_metrics(path)
             for line in hdmap.summary_lines(m["hdmap"]):
                 log.info("%s", line)
@@ -717,18 +718,18 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     if args.sweep:
         seeds = range(args.first_seed, args.first_seed + args.sweep)
         with timed("build sweep"):
-            hd = HdMapParams.from_config(args.cfg, enabled=True) if args.hd else None
+            hd = HdMapParams.from_config(args.cfg, enabled=True) if hd_on else None
             results = build_sweep(args.generator, args.preset, seeds, args.cfg, hd, args.jobs)
         failed = [r for r in results if not r.ok]
         log.info("build sweep (%s, preset %s%s): %d of %d networks failed to build",
-                 args.generator, args.preset, ", HD maps" if args.hd else "", len(failed), len(results))
+                 args.generator, args.preset, ", HD maps" if hd_on else "", len(failed), len(results))
         for key in ("cnr", "skewed_share", "orientation_entropy"):
             values = [r.network[key] for r in results if r.network]
             if values:
                 log.info("build sweep: %s median %.3f (min %.3f, max %.3f)", key,
                          statistics.median(values), min(values), max(values))
         report["sweep"] = {
-            "generator": args.generator, "preset": args.preset, "hd": bool(args.hd), "seeds": list(seeds),
+            "generator": args.generator, "preset": args.preset, "hd": hd_on, "seeds": list(seeds),
             "failed": len(failed),
             "results": [dataclasses.asdict(r) for r in results],
         }
@@ -883,6 +884,10 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g = gen.add_parser(name, help=get_generator(name).description)
         _add_generator_args(g, name, cfg)
         g.add_argument("-o", "--output", help="output RoadGraph JSON (default: <name>[_<preset>]_s<seed>.json)")
+        g.add_argument(
+            "--hd", action=argparse.BooleanOptionalAction, default=None,
+            help="drape and separate with the roads' HD widths (side lanes); default: hdmap.enabled in the config",
+        )
         g.set_defaults(func=cmd_generate)
 
     p = sub.add_parser("pipeline", help="generate, plot, build .xodr and validate in one go")
@@ -1088,10 +1093,11 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                    help="RoadGraph JSON whose network metrics (junction legs, skew, CNR, "
                         "orientation entropy, blocks) to report, repeatable")
     p.add_argument("--json", metavar="OUT", help="write the full report as JSON")
-    p.add_argument("--hd", action="store_true",
+    p.add_argument("--hd", action=argparse.BooleanOptionalAction, default=None,
                    help="also count the .xodr files' HD-map content: lane types, road marks, "
                         "signals, objects, controllers (and junction control from the sidecar); "
-                        "with --sweep, build the sweep's networks with HD maps (annotate, fit, build)")
+                        "with --sweep, build the sweep's networks with HD maps (annotate, fit, build); "
+                        "default: hdmap.enabled in the config")
     p.add_argument("--sweep", type=int, metavar="N",
                    help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
                         "and count how many the builder rejects")

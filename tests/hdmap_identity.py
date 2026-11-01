@@ -1,8 +1,8 @@
 """Hashes of built networks that stage B must leave unchanged while HD maps are off.
 
 Stage B adds side lanes, marks, signals, objects and junction control to the
-OpenDRIVE builder, all behind hdmap.enabled. With it off, the builder's
-output must stay byte for byte what it was: this guard hashes the .xodr and
+OpenDRIVE builder, all behind hdmap.enabled (on by default since B10). With it
+off (`--no-hd`), the builder's output must stay byte for byte what it was: this guard hashes the .xodr and
 the .roadmap.json sidecar that `pipeline` writes for a few networks. The
 expected values were recorded with the code before stage B (B0, on top of
 1cc11cc).
@@ -32,7 +32,7 @@ def build(preset: str, seed: int, maps: bool, extra: tuple[str, ...] = ()) -> di
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "net"
         argv = ["--no-history", *extra, "pipeline", "lsystem", "--preset", preset, "--seed", str(seed),
-                "--allow-traps", "-o", str(out)]
+                "--allow-traps", "--no-hd", "-o", str(out)]
         if maps:
             argv.append("--maps")
         if main(argv) != 0:

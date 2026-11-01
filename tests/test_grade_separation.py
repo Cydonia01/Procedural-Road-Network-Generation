@@ -20,10 +20,13 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.drape import drape
 from roadgen.maps.model import MapSet
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.clearance import check_clearance
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
 from tests.test_lsystem_maps import GRID, X, Y, elevation, population
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 
 def crossing_graph() -> RoadGraph:
@@ -76,11 +79,11 @@ def test_separate_without_crossings_changes_nothing():
 
 def test_overpass_builds_and_passes_clearance(tmp_path):
     g = crossing_graph()
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=PLAIN)
     b.build(g)
     b.write(tmp_path / "flat.xodr")
     assert check_clearance(tmp_path / "flat.xodr")  # two roads at one height
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=PLAIN)
     b.build(separate(g))
     b.write(tmp_path / "sep.xodr")
     assert check_clearance(tmp_path / "sep.xodr") == []
@@ -137,7 +140,7 @@ def test_separated_highways_have_crossings_and_no_access():
             assert classes == {"highway"}
     g = separate(separated)
     assert all(clearance_at(g, c) >= GradeSeparationParams().clearance - 1e-3 for c in find_crossings(g))
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 def test_invalid_crossings_mode():
@@ -169,7 +172,7 @@ def test_tunnels_through_a_ridge(tmp_path):
     for eid, _ in spans:  # a constant grade through the hill
         d, z = draped.edge_profile(eid)
         assert np.allclose(np.diff(z) / np.diff(d), (z[-1] - z[0]) / d[-1], atol=1e-3)
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=PLAIN)
     b.build(draped)
     b.write(tmp_path / "t.xodr")
     assert "<tunnel" in (tmp_path / "t.xodr").read_text()

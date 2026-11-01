@@ -107,7 +107,7 @@ graph and calls it.
 
 ## Cross-sections
 
-With HD maps on (`--hd`, `hdmap.enabled`), roads have lanes beside their
+With HD maps on (`hdmap.enabled`, the default; `--no-hd` turns them off), roads have lanes beside their
 driving lanes. `cross_section.py` (`CrossSectionParams`, section
 `cross_section` in `defaults.yaml`) gives them per **profile** and road
 class, on each side from the driving lanes outward, as *(kind, width,

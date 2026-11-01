@@ -33,7 +33,7 @@ file. `pipeline --simulate` attaches it to the scenario.
   follows the same fitted roads, junction trims, junction planes and profile
   fit as the builder; a KD-tree finds the nearest point of each road.
 - **Left alone:** the ground under bridges and tunnels.
-- **With HD maps** (`pipeline --hd`) the levelling reaches the roads' outer
+- **With HD maps** (the default; not with `--no-hd`) the levelling reaches the roads' outer
   edges, sidewalks and shoulders included, and uses the same wider junction
   trims as the build. Curbs and sidewalks are raised in the `.xodr` itself
   (`<height>`), which esmini draws.

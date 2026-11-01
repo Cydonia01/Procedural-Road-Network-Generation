@@ -12,9 +12,12 @@ from roadgen.geometry.planar import segment_start, trim
 from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder, sidecar_path
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.lanes import make_lanes
 from roadgen.validate.schema import validate_schema
 from roadgen.validate.topology import check_topology, check_topology_tree
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 DATA = Path(__file__).parent / "data"
 
@@ -28,7 +31,7 @@ def single_road(forward: int, backward: int) -> RoadGraph:
 
 
 def build_and_parse(graph: RoadGraph, tmp_path: Path) -> etree._Element:
-    builder = OpenDriveBuilder()
+    builder = OpenDriveBuilder(hd=PLAIN)
     builder.build(graph)
     path = tmp_path / "road.xodr"
     builder.write(path)
@@ -138,14 +141,14 @@ def test_backward_only_road_is_reversed(tmp_path):
 def test_output_is_deterministic(tmp_path):
     a, b = tmp_path / "a", tmp_path / "b"
     for d in (a, b):
-        builder = OpenDriveBuilder()
+        builder = OpenDriveBuilder(hd=PLAIN)
         builder.build(single_road(2, 2))
         builder.write(d / "road.xodr")
     assert (a / "road.xodr").read_bytes() == (b / "road.xodr").read_bytes()
 
 
 def test_sidecar_mapping(tmp_path):
-    builder = OpenDriveBuilder()
+    builder = OpenDriveBuilder(hd=PLAIN)
     builder.build(single_road(1, 1))
     sidecar = builder.write(tmp_path / "road.xodr")
     assert sidecar == sidecar_path(tmp_path / "road.xodr")
@@ -163,7 +166,7 @@ def test_sidecar_mapping(tmp_path):
 
 def test_degree_2_node_becomes_bend_junction(tmp_path):
     # Node 2 joins a 2+2 avenue to a one-way 1+0 street at a right angle.
-    builder = OpenDriveBuilder()
+    builder = OpenDriveBuilder(hd=PLAIN)
     builder.build(load_json(DATA / "three_nodes.json"))
     builder.write(tmp_path / "bend.xodr")
     assert builder.node_to_junction == {2: 3}
@@ -176,12 +179,12 @@ def test_invalid_graph_rejected():
     graph = single_road(1, 1)
     graph.add_edge(Edge(8, 1, 99, "street", 1, 1))
     with pytest.raises(ValueError, match="missing node"):
-        OpenDriveBuilder().build(graph)
+        OpenDriveBuilder(hd=PLAIN).build(graph)
 
 
 def test_write_before_build(tmp_path):
     with pytest.raises(RuntimeError):
-        OpenDriveBuilder().write(tmp_path / "x.xodr")
+        OpenDriveBuilder(hd=PLAIN).write(tmp_path / "x.xodr")
 
 
 # --- validators ---------------------------------------------------------------

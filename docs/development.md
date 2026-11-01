@@ -107,6 +107,7 @@ prompts and decisions.
 | Stage A | Geometry accuracy: fitted curves, design speeds, banking, junction planes, clothoid turns, repair, curved growth | `geometry/`, `metrics/`, `maps/align.py`, `generators/repair.py`, `validate/dynamics.py` |
 | Run folders | One hashed `out/<hash>/` per run, `run.yaml`, replay | `history.py`, `config.py` |
 | Stage C | Long-tail diversity: network metrics, manhattan → lsystem, pattern fields, style maps, cul-de-sacs, junction variety, `junction` generator, roundabouts, overpasses, tunnels, interchanges | `metrics/network.py`, `patterns.py`, `maps/style.py`, `generators/transforms/`, `junction.py`, `geometry/grade_separation.py`, `validate/clearance.py` |
+| Stage B | HD-map completeness, on by default (`--no-hd` gives the plain network): cross-sections with side lanes, curb returns and corner roads, German road marks, junction control and right of way, signs and stop lines, traffic lights with fixed-time plans (also in OpenSCENARIO), crosswalks, speed and curve signs, lane use and arrows, turn pockets, banned turns, the HD repair (bare road ends), the `annotate` step | `geometry/cross_section.py`, `opendrive/marks.py`, `control.py`, `furniture.py`, `lights.py`, `hdmap.py`, `plot.py`, `maps/annotate.py`, `validate/hdmap.py`, `metrics/hdmap.py` |
 
 Phase 6 (a scalability benchmark) was removed: the project trains
 autonomous cars, and `simulate` reports what a single run costs

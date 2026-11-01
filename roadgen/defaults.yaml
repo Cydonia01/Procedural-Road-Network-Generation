@@ -253,7 +253,7 @@ opendrive:
   u_turn_radius: 5.0    # tightest U-turn [m]: in and out lane centres at least 2x this apart
 
 hdmap:  # HD-map content of the built roads (stage B): side lanes, ...; pipeline / build-xodr --hd, --no-hd
-  enabled: false            # off: the builder writes exactly what it wrote before stage B
+  enabled: true             # off (--no-hd): the builder writes exactly what it wrote before stage B
 
 cross_section:  # lanes beside the driving lanes, per profile and road class (roadgen/geometry/cross_section.py)
   profile: urban            # profile of edges without Edge.cross_section: urban | suburban | rural | none

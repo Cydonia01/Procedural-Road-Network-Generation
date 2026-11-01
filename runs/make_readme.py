@@ -27,6 +27,7 @@ PHASES = {
     "8": "Road geometry (stage A): fitted curves, metrics, align, curved streets",
     "9": "Long-tail diversity (stage C): pattern fields, style maps, cul-de-sacs, junction variety, "
          "roundabouts, overpasses, tunnels, interchanges, network metrics",
+    "10": "HD maps (stage B): side lanes, road marks, signs, lights, right of way, turn lanes; --no-hd",
 }
 # From scratch to the GUI: the notes of each chain's runs, in order.
 CHAINS = {
@@ -65,6 +66,11 @@ CHAINS = {
         "8 geometry | build-xodr: coastal city with fitted curves, banking and junction planes",
         "8 geometry | metrics: coastal city (lateral acceleration, two-road junctions, curvature jumps)",
         "8 geometry | drive-check: coastal city, every junction movement and every lane end to end",
+    ],
+    "HD city on generated maps: pipeline with drive-check and esmini run, metrics, GUI": [
+        "10 hd | pipeline: lsystem city on maps with HD maps (side lanes, marks, signs, lights, turn lanes), ground, buildings, drive-check, esmini run",
+        "10 hd | metrics: HD-map content of the city (lane types, marks, signals, objects, control mix)",
+        "7 gui | odrviewer: HD city (sidewalks, marks, signs, lights) on its ground + buildings",
     ],
     "City on generated maps in one command, then the GUI": [
         "6 simulate | whole chain in one pipeline: maps, city, ground, buildings, esmini run",
@@ -105,7 +111,7 @@ from the run folders by [`make_readme.py`](make_readme.py). Later runs read
 files from the folders of earlier ones, so on a fresh checkout run
 `examples.sh` (or replay the hashes in order). Each note starts with its
 phase (`1 maps |`, `2 network |`, `3 xodr |`, `4 scene |`, `5 scenario |`,
-`6 simulate |`, `7 gui |`, `8 geometry |`, `9 diversity |`):
+`6 simulate |`, `7 gui |`, `8 geometry |`, `9 diversity |`, `10 hd |`):
 
 ```bash
 # everything, oldest first (phase 7 needs the gui service)
@@ -115,6 +121,9 @@ for h in $(python -m cli history --grep "1 maps |" | grep -oE '^[0-9a-f]{12}'); 
 ```
 
 or one chain from the list below.
+
+HD maps are on by default (stage B), so runs recorded before then give HD
+output when replayed; add `--no-hd` for the old output.
 
 Every run that wrote a road network also lists a `view` command for it:
 odrviewer with random cars, on the run's 3D scene (ground and buildings)

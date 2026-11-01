@@ -232,7 +232,7 @@ def test_esmini_switches_the_lights(tmp_path):
 
 
 def test_hd_off_has_no_lights(tmp_path):
-    _, root, sidecar = _build(_signal_fixture(), tmp_path, HdMapParams())
+    _, root, sidecar = _build(_signal_fixture(), tmp_path, HdMapParams(enabled=False))
     assert not root.findall("controller") and "signal_plans" not in sidecar
 
 

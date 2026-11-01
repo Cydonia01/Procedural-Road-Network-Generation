@@ -31,7 +31,7 @@ from the run folders by [`make_readme.py`](make_readme.py). Later runs read
 files from the folders of earlier ones, so on a fresh checkout run
 `examples.sh` (or replay the hashes in order). Each note starts with its
 phase (`1 maps |`, `2 network |`, `3 xodr |`, `4 scene |`, `5 scenario |`,
-`6 simulate |`, `7 gui |`, `8 geometry |`, `9 diversity |`):
+`6 simulate |`, `7 gui |`, `8 geometry |`, `9 diversity |`, `10 hd |`):
 
 ```bash
 # everything, oldest first (phase 7 needs the gui service)
@@ -41,6 +41,9 @@ for h in $(python -m cli history --grep "1 maps |" | grep -oE '^[0-9a-f]{12}'); 
 ```
 
 or one chain from the list below.
+
+HD maps are on by default (stage B), so runs recorded before then give HD
+output when replayed; add `--no-hd` for the old output.
 
 Every run that wrote a road network also lists a `view` command for it:
 odrviewer with random cars, on the run's 3D scene (ground and buildings)
@@ -59,6 +62,8 @@ recorded as a run.
 **Coastal city on input maps, with ground and buildings:** `19dbda6ba2a3` → `df2efcf1515d` → `2875d0c5f0a0` → `1423b47a4348` → `87811a4affa6` → `784aea2c024c` → `07dc3e231fa7`
 
 **Road geometry: build, measure and drive the coastal city:** `462244afda2e` → `b1a6e1fd7411` → `3f63f67639a5`
+
+**HD city on generated maps: pipeline with drive-check and esmini run, metrics, GUI:** `afc1b580a59b` → `05e0bdc1ac89`
 
 **City on generated maps in one command, then the GUI:** `b3782f374977`
 
@@ -679,4 +684,53 @@ recorded as a run.
 
   ```bash
   python -m cli metrics --graph out/3a4b5ef07762/manhattan_like.json --graph out/917a6d6b33dc/coast_city.json --graph out/5ff781b88a35/paris.json --graph out/9adc5a4a4810/organic_town.json --graph out/25102d21d7bf/skewed_grid.json --graph out/6afb7e051c73/suburb.json --graph out/b0c06fe41f40/mixed_city.json --graph out/83e16ac16e35/highway_corridor.json --graph out/679e822f5060/junction_random.json --json network_metrics.json
+  ```
+
+## 10. HD maps (stage B): side lanes, road marks, signs, lights, right of way, turn lanes; --no-hd
+
+- `afc1b580a59b` pipeline: lsystem city on maps with HD maps (side lanes, marks, signs, lights, turn lanes), ground, buildings, drive-check, esmini run
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 7 --allow-traps --ground --buildings --drive-check --simulate -o city_hd
+  python -m cli view out/afc1b580a59b/city_hd.xodr --scenegraph out/afc1b580a59b/city_hd_scene.osgt   # look at it
+  ```
+
+- `acb3a7fdb3c2` pipeline: the same city with --no-hd (driving lanes only, as before stage B)
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 7 --allow-traps --no-hd -o city_plain
+  python -m cli view out/acb3a7fdb3c2/city_plain.xodr   # look at it
+  ```
+
+- `05e0bdc1ac89` metrics: HD-map content of the city (lane types, marks, signals, objects, control mix)
+
+  ```bash
+  python -m cli metrics out/afc1b580a59b/city_hd.xodr --json city_hd_metrics.json
+  ```
+
+- `71510c98c995` pipeline: lsystem manhattan_like with HD maps (one-way avenues, lights, arrows), drive-check
+
+  ```bash
+  python -m cli pipeline lsystem --preset manhattan_like --seed 1 --allow-traps --drive-check -o manhattan_hd
+  python -m cli view out/71510c98c995/manhattan_hd.xodr   # look at it
+  ```
+
+- `09b95a16780e` pipeline: lsystem suburb with the suburban cross-section (no parking, narrower sidewalks), drive-check
+
+  ```bash
+  python -m cli pipeline lsystem --preset suburb --seed 1 --allow-traps --cross-section suburban --drive-check -o suburb_hd
+  python -m cli view out/09b95a16780e/suburb_hd.xodr   # look at it
+  ```
+
+- `14dc435522e8` pipeline: junction preset k with HD maps (priority and right before left, crosswalks, lane use), drive-check
+
+  ```bash
+  python -m cli pipeline junction --preset k --allow-traps --drive-check -o junction_k_hd
+  python -m cli view out/14dc435522e8/junction_k_hd.xodr   # look at it
+  ```
+
+- `7d4745fbdb7c` metrics: build-failure sweep over 20 cities on maps with HD maps (annotate, fit, build)
+
+  ```bash
+  python -m cli metrics --sweep 20 --jobs 4 --json sweep20_hd.json
   ```

@@ -19,6 +19,7 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.drape import DrapeParams, drape
 from roadgen.maps.model import LAND, WATER, GridSpec, MapLayer, load_npz
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.scene.buildings import (
     FOUNDATION,
     BuildingParams,
@@ -30,6 +31,8 @@ from roadgen.scene.osgt import write_osgt
 from roadgen.validate.continuity import RoadEval, check_continuity
 from roadgen.validate.topology import check_topology
 from tests.grids import ON_MAPS, grid_cli
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 GRID = GridSpec((-100.0, -100.0), (1200.0, 700.0), 10.0)
 X, Y = GRID.cell_centers()
@@ -63,7 +66,7 @@ VALLEY = elevation(np.where(RIVER, 0.0, 2.0 + 0.04 * np.abs(X - 510.0)))
 
 
 def build(g: RoadGraph, tmp_path, name: str = "net") -> tuple[OpenDriveBuilder, etree._ElementTree]:
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=PLAIN)
     b.build(g)
     path = tmp_path / f"{name}.xodr"
     b.write(path)

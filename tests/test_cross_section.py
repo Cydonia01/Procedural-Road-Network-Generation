@@ -211,7 +211,9 @@ def test_hd_params_from_config():
     from roadgen.config import DEFAULTS
 
     hd = HdMapParams.from_config(DEFAULTS)
-    assert not hd.enabled and hd.active_cross_section is None
+    assert hd.enabled  # the default since B10
+    off = HdMapParams.from_config(DEFAULTS, enabled=False)
+    assert not off.enabled and off.active_cross_section is None
     on = HdMapParams.from_config(DEFAULTS, seed=4, enabled=True)
     from roadgen.geometry.cross_section import TurnLaneParams
 
@@ -223,7 +225,8 @@ def test_pipeline_hd_fits_and_builds(tmp_path):
     assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps", "--hd",
                  "-o", str(out)]) == 0
     off = tmp_path / "off"
-    assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps", "-o", str(off)]) == 0
+    assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps", "--no-hd",
+                 "-o", str(off)]) == 0
     assert out.with_suffix(".xodr").read_bytes() != off.with_suffix(".xodr").read_bytes()  # wider trims
 
 

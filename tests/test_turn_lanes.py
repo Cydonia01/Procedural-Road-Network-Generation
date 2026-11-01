@@ -182,7 +182,7 @@ def test_junction_surface_fill(tmp_path):
 
 
 def test_hd_off_unchanged_by_b8(tmp_path):
-    _, root, sidecar, _ = _build(_cross(), tmp_path, HdMapParams())
+    _, root, sidecar, _ = _build(_cross(), tmp_path, HdMapParams(enabled=False))
     assert "lane_use" not in sidecar and "banned" not in sidecar
     assert not list(root.iter("object"))
 

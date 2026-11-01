@@ -12,16 +12,19 @@ from roadgen.geometry.junction_space import Arm, junction_trims
 from roadgen.geometry.planar import Pose, hermite_poly3, wrap_angle
 from roadgen.graph.io import load_json
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import classify, continuation_pairs, lane_pairs
 from roadgen.validate.continuity import check_continuity, check_continuity_tree
 from roadgen.validate.topology import check_topology, check_topology_tree
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ALL_FIXTURES = ["single_4way", "single_T", "4way_avenue_x_street", "4way_oneway"]
 
 
 def build(name: str, tmp_path: Path) -> tuple[OpenDriveBuilder, Path]:
-    builder = OpenDriveBuilder(name)
+    builder = OpenDriveBuilder(name, hd=PLAIN)
     builder.build(load_json(FIXTURES / f"{name}.json"))
     path = tmp_path / f"{name}.xodr"
     builder.write(path)
@@ -247,7 +250,7 @@ def test_roads_trimmed_to_junction_boundary(tmp_path):
 
 
 def test_custom_margin(tmp_path):
-    builder = OpenDriveBuilder(junction_margin=5.0)
+    builder = OpenDriveBuilder(junction_margin=5.0, hd=PLAIN)
     builder.build(load_json(FIXTURES / "single_4way.json"))
     builder.write(tmp_path / "x.xodr")
     root = etree.parse(str(tmp_path / "x.xodr")).getroot()
@@ -258,7 +261,7 @@ def test_edge_too_short_for_junction(tmp_path):
     graph = load_json(FIXTURES / "single_4way.json")
     graph.nodes[2].x = -4.0  # west arm only 4 m long
     with pytest.raises(ValueError, match="too short"):
-        OpenDriveBuilder().build(graph)
+        OpenDriveBuilder(hd=PLAIN).build(graph)
 
 
 def test_cli_reports_unbuildable_graph(tmp_path, caplog):
@@ -267,7 +270,8 @@ def test_cli_reports_unbuildable_graph(tmp_path, caplog):
     graph = load_json(FIXTURES / "single_4way.json")
     graph.nodes[2].x = -4.0
     save_json(graph, tmp_path / "short.json")
-    assert main(["build-xodr", str(tmp_path / "short.json"), str(tmp_path / "short.xodr")]) == 1
+    # --no-hd: with HD maps the cross-section fit repairs the arm before the build
+    assert main(["build-xodr", str(tmp_path / "short.json"), str(tmp_path / "short.xodr"), "--no-hd"]) == 1
     assert "build: edge" in caplog.text and "too short" in caplog.text
 
 
@@ -396,7 +400,7 @@ def test_sliver_angle_rejected(tmp_path):
     for k, b in enumerate((2, 3, 4), 1):
         g.add_edge(Edge(k, 1, b, "street", 1, 1))
     with pytest.raises(ValueError, match="node 1: edges .* meet at"):
-        OpenDriveBuilder().build(g)
+        OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 @pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
@@ -428,7 +432,7 @@ def short_roads_graph():
 def test_esmini_drives_short_roads_and_dead_ends(tmp_path):
     from roadgen.sim.drive_check import APPROACH, drive_movements
 
-    builder = OpenDriveBuilder("short_roads")
+    builder = OpenDriveBuilder("short_roads", hd=PLAIN)
     builder.build(short_roads_graph())
     path = tmp_path / "short_roads.xodr"
     builder.write(path)
@@ -446,7 +450,7 @@ def test_esmini_drives_long_connecting_roads(tmp_path):
     a fixed distance; the drive must still reach the target road."""
     from roadgen.sim.drive_check import APPROACH, drive_movements
 
-    builder = OpenDriveBuilder("big_junction", junction_margin=30.0)
+    builder = OpenDriveBuilder("big_junction", junction_margin=30.0, hd=PLAIN)
     builder.build(load_json(FIXTURES / "single_4way.json"))
     path = tmp_path / "big_junction.xodr"
     builder.write(path)
