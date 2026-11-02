@@ -40,6 +40,11 @@ from shapely.strtree import STRtree
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.alignment import NetworkAlignment, half_width, network_alignment
+from roadgen.geometry.cross_section import (
+    CrossSectionParams,
+    loop_edges,
+    outer_half_width,
+)
 from roadgen.graph.model import RoadGraph
 
 log = logging.getLogger(__name__)
@@ -207,14 +212,17 @@ def _continuation(graph: RoadGraph, node: int, prev, rank: int):
 
 
 def separate(graph: RoadGraph, params: GradeSeparationParams = GradeSeparationParams(),
-             design=None, junction_margin: Optional[float] = None) -> RoadGraph:
+             design=None, junction_margin: Optional[float] = None,
+             cross_section: Optional[CrossSectionParams] = None) -> RoadGraph:
     """A copy of graph with every crossing without a junction grade-separated.
 
-    design, junction_margin: as for the OpenDRIVE builder, so the crossings are
-    those of the roads it draws.
+    design, junction_margin, cross_section: as for the OpenDRIVE builder, so the
+    crossings are those of the roads it draws; with a cross-section the flat
+    top spans the lower road's sidewalks and shoulders too.
     """
     out = copy.deepcopy(graph)
-    crossings = find_crossings(out, fitted(out, design, junction_margin))
+    crossings = find_crossings(out, fitted(out, design, junction_margin, cross_section))
+    loops = loop_edges(out) if cross_section is not None else frozenset()
     if not crossings:
         return out
     lower_edges = {c.lower for c in crossings}
@@ -225,7 +233,8 @@ def separate(graph: RoadGraph, params: GradeSeparationParams = GradeSeparationPa
     for c in crossings:
         up, low = out.edges[c.upper], out.edges[c.lower]
         gap = _height(out, c.lower, c.d_lower) + params.clearance - _height(out, c.upper, c.d_upper)
-        flat = half_width(low) / max(c.sin, MIN_SIN) + params.flat_margin
+        width = half_width(low) if cross_section is None else outer_half_width(low, cross_section, low.id in loops)
+        flat = width / max(c.sin, MIN_SIN) + params.flat_margin
         bump = _Bump(max(0.0, gap), flat, params.max_grade)
         for eid, (start, sign) in _walk_line(out, c, bump.reach).items():
             line_raise.setdefault(eid, []).append((bump, start, sign))
@@ -253,15 +262,16 @@ def separate(graph: RoadGraph, params: GradeSeparationParams = GradeSeparationPa
     return out
 
 
-def fitted(graph: RoadGraph, design=None, junction_margin: Optional[float] = None
-           ) -> Optional[NetworkAlignment]:
+def fitted(graph: RoadGraph, design=None, junction_margin: Optional[float] = None,
+           cross_section: Optional[CrossSectionParams] = None) -> Optional[NetworkAlignment]:
     """The builder's alignment of graph, or None where it can't be built."""
     from roadgen.geometry.design import DesignParams
     from roadgen.geometry.junction_space import DEFAULT_MARGIN
 
     try:
         return network_alignment(graph, design or DesignParams(),
-                                 DEFAULT_MARGIN if junction_margin is None else junction_margin)
+                                 DEFAULT_MARGIN if junction_margin is None else junction_margin,
+                                 cross_section=cross_section)
     except ValueError as e:
         log.warning("grade separation: no fitted roads (%s); crossings of the straight edges", e)
         return None

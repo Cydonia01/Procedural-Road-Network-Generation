@@ -1,0 +1,6 @@
+# Lines of esmini 3.9 resources/traffic_signals/de_traffic_signals.txt for the DE codes
+# roadgen writes (B5); esmini types a sign by its key type[.subtype][-value].
+205=TYPE_GIVE_WAY
+206=TYPE_STOP
+215=TYPE_ROUNDABOUT
+301=TYPE_RIGHT_OF_WAY_NEXT_INTERSECTION

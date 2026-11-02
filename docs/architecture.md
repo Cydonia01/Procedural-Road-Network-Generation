@@ -30,6 +30,7 @@ flowchart LR
 | Align | `RoadGraph` + maps → bend radius caps | `roadgen/maps/align.py` | [Heights](heights.md#1-align-bends-that-leave-legal-ground) |
 | Drape | `RoadGraph` + elevation (+ terrain) → heights, bridges, tunnels | `roadgen/maps/drape.py` | [Heights](heights.md#2-drape-heights-from-the-elevation-map) |
 | Separate | `RoadGraph` → overpasses where roads cross without a junction | `roadgen/geometry/grade_separation.py` | [Heights](heights.md#3-grade-separation-overpasses) |
+| Annotate (HD maps) | `RoadGraph` + population (+ style) → cross-section profiles, junction control | `roadgen/maps/annotate.py` | [Input maps](maps.md#annotate-profiles-and-control-from-the-maps) |
 | Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` (shape from `roadgen/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
 | Validate | `RoadGraph` / `.xodr` → errors | `roadgen/validate/` | [Validation](validation.md) |
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
@@ -93,7 +94,8 @@ Details are in [Heights](heights.md).
    (fallback `./esmini`) in `roadgen/sim/esmini.py`, never by a hard-coded
    path. `scenariogeneration` is only used inside the builders, so it can be
    replaced. Its geometry auto-adjustment and slow pretty-printer are
-   bypassed, and XML is indented with `ET.indent`.
+   bypassed, and XML is indented with `ET.indent`: one space per level with
+   HD maps (indentation was a third of the file), four without.
 7. **Conventions:**
    - OpenDRIVE 1.6, right-hand traffic;
    - SI units (m, rad, m/s);
@@ -124,6 +126,7 @@ roadgen/
     plot.py                map previews, optionally with roads
     align.py               radius caps for bends whose curve leaves legal ground
     drape.py               heights, bridges and tunnels for a RoadGraph
+    annotate.py            HD maps: cross-section profiles and junction control from the maps
   generators/
     base.py                RoadNetworkGenerator ABC, registry, params loading
     lsystem.py             city growth after Parish & Müller (grid and field goals, maps)
@@ -133,7 +136,8 @@ roadgen/
     transforms/            graph → graph passes: drop, culdesac, stagger, roundabout, interchange
   geometry/                neutral road shape (no OpenDRIVE imports)
     planar.py              poses, straight segments, Hermite paramPoly3
-    junction_space.py      junction trims: where roads stop at a node
+    junction_space.py      junction trims: where roads stop at a node; curb returns
+    cross_section.py       side lanes, medians, corner radii per profile and road class; turn pockets
     design.py              design-speed rules: radii, advisory speeds, spirals, tapers
     primitives.py          line / arc / spiral pieces, alignments
     clothoid.py            G2 clothoid transitions
@@ -143,19 +147,28 @@ roadgen/
     vertical.py            elevation fits, junction planes, banking
     grade_separation.py    overpasses where roads cross without a junction
   opendrive/
+    __init__.py            HDMAP_VERSION, written to the sidecar with HD maps on
     builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
     junctions.py           movement planning and connecting roads
-    lanes.py               lane sections and road marks
+    lanes.py               lane sections (lane types, heights) and road marks
+    marks.py               HD road marks: German catalogue, no-lane-change zones (stage B)
+    control.py             junction control kinds, approach roles, conflicts and right of way (stage B)
+    furniture.py           stop and yield lines, crosswalks, signs and lights; speed and curve signs (stage B)
+    lights.py              traffic-light phase groups and fixed-time plans (stage B)
+    hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
+    plot.py                plot-xodr: a built .xodr's lanes coloured by type, and its marks
   validate/
     connectivity.py        traffic traps and reachability (RoadGraph)
     topology.py            ids and links (.xodr)
     continuity.py          lane position, heading, height, grade, curvature continuity (.xodr)
     dynamics.py            lateral acceleration at the posted speed (.xodr)
     clearance.py           vertical clearance where roads cross (.xodr)
+    hdmap.py               HD-map content: marks, signals, objects, approaches, priorities, lights (.xodr)
     schema.py              XSD validation (optional)
   metrics/
     geometry.py            curvature and lateral-acceleration statistics of an .xodr
     network.py             layout and junction variety of a RoadGraph
+    hdmap.py               HD-map content of an .xodr: lane types, marks, signals, objects, controllers
     sweep.py               build-failure sweep over seeds
   scenario/
     xosc_builder.py        vehicle spawning, routes, .xosc writing
@@ -163,6 +176,7 @@ roadgen/
     esmini.py              locating esmini binaries and libraries
     runner.py              running esmini with timeout, memory and load-time monitoring
     drive_check.py         driving every movement and lane with esmini's RoadManager
+    screenshot.py          still images rendered by esmini (view --screenshot), headless via xvfb-run
   scene/
     ground.py              ground mesh from the maps, levelled under the roads
     buildings.py           extruded building blocks
@@ -185,6 +199,7 @@ per successful command
 | `net.png` | `pipeline`, `plot-graph` | Top-down plot: highways orange, avenues red, streets blue, one-way arrows |
 | `net.xodr` | `build-xodr`, `pipeline` | OpenDRIVE 1.6 road network |
 | `net.roadmap.json` | same | Edge → road and node → junction ids, every junction movement ([sidecar](opendrive.md#the-roadmapjson-sidecar)) |
+| `net_hd.png` | `pipeline` (HD maps on), `plot-xodr` | The built lanes coloured by type, with their marks ([plot-xodr](cli-reference.md#plot-map-plot-graph-plot-xodr)) |
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
 | `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
 | `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh plus buildings |

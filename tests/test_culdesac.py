@@ -16,9 +16,12 @@ from roadgen.generators.transforms.culdesac import (
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.metrics.network import arm_headings, network_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 
 def street(*points: tuple[float, float]) -> RoadGraph:
@@ -65,7 +68,7 @@ def test_bulbs_turn_dead_ends_into_y_junctions():
 def test_bulbs_build_into_valid_opendrive(tmp_path):
     g = street((0, 0), (120, 0), (240, 40))
     bulbs(g)
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=PLAIN)
     b.build(g)
     b.write(tmp_path / "c.xodr")
     assert check_topology(tmp_path / "c.xodr") == []
@@ -120,7 +123,7 @@ def test_cnr_falls_as_the_detour_ratio_rises():
 def test_connectors_keep_the_network_valid():
     g = suburb(3, detour_ratio=1.5)
     assert g.validate() == []
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 def test_culdesac_prob_in_lsystem():
@@ -136,7 +139,7 @@ def test_suburb_preset_has_culdesacs_and_builds():
     g = LSystemGenerator().generate(LSystemParams.preset("suburb"), 1)
     m = network_metrics(g)
     assert m["features"]["culdesacs"] >= 5 and m["counts"]["dead_ends"] > 0
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 @pytest.mark.parametrize("kw", [{"detour_ratio": 0.5}, {"connect_radius": 0.0}, {"culdesac_prob": 2.0},

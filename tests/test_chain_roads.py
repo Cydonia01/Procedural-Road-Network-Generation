@@ -14,8 +14,11 @@ from roadgen.geometry.vertical import evaluate
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.metrics.geometry import geometry_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.continuity import RoadEval, check_continuity
 from roadgen.validate.topology import check_topology
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 V = 13.9  # [m/s]
 
@@ -33,7 +36,7 @@ def graph_of(points, edges, z=None) -> RoadGraph:
 
 
 def build(g: RoadGraph, tmp_path, name: str = "net"):
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=PLAIN)
     b.build(g)
     path = tmp_path / f"{name}.xodr"
     b.write(path)

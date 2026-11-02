@@ -33,6 +33,11 @@ import numpy as np
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.alignment import NetworkAlignment, network_alignment
+from roadgen.geometry.cross_section import (
+    CrossSectionParams,
+    loop_edges,
+    outer_half_width,
+)
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN
 from roadgen.graph.model import RoadGraph
@@ -60,17 +65,21 @@ class DrapeParams:
 
 def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = None,
           params: DrapeParams = DrapeParams(), design: DesignParams = DesignParams(),
-          junction_margin: float = DEFAULT_MARGIN) -> RoadGraph:
+          junction_margin: float = DEFAULT_MARGIN,
+          cross_section: Optional[CrossSectionParams] = None) -> RoadGraph:
     """A copy of graph with Node.z, Edge.profile and Edge.bridges filled in.
 
-    design, junction_margin: as for the OpenDRIVE builder, so the fitted roads
-    sampled here are the ones it builds.
+    design, junction_margin, cross_section: as for the OpenDRIVE builder, so the
+    fitted roads sampled here are the ones it builds. With a cross-section a
+    bridge spans wherever any part of the road's width (sidewalks included) is
+    over water.
     """
     if elevation.kind != "elevation" or (terrain is not None and terrain.kind != "terrain"):
         raise ValueError("drape needs an elevation map (and optionally a terrain map)")
     out = copy.deepcopy(graph)
     try:
-        na: Optional[NetworkAlignment] = network_alignment(out, design, junction_margin)
+        na: Optional[NetworkAlignment] = network_alignment(out, design, junction_margin,
+                                                           cross_section=cross_section)
     except ValueError as e:  # the builder will reject the graph too; drape along straight edges
         log.warning("drape: no fitted roads (%s); sampling along straight edges", e)
         na = None
@@ -84,6 +93,7 @@ def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = N
         node.z = _node_height(*on_road.get(node.id, (node.x, node.y)), elevation, terrain, params)
     max_grade = 0.0
     tunnel_edges = set(out.metadata.get("tunnels") or [])
+    loops = loop_edges(out) if cross_section is not None else frozenset()
     for eid, edge in sorted(out.edges.items()):
         a, b = out.nodes[edge.from_node], out.nodes[edge.to_node]
         length = out.edge_length(eid)
@@ -96,7 +106,8 @@ def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = N
             edge.bridges = []
             edge.tunnels = _tunnel_spans(pos, length, a.z, b.z, elevation, params.tunnel_cover)
         else:
-            spans = _water_spans(pos, length, terrain)
+            half = 0.0 if cross_section is None else outer_half_width(edge, cross_section, eid in loops)
+            spans = _water_spans(pos, length, terrain, half)
             z = _edge_heights(a, b, d, length, elevation, params, spans, pos)
             edge.profile = [round(float(v), 3) for v in z[1:-1]]
             rounded = ((round(s0, 2), min(round(s1, 2), length)) for s0, s1 in spans)
@@ -166,14 +177,22 @@ def _tunnel_spans(pos: Positions, length: float, z0: float, z1: float, elevation
     return spans
 
 
-def _water_spans(pos: Positions, length: float,
-                 terrain: Optional[MapLayer]) -> list[tuple[float, float]]:
-    """(start, end) distances of the stretches of the road over water."""
+def _water_spans(pos: Positions, length: float, terrain: Optional[MapLayer],
+                 half_width: float = 0.0) -> list[tuple[float, float]]:
+    """(start, end) distances of the stretches of the road over water: its centre line,
+    or with half_width [m] anywhere across its width."""
     if terrain is None or length == 0:
         return []
     step = terrain.grid.cell_size / 2
     d = np.linspace(0.0, length, max(2, math.ceil(length / step) + 1))
-    wet = terrain.sample(*pos(d)) == WATER
+    x, y = pos(d)
+    wet = terrain.sample(x, y) == WATER
+    if half_width > 0:
+        hdg = np.arctan2(np.gradient(np.asarray(y, float)), np.gradient(np.asarray(x, float)))
+        for side in (-1.0, 1.0):
+            for f in (0.5, 1.0):  # mid-side and the outer edge
+                off = side * f * half_width
+                wet |= terrain.sample(x - off * np.sin(hdg), y + off * np.cos(hdg)) == WATER
     spans: list[tuple[float, float]] = []
     k = 0
     while k < len(d):

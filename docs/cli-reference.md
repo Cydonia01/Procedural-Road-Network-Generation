@@ -14,12 +14,14 @@ check or simulation failed.
 | **Input maps** | |
 | [`maps`](#generators-maps) | List map generators, presets and parameters |
 | [`map`](#map) | One input map (`.npz` + `.png`) |
-| [`plot-map`](#plot-map-plot-graph) | Map `.npz` → image |
+| [`plot-map`](#plot-map-plot-graph-plot-xodr) | Map `.npz` → image |
 | **Graph steps** | |
 | [`align`](#align-drape-separate) | Cap bend radii where a fitted curve would leave legal ground |
 | [`drape`](#align-drape-separate) | Heights from an elevation map into a RoadGraph |
 | [`separate`](#align-drape-separate) | Overpasses where roads cross without a junction |
-| [`plot-graph`](#plot-map-plot-graph) | RoadGraph JSON → image |
+| [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) | HD maps: cross-section profiles and junction control from the population (and style) map |
+| [`plot-graph`](#plot-map-plot-graph-plot-xodr) | RoadGraph JSON → image |
+| [`plot-xodr`](#plot-map-plot-graph-plot-xodr) | `.xodr` → image of its lanes by type |
 | **OpenDRIVE and checks** | |
 | [`build-xodr`](#build-xodr) | RoadGraph JSON → `.xodr` + validation |
 | [`drive-check`](#drive-check) | Drive every junction movement and lane with esmini's RoadManager |
@@ -53,8 +55,8 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 
 Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
-`maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `scenario`,
-`buildings`, `esmini`, `pipeline`.
+`maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
+`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scenario`, `buildings`, `esmini`, `pipeline`.
 
 Parameters are layered. Each layer overrides the one before it:
 
@@ -134,6 +136,7 @@ python -m cli generate <lsystem|junction> [options] [-o OUT.json]     # default:
 | `--set KEY=VALUE` | Override one parameter (repeatable) |
 | `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`, `style`). Repeatable. Only `lsystem` reads maps |
 | `--flat` | No heights, even with an elevation map |
+| `--hd`, `--no-hd` | Drape and grade-separate with the roads' HD widths, side lanes included (default `hdmap.enabled`, on), as `pipeline` does; `--no-hd` uses the driving lanes only |
 
 Generator parameters have no flags of their own. Use `--set`, e.g. `--set
 extent=[500,240] --set boundary=ring`. The parameters are listed in
@@ -160,6 +163,9 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2) |
+| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, on; `--no-hd` writes the plain driving-lane network, byte for byte what the builder wrote before HD maps): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are fixed before the build: turn pockets that would make them too short are left out, and road ends whose side lanes would are made bare ([repair](generators.md#repair-edges-too-short-for-their-junctions)). Also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
+| `--cross-section PROFILE` | Default profile with HD maps: `urban`, `suburban`, `rural` or `none` (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
+| `--no-corner-roads` | With HD maps, leave out the [corner roads](opendrive.md#lanes) (the side lanes around junction corners; `cross_section.corner_roads: false`). esmini loads them slowly (on `city` 57 s instead of 31 s), so this is for throughput benchmarks; the corners' side lanes are then missing from the map |
 | `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
 | `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |
 | `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
@@ -186,12 +192,21 @@ Writes `PREFIX.npz` and `PREFIX.png`. Default prefix:
 | `--on KIND=FILE.npz` | Build on an earlier kind, e.g. `map elevation fbm --on terrain=coast.npz`. Repeatable; not for `terrain`. Resampled if on another grid |
 | `--graph FILE.json` | Draw this RoadGraph on the preview |
 
-## plot-map, plot-graph
+## plot-map, plot-graph, plot-xodr
 
 ```bash
 python -m cli plot-map INPUT.npz [OUTPUT.png] [--graph FILE.json]     # default: <input>.png
 python -m cli plot-graph INPUT.json [OUTPUT.png] [--node-ids]          # default: <input>.png
+python -m cli plot-xodr INPUT.xodr [OUTPUT.png] [--step M]             # default: <input>.lanes.png
 ```
+
+`plot-xodr` draws a built `.xodr`'s lanes, connecting roads included, as
+polygons coloured by OpenDRIVE lane type, sampled every `--step` metres
+(default 2), from the file alone (`roadgen/opendrive/plot.py`). Road marks
+are drawn in white on the lane borders, broken ones dash by dash and double
+ones thicker; curb marks are left out, since the curb lane is drawn. Stop and
+yield lines, signs (by code) and, from the sidecar, a glyph per junction for
+its control kind are drawn on top.
 
 ## align, drape, separate
 
@@ -210,8 +225,10 @@ are the config sections `align:`, `drape:` and `grade_separation:`.
 ## build-xodr
 
 ```bash
-python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M]   # default: <input>.xodr
+python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd] [--cross-section PROFILE] [--no-corner-roads]   # default: <input>.xodr
 ```
+
+`--hd` / `--no-hd`, `--cross-section` and `--no-corner-roads` as for [pipeline](#pipeline).
 
 Builds and validates. Traffic connectivity problems are only warnings here,
 since hand-made test graphs often have dead ends.
@@ -227,14 +244,21 @@ See [Validation → Drive-check](validation.md#drive-check).
 ## metrics
 
 ```bash
-python -m cli metrics A.xodr [B.xodr ...] [--graph A.json ...] [--json OUT.json]
-python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city]
+python -m cli metrics A.xodr [B.xodr ...] [--hd | --no-hd] [--graph A.json ...] [--json OUT.json]
+python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd | --no-hd] [--jobs 1]
 ```
 
 - Geometry metrics of each `.xodr`.
+- With HD maps (`--hd`, default `hdmap.enabled`, on; `--no-hd` leaves it out) each report adds its HD-map content: lane km per road km by lane type, road
+  marks by type and colour (and any on connecting roads), signals and
+  objects by type, per km and per junction, controllers and junction
+  priority records; from the `.roadmap.json`, where present, the junction
+  control mix, signal plans, lane-use records and banned movements.
 - `--graph` (repeatable) adds the network metrics of a RoadGraph.
 - `--sweep N` generates N networks, as `pipeline --maps` would, and counts the
-  ones the builder rejects.
+  ones the builder rejects. With HD maps they are built after `annotate` and
+  the cross-section fit, as in `pipeline`; with `--no-hd` as in `pipeline --no-hd`. `--jobs N`
+  builds N at a time.
 
 The report is informational: the command succeeds whatever the numbers are.
 Thresholds are in `defaults.yaml` under `metrics` and `network_metrics`. The
@@ -267,6 +291,7 @@ python -m cli scenario NETWORK.xodr --vehicles N [options] [-o OUT.xosc]   # def
 | `--speed-min`, `--speed-max` | 8.0, 13.9 | Target speed range [m/s] |
 | `--min-gap M` | 10 | Minimum gap between vehicles in a lane [m] |
 | `--graph FILE` | `<input>.json` if present | RoadGraph for consistency checks |
+| `--lights`, `--no-lights` | `scenario.lights` (on) | Switch the network's [traffic lights](scenarios-and-simulation.md#traffic-lights) |
 | `--scenegraph FILE` | – | 3D scene `.osgt` shown with the roads |
 
 ## simulate
@@ -290,6 +315,7 @@ into the run's folder (next to the `.xosc` with `--no-history`).
 
 ```bash
 python -m cli view NETWORK.xodr [--density CARS_PER_100M] [--scenegraph FILE.osgt] [--duration S]
+python -m cli view NETWORK.xodr --screenshot OUT.png [--camera X,Y,Z[,H,P]] [--at S] [--scenegraph FILE.osgt]
 ```
 
 | Option | Meaning |
@@ -297,9 +323,15 @@ python -m cli view NETWORK.xodr [--density CARS_PER_100M] [--scenegraph FILE.osg
 | `--density` | Random cars per 100 m of lane (default 1) |
 | `--scenegraph FILE.osgt` | Ground and/or buildings to show with the roads |
 | `--duration S` | Close after S seconds (default: stays open) |
+| `--screenshot OUT.png` | Render one still image instead of opening the viewer (no cars) |
+| `--camera X,Y,Z[,H,P]` | Screenshot camera position [m], heading and pitch [rad]; default straight down over the whole network |
+| `--at S` | Screenshot time [s] (default 0.3) |
 
-Needs a display. In Docker, use the `gui` or `gui-mac` service
-([Docker](docker.md)). `view` is not recorded as a run.
+The viewer needs a display. In Docker, use the `gui` or `gui-mac` service
+([Docker](docker.md)). `--screenshot` doesn't: it renders with esmini (a
+scenario without vehicles, a fixed custom camera, `--capture_screen`), under
+`xvfb-run` when there is no display, so it works in the `dev` service.
+`view` is not recorded as a run.
 
 ## Run folders (history, replay, run)
 
@@ -342,6 +374,12 @@ python -m cli run my_run.yaml           # a run file written by hand
 - **Replay** uses today's code and defaults with the run's non-default
   arguments and parameters, so its result follows the pipeline as the code
   changes. `--show` only prints the command and the folder.
+- **HD maps since the default changed.** `hdmap.enabled` is on by default
+  since stage B. A run recorded before that holds no `hd` argument and no
+  `hdmap` parameter, so its replay gives HD output. A new run of the same
+  command has the same spec and hash and replaces the old folder. To get the
+  old output, add `--no-hd` (or `--set hdmap.enabled=false`); that is a
+  different spec with its own folder. Old `run.yaml` files are not migrated.
 - **Input files.** A command reads its input files from where they are now,
   so replay the runs that write them first.
 - **Run files.** Only `command` is required. `args` uses argument names as in

@@ -33,6 +33,8 @@ class Node:
     kind: NodeKind = "auto"
     z: float = 0.0  # height [m]; at a junction, of the junction area at the node
     radius_cap: Optional[float] = None  # largest corner radius at this bend [m] (set by `align`)
+    # Junction control (stage B, e.g. "signal"); None = the builder derives it.
+    control: Optional[str] = None
 
 
 @dataclass
@@ -54,6 +56,8 @@ class Edge:
     bridges: list[tuple[float, float]] = field(default_factory=list)
     # Stretches under ground as (start, end) distances [m] from from_node.
     tunnels: list[tuple[float, float]] = field(default_factory=list)
+    # Cross-section profile (stage B: urban, suburban, rural, none); None = the builder's default.
+    cross_section: Optional[str] = None
 
     @property
     def total_lanes(self) -> int:

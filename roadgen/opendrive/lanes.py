@@ -8,9 +8,20 @@ center lane's mark is the center line.
 
 from __future__ import annotations
 
+from typing import Optional, Union
+
 from scenariogeneration import xodr
 
-from roadgen.geometry.profiles import LaneLayout, WidthPiece
+from roadgen.geometry.profiles import LaneLayout, WidthPiece, WidthPieces
+from roadgen.opendrive.marks import RoadMarks, centre_marks, lane_marks
+
+# OpenDRIVE lane type of each lane kind of a layout (stage B side lanes and medians).
+LANE_TYPES = {
+    "driving": xodr.LaneType.driving, "median": xodr.LaneType.median, "parking": xodr.LaneType.parking,
+    "biking": xodr.LaneType.biking, "curb": xodr.LaneType.curb, "sidewalk": xodr.LaneType.sidewalk,
+    "shoulder": xodr.LaneType.shoulder, "border": xodr.LaneType.border,
+    "pocket": xodr.LaneType.driving,  # a left-turn pocket; "none" where it is 0 m wide
+}
 
 MARK_WIDTH = 0.15
 BROKEN_LENGTH = 3.0
@@ -61,44 +72,68 @@ def make_lanes(
     return lanes
 
 
-def make_lane_sections(layout: LaneLayout) -> xodr.Lanes:
-    """Lane sections of a chain road from its lane layout.
+def make_lane_sections(layout: LaneLayout, marks: Optional[RoadMarks] = None) -> xodr.Lanes:
+    """Lane sections of a chain road from its lane layout; with marks, the HD road marks
+    (roadgen.opendrive.marks) instead of the plain ones.
 
     Each section's lanes get polynomial widths (tapers included) and lane
-    links to the same position in the neighbouring sections where that lane
-    exists on both sides of the boundary; a lane that narrows to 0 at a section
-    end, or widens from 0 at a section start, has no link there.
+    links to the lane with the same role (kind and layout position) in the
+    neighbouring sections where that lane exists on both sides of the
+    boundary; a lane that narrows to 0 at a section end, or widens from 0 at
+    a section start, has no link there. Linking by role keeps a side lane
+    linked to itself when a driving lane inside it ends and its id shifts.
     """
     lanes = xodr.Lanes()
-    previous: dict[str, list[xodr.Lane]] = {"right": [], "left": []}
+    previous: dict[str, dict] = {"right": {}, "left": {}}
     for section in layout.sections():
         center = xodr.Lane()
-        center.add_roadmark(solid_mark())
+        for mark in [solid_mark()] if marks is None else centre_marks(marks, section):
+            center.add_roadmark(mark)
         ls = xodr.LaneSection(section.s0, center)
-        current: dict[str, list[xodr.Lane]] = {"right": [], "left": []}
+        current: dict[str, dict] = {"right": {}, "left": {}}
         for side, pieces, add in (("right", section.right, ls.add_right_lane),
                                   ("left", section.left, ls.add_left_lane)):
             sign = -1 if side == "right" else 1
-            for pos, piece in enumerate(pieces, 1):
-                lane = _section_lane(piece, section.s0, outermost=pos == len(pieces))
-                before = previous[side]
-                if pos <= len(before) and _continues(piece, section.s0):
-                    lane.add_link("predecessor", sign * pos)
-                    before[pos - 1].add_link("successor", sign * pos)
+            roles = section.roles(side)
+            outer_driving = max((k for k, (kind, _) in enumerate(roles, 1) if kind == "driving"), default=0)
+            for pos, (piece, role) in enumerate(zip(pieces, roles), 1):
+                lane = _section_lane(piece, section.s0, pos == outer_driving, role[0],
+                                     layout.height(side, role[1]),
+                                     None if marks is None else lane_marks(marks, section, side, pos, piece))
+                before = previous[side].get(role)
+                if before is not None and _continues(piece, section.s0):
+                    lane.add_link("predecessor", before[1])
+                    before[0].add_link("successor", sign * pos)
                 add(lane)
-                current[side].append(lane)
+                current[side][role] = (lane, sign * pos)
         lanes.add_lanesection(ls)
         previous = current
     return lanes
 
 
-def _continues(piece: WidthPiece, s0: float) -> bool:
+def _continues(piece: Union[WidthPiece, WidthPieces], s0: float) -> bool:
     """Whether the lane exists right before s0 too (it does not widen from 0 there)."""
     return not (piece.s0 >= s0 - 1e-6 and piece.w0 == 0.0)
 
 
-def _section_lane(piece: WidthPiece, s0: float, outermost: bool) -> xodr.Lane:
-    a, b, c, d = piece.poly(s0)
-    lane = xodr.Lane(xodr.LaneType.driving, a=a, b=b, c=c, d=d)
-    lane.add_roadmark(solid_mark() if outermost else broken_mark())
+def _section_lane(piece: Union[WidthPiece, WidthPieces], s0: float, outermost: bool, kind: str = "driving",
+                  height: float = 0.0, marks: Optional[list[xodr.RoadMark]] = None) -> xodr.Lane:
+    """A lane of a section, curbs and sidewalks raised by height [m]. Its marks: the given
+    ones (HD road marks), else plain ones on driving lanes (solid on the outermost) and
+    none on side lanes and medians."""
+    pieces = piece.pieces if isinstance(piece, WidthPieces) else (piece,)
+    at = max(pieces[0].s0, s0)
+    a, b, c, d = pieces[0].poly(at)
+    absent = kind == "pocket" and all(p.constant and p.w0 == 0.0 for p in pieces)
+    lane_type = xodr.LaneType.none if absent else LANE_TYPES[kind]
+    lane = xodr.Lane(lane_type, a=a, b=b, c=c, d=d, soffset=at - s0 if at > s0 else 0)
+    for p in pieces[1:]:  # several <width> records: a side lane's tapers inside one section
+        lane.add_lane_width(*p.poly(p.s0), soffset=p.s0 - s0)
+    if marks is not None and not absent:
+        for mark in marks:
+            lane.add_roadmark(mark)
+    elif kind == "driving":
+        lane.add_roadmark(solid_mark() if outermost else broken_mark())
+    if height > 0:
+        lane.add_height(inner=height, outer=height)
     return lane

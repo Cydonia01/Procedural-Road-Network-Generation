@@ -33,6 +33,11 @@ from shapely.ops import polygonize, triangulate, unary_union
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.alignment import network_alignment
+from roadgen.geometry.cross_section import (
+    CrossSectionParams,
+    loop_edges,
+    outer_half_width,
+)
 from roadgen.graph.model import Edge, RoadGraph
 from roadgen.maps.model import WATER, MapLayer
 from roadgen.scene.osgt import Mesh
@@ -65,18 +70,22 @@ class BuildingParams:
             raise ValueError("setback, corner_radius and min_area must be non-negative")
 
 
-def road_half_extent(e: Edge) -> float:
-    """Widest side of the road from its reference line (one-ways sit on one side)."""
+def road_half_extent(e: Edge, cross_section: Optional[CrossSectionParams] = None, loop: bool = False) -> float:
+    """Widest side of the road from its reference line (one-ways sit on one side); with a
+    cross-section, its sidewalks and other side lanes included."""
+    if cross_section is not None:
+        return outer_half_width(e, cross_section, loop)
     return max(e.lanes_forward, e.lanes_backward) * e.lane_width
 
 
-def road_lines(graph: RoadGraph) -> list[tuple[Edge, LineString]]:
-    """Each edge's road centre line in edge-id order: along the fitted road, or the
-    straight edge if the graph can't be fitted."""
+def road_lines(graph: RoadGraph, cross_section: Optional[CrossSectionParams] = None
+               ) -> list[tuple[Edge, LineString]]:
+    """Each edge's road centre line in edge-id order: along the fitted road (with the
+    cross-section's trims), or the straight edge if the graph can't be fitted."""
     na = None
     if not graph.validate():
         try:
-            na = network_alignment(graph)
+            na = network_alignment(graph, cross_section=cross_section)
         except ValueError as err:
             log.debug("buildings: straight roads (%s)", err)
     out = []
@@ -94,11 +103,15 @@ def blocks(graph: RoadGraph, lines: Optional[list[tuple[Edge, LineString]]] = No
     return sorted(faces, key=lambda f: (round(f.centroid.x, 3), round(f.centroid.y, 3)))
 
 
-def footprints(graph: RoadGraph, params: BuildingParams) -> list[Polygon]:
-    """Buildable area per block: the face minus the widened roads, corners rounded."""
-    lines = road_lines(graph)
+def footprints(graph: RoadGraph, params: BuildingParams,
+               cross_section: Optional[CrossSectionParams] = None) -> list[Polygon]:
+    """Buildable area per block: the face minus the widened roads, corners rounded. With
+    a cross-section the roads include their sidewalks, so setback is the yard behind them."""
+    lines = road_lines(graph, cross_section)
+    loops = loop_edges(graph) if cross_section is not None else frozenset()
     roads = unary_union([
-        line.buffer(road_half_extent(e) + params.setback, cap_style="round")  # round: clears dead-end tips
+        line.buffer(road_half_extent(e, cross_section, e.id in loops) + params.setback,
+                    cap_style="round")  # round: clears dead-end tips
         for e, line in lines
     ])
     out: list[Polygon] = []
@@ -179,13 +192,14 @@ Vec3 = tuple[float, float, float]
 def building_mesh(
     graph: RoadGraph, params: BuildingParams = BuildingParams(),
     elevation: Optional[MapLayer] = None, terrain: Optional[MapLayer] = None,
+    cross_section: Optional[CrossSectionParams] = None,
 ) -> tuple[list[tuple[Vec3, Vec3, Vec3]], list[Vec3], int]:
     """(triangles, one normal per triangle, number of buildings), z-up world coordinates.
 
     Triangles are counter-clockwise seen from outside the building.
     """
     rng = np.random.default_rng(params.seed)
-    polys = footprints(graph, params)
+    polys = footprints(graph, params, cross_section)
     heights = rng.uniform(params.min_height, params.max_height, size=len(polys))
     tris: list[tuple[Vec3, Vec3, Vec3]] = []
     normals: list[Vec3] = []
@@ -246,6 +260,7 @@ def write_obj(path: Path, tris, normals, color: tuple[float, float, float], y_up
 def export_buildings(
     graph: RoadGraph, path: PathLike, params: BuildingParams = BuildingParams(),
     elevation: Optional[MapLayer] = None, terrain: Optional[MapLayer] = None,
+    cross_section: Optional[CrossSectionParams] = None,
 ) -> int:
     """Write buildings to .osgt (loadable by esmini as SceneGraphFile) or .obj.
 
@@ -253,7 +268,7 @@ def export_buildings(
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tris, normals, count = building_mesh(graph, params, elevation, terrain)
+    tris, normals, count = building_mesh(graph, params, elevation, terrain, cross_section)
     if path.suffix == ".osgt":
         write_osgt(path, tris, normals, params.color)
     elif path.suffix == ".obj":

@@ -1,0 +1,409 @@
+{
+  "old": "out/stage_b/b7z",
+  "new": "out/stage_b/b8r",
+  "networks": {
+    "grid": {
+      "status": "ok",
+      "pipeline_s": [
+        23.2,
+        25.4
+      ],
+      "xodr_mb": [
+        5.22,
+        6.46
+      ],
+      "growth": 0.237,
+      "repaired_edges": [
+        0,
+        0
+      ],
+      "dropped_pockets": 0,
+      "approaches": 352,
+      "pocket_approaches": 0,
+      "bans": {
+        "seeded": 3
+      },
+      "ban_signs": {
+        "209-20": 1,
+        "214--1": 2
+      },
+      "arrows": 352,
+      "arrow_kinds": {
+        "arrow_left": 16,
+        "arrow_left_straight": 144,
+        "arrow_right": 16,
+        "arrow_straight": 32,
+        "arrow_straight_right": 144
+      },
+      "junctions_with_lights": 0,
+      "protected_left_plans": 0,
+      "fill_patches": 29,
+      "fill_area_m2": 137.1
+    },
+    "manhattan_like": {
+      "status": "ok",
+      "pipeline_s": [
+        129.6,
+        159.6
+      ],
+      "xodr_mb": [
+        15.09,
+        23.52
+      ],
+      "growth": 0.5585,
+      "repaired_edges": [
+        0,
+        0
+      ],
+      "dropped_pockets": 0,
+      "approaches": 800,
+      "pocket_approaches": 8,
+      "bans": {
+        "seeded": 24
+      },
+      "ban_signs": {
+        "209-30": 21,
+        "209-20": 3
+      },
+      "arrows": 2147,
+      "arrow_kinds": {
+        "arrow_left": 35,
+        "arrow_left_straight": 312,
+        "arrow_right": 32,
+        "arrow_straight": 1438,
+        "arrow_straight_right": 330
+      },
+      "junctions_with_lights": 20,
+      "protected_left_plans": 8,
+      "fill_patches": 1361,
+      "fill_area_m2": 12523.1
+    },
+    "paris": {
+      "status": "ok",
+      "pipeline_s": [
+        59.0,
+        73.2
+      ],
+      "xodr_mb": [
+        10.49,
+        15.2
+      ],
+      "growth": 0.4492,
+      "repaired_edges": [
+        2,
+        2
+      ],
+      "dropped_pockets": 1,
+      "approaches": 765,
+      "pocket_approaches": 158,
+      "bans": {
+        "seeded": 14
+      },
+      "ban_signs": {
+        "209-20": 5,
+        "209-30": 6,
+        "214--1": 3
+      },
+      "arrows": 774,
+      "arrow_kinds": {
+        "arrow_left": 185,
+        "arrow_left_straight": 78,
+        "arrow_right": 114,
+        "arrow_straight": 204,
+        "arrow_straight_right": 193
+      },
+      "junctions_with_lights": 4,
+      "protected_left_plans": 4,
+      "fill_patches": 325,
+      "fill_area_m2": 2375.5
+    },
+    "suburb": {
+      "status": "ok",
+      "pipeline_s": [
+        71.7,
+        77.4
+      ],
+      "xodr_mb": [
+        10.0,
+        11.83
+      ],
+      "growth": 0.1833,
+      "repaired_edges": [
+        12,
+        12
+      ],
+      "dropped_pockets": 0,
+      "approaches": 792,
+      "pocket_approaches": 0,
+      "bans": {
+        "seeded": 13
+      },
+      "ban_signs": {
+        "214--1": 5,
+        "209-30": 4,
+        "209-20": 4
+      },
+      "arrows": 493,
+      "arrow_kinds": {
+        "arrow_left": 29,
+        "arrow_left_straight": 164,
+        "arrow_right": 31,
+        "arrow_straight": 110,
+        "arrow_straight_right": 159
+      },
+      "junctions_with_lights": 1,
+      "protected_left_plans": 0,
+      "fill_patches": 172,
+      "fill_area_m2": 1217.6
+    },
+    "organic_town": {
+      "status": "ok",
+      "pipeline_s": [
+        22.5,
+        25.9
+      ],
+      "xodr_mb": [
+        4.75,
+        6.29
+      ],
+      "growth": 0.3244,
+      "repaired_edges": [
+        0,
+        0
+      ],
+      "dropped_pockets": 0,
+      "approaches": 359,
+      "pocket_approaches": 40,
+      "bans": {
+        "seeded": 5
+      },
+      "ban_signs": {
+        "209-30": 1,
+        "209-20": 2,
+        "214--1": 2
+      },
+      "arrows": 304,
+      "arrow_kinds": {
+        "arrow_left": 48,
+        "arrow_left_straight": 40,
+        "arrow_right": 26,
+        "arrow_straight": 124,
+        "arrow_straight_right": 66
+      },
+      "junctions_with_lights": 1,
+      "protected_left_plans": 0,
+      "fill_patches": 106,
+      "fill_area_m2": 882.5
+    },
+    "city": {
+      "status": "ok",
+      "pipeline_s": [
+        193.6,
+        225.0
+      ],
+      "xodr_mb": [
+        25.37,
+        32.11
+      ],
+      "growth": 0.2656,
+      "repaired_edges": [
+        10,
+        10
+      ],
+      "dropped_pockets": 2,
+      "approaches": 1126,
+      "pocket_approaches": 205,
+      "bans": {
+        "right_in_right_out": 88,
+        "seeded": 18
+      },
+      "ban_signs": {
+        "214--1": 14,
+        "209-30": 33,
+        "209-10": 1,
+        "209-20": 46
+      },
+      "arrows": 1441,
+      "arrow_kinds": {
+        "arrow_left": 258,
+        "arrow_left_straight": 163,
+        "arrow_right": 174,
+        "arrow_straight": 499,
+        "arrow_straight_right": 347
+      },
+      "junctions_with_lights": 151,
+      "protected_left_plans": 84,
+      "fill_patches": 579,
+      "fill_area_m2": 6000.8
+    },
+    "mixed_city": {
+      "status": "ok",
+      "pipeline_s": [
+        433.7,
+        730.8
+      ],
+      "xodr_mb": [
+        34.74,
+        41.12
+      ],
+      "growth": 0.1835,
+      "repaired_edges": [
+        11,
+        11
+      ],
+      "dropped_pockets": 1,
+      "approaches": 1439,
+      "pocket_approaches": 166,
+      "bans": {
+        "seeded": 20,
+        "right_in_right_out": 52
+      },
+      "ban_signs": {
+        "209-30": 20,
+        "214--1": 19,
+        "209-20": 25
+      },
+      "arrows": 1347,
+      "arrow_kinds": {
+        "arrow_left": 205,
+        "arrow_left_straight": 237,
+        "arrow_right": 133,
+        "arrow_straight": 414,
+        "arrow_straight_right": 358
+      },
+      "junctions_with_lights": 118,
+      "protected_left_plans": 59,
+      "fill_patches": 500,
+      "fill_area_m2": 4651.1
+    },
+    "highway_corridor": {
+      "status": "ok",
+      "pipeline_s": [
+        15.5,
+        19.6
+      ],
+      "xodr_mb": [
+        11.72,
+        14.32
+      ],
+      "growth": 0.2215,
+      "repaired_edges": [
+        2,
+        2
+      ],
+      "dropped_pockets": 0,
+      "approaches": 456,
+      "pocket_approaches": 84,
+      "bans": {
+        "seeded": 6
+      },
+      "ban_signs": {
+        "209-30": 2,
+        "209-20": 2,
+        "214--1": 2
+      },
+      "arrows": 485,
+      "arrow_kinds": {
+        "arrow_left": 106,
+        "arrow_left_straight": 53,
+        "arrow_right": 74,
+        "arrow_straight": 141,
+        "arrow_straight_right": 111
+      },
+      "junctions_with_lights": 33,
+      "protected_left_plans": 19,
+      "fill_patches": 166,
+      "fill_area_m2": 1330.2
+    },
+    "junction_k": {
+      "status": "ok",
+      "pipeline_s": [
+        2.7,
+        2.9
+      ],
+      "xodr_mb": [
+        0.17,
+        0.19
+      ],
+      "growth": 0.0912,
+      "repaired_edges": [
+        0,
+        0
+      ],
+      "dropped_pockets": 0,
+      "approaches": 30,
+      "pocket_approaches": 0,
+      "bans": {},
+      "ban_signs": {},
+      "arrows": 4,
+      "arrow_kinds": {
+        "arrow_right": 3,
+        "arrow_straight": 1
+      },
+      "junctions_with_lights": 0,
+      "protected_left_plans": 0,
+      "fill_patches": 5,
+      "fill_area_m2": 56.6
+    },
+    "junction_roundabout": {
+      "status": "ok",
+      "pipeline_s": [
+        2.9,
+        3.0
+      ],
+      "xodr_mb": [
+        0.19,
+        0.2
+      ],
+      "growth": 0.0699,
+      "repaired_edges": [
+        0,
+        0
+      ],
+      "dropped_pockets": 0,
+      "approaches": 26,
+      "pocket_approaches": 0,
+      "bans": {},
+      "ban_signs": {},
+      "arrows": 2,
+      "arrow_kinds": {
+        "arrow_right": 2
+      },
+      "junctions_with_lights": 0,
+      "protected_left_plans": 0,
+      "fill_patches": 5,
+      "fill_area_m2": 44.8
+    },
+    "junction_diamond": {
+      "status": "ok",
+      "pipeline_s": [
+        2.6,
+        2.9
+      ],
+      "xodr_mb": [
+        0.18,
+        0.25
+      ],
+      "growth": 0.3419,
+      "repaired_edges": [
+        2,
+        2
+      ],
+      "dropped_pockets": 0,
+      "approaches": 12,
+      "pocket_approaches": 2,
+      "bans": {},
+      "ban_signs": {},
+      "arrows": 10,
+      "arrow_kinds": {
+        "arrow_left": 2,
+        "arrow_straight": 6,
+        "arrow_straight_right": 2
+      },
+      "junctions_with_lights": 2,
+      "protected_left_plans": 2,
+      "fill_patches": 6,
+      "fill_area_m2": 16.6
+    }
+  }
+}

@@ -242,7 +242,10 @@ def check_continuity_tree(tree: etree._ElementTree) -> list[str]:
                 lane_link = lane.find(f"link/{kind}")
                 where = f"road {rid} lane {lane_id} {kind} road {other.id}"
                 if lane_link is None:
-                    if in_junction:
+                    # A connecting-road lane needs a link unless it is 0 m wide at that end
+                    # (a side lane of a corner road that only one of its arms has).
+                    ds = s_here - float(road._section(s_here).get("s"))
+                    if in_junction and _width(lane, ds) > 1e-6:
                         errors.append(f"{where}: connecting-road lane has no lane link")
                     continue
                 other_lane = int(lane_link.get("id"))

@@ -16,6 +16,7 @@ reports an error.
 | [Curvature continuity](#curvature-continuity) | `.xodr` | always (`paramPoly3` jumps are warnings) | `validate/continuity.py` |
 | [Lateral acceleration](#lateral-acceleration) | `.xodr` | always | `validate/dynamics.py` |
 | [Clearance](#clearance) | `.xodr` | always | `validate/clearance.py` |
+| [HD-map content](#hd-map-content) | `.xodr` | with HD maps on | `validate/hdmap.py` |
 | [XSD schema](#xsd-schema) | `.xodr` | only with `OPENDRIVE_XSD` or `--xsd` | `validate/schema.py` |
 | [Drive-check](#drive-check) | `.xodr` + sidecar | `drive-check`, `pipeline --drive-check` | `sim/drive_check.py` |
 
@@ -81,7 +82,9 @@ contact point within:
 | Height (0 without `<elevationProfile>`) | 1 cm |
 | Grade in the travel direction | 0.01 |
 
-A connecting-road lane without a lane link is an error.
+A connecting-road lane without a lane link is an error, unless it is 0 m
+wide at that end (a side lane of a [corner road](opendrive.md#lanes) that only
+one of its arms has).
 
 **Inside a road**, across every lane-section boundary:
 
@@ -124,6 +127,45 @@ Contacts within 1 m of a road's end don't count. A dead end reaching
 another road is the generator's layout, e.g. a dead end stopping right next
 to a street that grew past it later.
 
+### HD-map content
+
+*Is the HD-map content consistent?* Runs in `pipeline` and `build-xodr`
+with HD maps on.
+
+- **No marks inside junctions:** a connecting road (corner roads included)
+  has no `<roadMark>`.
+- **Mark records in order:** within each lane of a lane section, the road
+  marks' `sOffset`s lie inside the section and strictly ascend, so every
+  stretch of the lane has exactly one mark.
+- **Signals and objects on their road:** within the road's length and outer
+  edge (signs up to 2 m outside it), with `<validity>` lanes that exist at
+  their station.
+- **Unique ids:** signal ids, and object ids (bridges and tunnels included).
+- **Lane types along links:** a lane linked to the next lane section, or
+  across a road-to-road link (a connecting road's ends too), keeps its type;
+  every junction `<laneLink>` joins two lanes of the same type, so no
+  driving lane leads into a sidewalk or the other way round; and (sidecar)
+  every lane of a movement's connecting road is a driving lane.
+- **Controlled approaches** (from the sidecar's `junctions`): every `stop`,
+  `yield` or `signal` approach with incoming lanes has a stop or yield line
+  within 8 m of the road end (behind a crosswalk), and every `stop` and
+  `yield` approach a 206 / 205 sign there, facing its traffic.
+- **Priority records** name two connecting roads of their own junction.
+- **Lights and controllers:** every light is in exactly one `<controller>`,
+  every controlled signal exists, and every `<junction><controller>` names an
+  existing controller. Every `signal` approach has a facing light within 8 m
+  of the road end.
+- **Signal plans** (sidecar): the junction's controller holds exactly the
+  plan's lights; every phase sets every light, every light turns green once
+  per cycle, every green lasts at least `min_green`, and no two conflicting
+  movements are green in one phase unless one yields to the other (a
+  permissive left turn).
+- **Lane use and bans** (sidecar): every `lane_use` record matches its
+  approach's movements; pocket lanes feed only left turns and U-turns; no
+  movement makes a banned turn; every approach with a banned turn has a
+  facing 209 / 214 sign; and the banned exit is still reachable from the
+  approach through other movements.
+
 ### XSD schema
 
 The ASAM XSD can't be bundled because of its licence. Download it from ASAM
@@ -143,16 +185,23 @@ logic, the same logic its traffic uses, through `libesminiRMLib` loaded with
 **Every junction movement** in the `.roadmap.json` is driven:
 
 1. **Start** 20 m before the junction in the incoming lane. Where the road is
-   short, start at most half the road back, and never in a taper.
+   short, start at most half the road back, and never in a taper or where
+   that lane id is not a driving lane.
 2. **Drive** forward in 0.5 m steps through the connecting road and 20 m
-   beyond (less where the target lane is dropped sooner). The junction
+   beyond (less where the target lane is dropped sooner, or where its id
+   stops being a driving lane). The junction
    selector is aimed at the movement's `turn_angle`, so exits of the same
    kind at a 5-way junction are told apart.
 3. **Pass** if all of these hold:
    - the route is incoming road → expected connecting road → expected
      target road;
    - the lane on entering the target road is the expected lane;
-   - no step jumps by more than 5 cm;
+   - no step jumps by more than 5 cm. esmini moves 0.5 m along the reference
+     line, so a lane far from it covers less ground on the inside of a curve
+     and more on the outside. A step is therefore compared with the length of
+     the lane-centre path between its two positions, by roadgen's own
+     evaluation (onto the next road: to where the first lane ends plus from
+     where the next one starts). A gap between two roads still shows;
    - esmini returns no error code. Running off the end of a dead-end target
      road just ends the drive.
 
@@ -172,6 +221,14 @@ angles were calibrated against esmini 3.9.
 This confirms that esmini reads the spirals, lane sections, tapers,
 elevation and superelevation exactly as roadgen does.
 
+Both passes share one load of the RoadManager (`drive_all`): on large
+networks the load is most of the time (on `mixed_city` about 170 s of the
+load against 66 s of driving). The log gives the load's and each pass's wall
+and CPU time; a wall time far above the CPU time means the host, not esmini,
+was slow. esmini's load itself varies: on some files the same load takes
+up to three times as long in some runs, all of it CPU time
+([development notes](development.md#esmini-load-time)).
+
 ## Metrics
 
 Measurements, not pass/fail checks: `metrics` always succeeds. Thresholds and
@@ -181,7 +238,8 @@ parameters are in `defaults.yaml` under `metrics` and `network_metrics`.
 
 ```bash
 python -m cli metrics out/<hash>/net.xodr --json net_metrics.json
-python -m cli metrics --sweep 200            # lsystem city on maps, seeds 0..199
+python -m cli metrics --sweep 200 --jobs 4   # lsystem city on maps, seeds 0..199, HD maps
+python -m cli metrics --sweep 200 --no-hd --preset mixed_city   # without HD maps
 ```
 
 How drivable and smooth a network is (`metrics/geometry.py`). It reads only
@@ -203,7 +261,10 @@ the `.xodr`, so any network is measured the same way.
   Roads that only match in position and heading (G1) show up here.
 - **Build-failure sweep** (`--sweep N`): generates N networks as `pipeline
   --maps` would and builds each, reporting the ones the builder rejects
-  (usually an edge shorter than its junction trims).
+  (usually an edge shorter than its junction trims). With HD maps (the
+  default) each network first goes through what `pipeline` does before the
+  build (`annotate` from the maps, the cross-section fit); `--no-hd` builds
+  the plain network. `--jobs N` builds N networks at a time.
 
 ### Network metrics
 
@@ -225,5 +286,21 @@ from the RoadGraph alone, for comparison with real-city statistics:
 | **Tortuosity** | Length / chord of every road through its bends, and the share of length on roads at least `straight_tortuosity` (1.01) |
 | **Block areas** | Bounded faces of the street lines |
 | **Features** | Counts of the `metadata` lists: roundabouts, cul-de-sacs, overpasses, tunnels, interchanges, bridges |
+
+### HD-map metrics
+
+```bash
+python -m cli metrics NETWORK.xodr [--json OUT.json]   # HD counts unless --no-hd
+```
+
+`roadgen/metrics/hdmap.py`, from the `.xodr` (and its sidecar, if present):
+
+| Metric | Meaning |
+|---|---|
+| **Lane types** | km of lane per km of normal road, per OpenDRIVE lane type |
+| **Road marks** | `<roadMark>` count on normal roads by type and colour; marks on connecting roads counted apart (a junction interior has none) |
+| **Signals** | By `country:type[-subtype]`, dynamic ones (lights) apart, per km of road and per junction |
+| **Objects** | By object type, per km and per junction (`<bridge>` / `<tunnel>` records are not objects) |
+| **Control** | `<controller>`s and their controls, junction controllers, junction `<priority>` records; from the sidecar the junction control mix, signal plans and phases, lane-use records, banned movements |
 
 Baselines of the example networks are in `plans/baselines/`.

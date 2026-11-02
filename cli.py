@@ -23,6 +23,7 @@ from roadgen.generators.base import (
     get_generator,
     presets_of,
 )
+from roadgen.geometry.cross_section import PROFILES
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json, save_json
 from roadgen.graph.model import RoadGraph
@@ -31,11 +32,13 @@ from roadgen.history import RunStore, diff, load_spec, plain, run_hash
 from roadgen.maps.base import get_map_generator, make_map, map_generator_names
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.clearance import check_clearance
 from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
+from roadgen.validate.hdmap import check_hdmap
 from roadgen.validate.schema import validate_schema
 from roadgen.validate.topology import check_topology
 
@@ -53,6 +56,14 @@ def cmd_plot_graph(args: argparse.Namespace) -> int:
     output = artifact(args, args.output, Path(args.input).with_suffix(".png"))
     plot_graph(graph, output, show_node_ids=args.node_ids)
     log.info("wrote %s", output)
+    return 0
+
+
+def cmd_plot_xodr(args: argparse.Namespace) -> int:
+    from roadgen.opendrive.plot import plot_xodr
+
+    output = artifact(args, args.output, Path(args.input).with_suffix(".lanes.png"))
+    plot_xodr(args.input, output, args.step)
     return 0
 
 
@@ -81,15 +92,39 @@ def junction_params(cfg: dict):
     return JunctionParams(**{k: v for k, v in section(cfg, "opendrive").items() if k != "junction_margin"})
 
 
+def hd_params(args: argparse.Namespace) -> HdMapParams:
+    """HD-map settings of a build: the config, with --hd / --no-hd, --cross-section and the
+    run's seed."""
+    hd = HdMapParams.from_config(args.cfg, getattr(args, "seed", None), getattr(args, "hd", None))
+    profile = getattr(args, "cross_section", None)
+    if profile is not None:
+        hd = dataclasses.replace(hd, cross_section=dataclasses.replace(hd.cross_section, profile=profile))
+    if getattr(args, "no_corner_roads", False):
+        hd = dataclasses.replace(hd, cross_section=dataclasses.replace(hd.cross_section, corner_roads=False))
+    return hd
+
+
+def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: float) -> RoadGraph:
+    """With HD maps on, repair the edges too short for the junction trims of roads with
+    their side lanes (generators only know the driving lanes); unchanged otherwise."""
+    from roadgen.generators.repair import fit_cross_sections
+
+    if hd.active_cross_section is None or not graph.edges:
+        return graph
+    with timed("fit cross-sections"):
+        return fit_cross_sections(graph, DesignParams(**section(cfg, "design")), junction_margin,
+                                  hd.active_cross_section)
+
+
 def build_and_validate(
     graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str],
-    cfg: Optional[dict] = None,
+    cfg: Optional[dict] = None, hd: HdMapParams = HdMapParams(),
 ) -> list[str]:
     """Build and write the .xodr, then run every file validator; return all errors."""
     builder = OpenDriveBuilder(
         name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
         design=DesignParams(**section(cfg or DEFAULTS, "design")),
-        junctions=junction_params(cfg or DEFAULTS),
+        junctions=junction_params(cfg or DEFAULTS), hd=hd,
     )
     with timed("build xodr"):
         try:
@@ -115,6 +150,8 @@ def build_and_validate(
         a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
         errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
         errors += check_clearance(xodr_path, section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
+        if hd.enabled:
+            errors += check_hdmap(xodr_path)
         errors += validate_schema(xodr_path, xsd) or []
     for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
         log.warning("%s", warning)
@@ -129,7 +166,9 @@ def cmd_build_xodr(args: argparse.Namespace) -> int:
     graph = load_json(args.input)
     check_traffic(graph, allow_traps=True)  # informational for hand-made graphs
     output = artifact(args, args.output, Path(args.input).with_suffix(".xodr"))
-    errors = build_and_validate(graph, output, args.junction_margin, args.xsd, args.cfg)
+    hd = hd_params(args)
+    graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
+    errors = build_and_validate(graph, output, args.junction_margin, args.xsd, args.cfg, hd)
     return 1 if errors else 0
 
 
@@ -209,20 +248,40 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
         layers = input_maps(args, GridSpec.around(graph, margin, cell), chosen, files)
     if layers:
         graph = align_graph(graph, layers, args.cfg)
+    cross_section = hd_params(args).active_cross_section
     if "elevation" in layers and not args.flat:
-        graph = drape_graph(graph, layers, args.cfg)
-    return separate_graph(graph, args.cfg), layers
+        graph = drape_graph(graph, layers, args.cfg, cross_section)
+    return separate_graph(graph, args.cfg, cross_section), layers
 
 
-def separate_graph(graph: RoadGraph, cfg: dict) -> RoadGraph:
-    """Roads crossing without a junction raised over each other (unchanged if none do)."""
-    from roadgen.geometry.grade_separation import GradeSeparationParams, find_crossings, separate
+def separate_graph(graph: RoadGraph, cfg: dict, cross_section=None) -> RoadGraph:
+    """Roads crossing without a junction raised over each other (unchanged if none do);
+    with a cross-section (HD maps) the overpass spans the lower road's side lanes."""
+    from roadgen.geometry.grade_separation import (
+        GradeSeparationParams,
+        find_crossings,
+        separate,
+    )
 
     if not find_crossings(graph):
         return graph
     with timed("grade separation"):
         return separate(graph, GradeSeparationParams(**section(cfg, "grade_separation")),
-                        DesignParams(**section(cfg, "design")), cfg["opendrive"]["junction_margin"])
+                        DesignParams(**section(cfg, "design")), cfg["opendrive"]["junction_margin"],
+                        cross_section)
+
+
+def annotate_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
+    """HD maps: cross-section profiles and junction control from the population (and style)
+    map; unchanged without a population map."""
+    from roadgen.maps.annotate import AnnotateParams, annotate
+
+    if "population" not in layers:
+        return graph
+    control = section(cfg, "junction_control")
+    with timed("annotate"):
+        return annotate(graph, layers["population"], layers.get("style"), AnnotateParams(**section(cfg, "annotate")),
+                        control["signal_density"], control["stop_density"])
 
 
 def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
@@ -235,14 +294,15 @@ def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> Roa
                      cfg["opendrive"]["junction_margin"])
 
 
-def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
-    """Heights from the elevation (and terrain) map into the graph."""
+def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict, cross_section=None) -> RoadGraph:
+    """Heights from the elevation (and terrain) map into the graph; with a cross-section
+    (HD maps) bridges span the roads' full width."""
     from roadgen.maps.drape import DrapeParams, drape
 
     with timed("drape"):
         return drape(graph, layers["elevation"], layers.get("terrain"),
                      DrapeParams(**section(cfg, "drape")), DesignParams(**section(cfg, "design")),
-                     cfg["opendrive"]["junction_margin"])
+                     cfg["opendrive"]["junction_margin"], cross_section)
 
 
 def map_requests(args: argparse.Namespace, kinds: Optional[Sequence[str]] = None
@@ -319,6 +379,10 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     """Generate, then write <prefix>.json/.png/.xodr and run all validators."""
     prefix = artifact(args, args.output, default_output(args))
     graph, layers = generate_graph(args)
+    hd = hd_params(args)
+    if hd.enabled:
+        graph = annotate_graph(graph, layers, args.cfg)
+    graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
     errors = graph.validate()
     for err in errors:
         log.error("graph: %s", err)
@@ -331,14 +395,19 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     with timed("plot"):
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
-    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg)
+    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd)
+    if hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
+        from roadgen.opendrive.plot import plot_xodr
+
+        with timed("plot lanes"):
+            plot_xodr(xodr, Path(f"{prefix}_hd.png"))
     scenegraph = None
     if args.ground:
         if "elevation" not in layers:
             raise SystemExit("error: --ground needs an elevation map (--maps, --elevation or --map-file)")
         scenegraph = Path(f"{prefix}_scene.osgt")
         write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
-                    args.junction_margin)
+                    args.junction_margin, hd.active_cross_section)
     elif args.buildings:
         from roadgen.scene.buildings import BuildingParams, export_buildings
 
@@ -347,7 +416,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         ground = layers.get("elevation") if graph.has_elevation else None
         with timed("buildings"):
             params = BuildingParams(seed=args.seed, **section(args.cfg, "buildings"))
-            n = export_buildings(graph, scenegraph, params, ground, layers.get("terrain"))
+            n = export_buildings(graph, scenegraph, params, ground, layers.get("terrain"),
+                                 hd.active_cross_section)
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
         errors += ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
@@ -358,8 +428,9 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
 
 
 def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
-                seed: int, buildings: bool, junction_margin: float) -> None:
-    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile."""
+                seed: int, buildings: bool, junction_margin: float, cross_section=None) -> None:
+    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile; with a
+    cross-section (HD maps) levelled under the side lanes, buildings behind them."""
     from roadgen.scene.buildings import BuildingParams, building_mesh
     from roadgen.scene.ground import GroundParams, ground_mesh
     from roadgen.scene.osgt import Mesh, write_osgt
@@ -367,11 +438,11 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
     elevation, terrain = layers["elevation"], layers.get("terrain")
     with timed("scene"):
         meshes = [ground_mesh(elevation, terrain, graph, GroundParams(**section(cfg, "ground")),
-                              junction_margin, DesignParams(**section(cfg, "design")))]
+                              junction_margin, DesignParams(**section(cfg, "design")), cross_section)]
         n = 0
         if buildings:
             params = BuildingParams(seed=seed, **section(cfg, "buildings"))
-            tris, normals, n = building_mesh(graph, params, elevation, terrain)
+            tris, normals, n = building_mesh(graph, params, elevation, terrain, cross_section)
             meshes.append(Mesh("buildings", tris, normals, tuple(params.color)))
         write_osgt(path, meshes)
     log.info("wrote %s (ground%s)", path, f" + {n} buildings" if buildings else "")
@@ -420,6 +491,17 @@ def cmd_separate(args: argparse.Namespace) -> int:
     output = artifact(args, args.output, Path(args.input).with_suffix(".separated.json"))
     save_json(graph, output)
     log.info("wrote %s (%d overpasses)", output, len(graph.metadata.get("overpasses", [])))
+    return 0
+
+
+def cmd_annotate(args: argparse.Namespace) -> int:
+    layers = load_layers(args.map_file)
+    if "population" not in layers:
+        raise SystemExit("error: annotate needs --map-file population=FILE.npz")
+    graph = annotate_graph(load_json(args.input), layers, args.cfg)
+    output = artifact(args, args.output, Path(args.input).with_suffix(".annotated.json"))
+    save_json(graph, output)
+    log.info("wrote %s (%s)", output, graph.metadata["annotate"])
     return 0
 
 
@@ -546,6 +628,19 @@ def cmd_generators(args: argparse.Namespace) -> int:
 
 
 def cmd_view(args: argparse.Namespace) -> int:
+    if args.screenshot:
+        from roadgen.sim.screenshot import screenshot
+
+        camera = [float(v) for v in args.camera.split(",")] if args.camera else None
+        if camera is not None and len(camera) not in (3, 5):
+            raise SystemExit("error: --camera expects x,y,z or x,y,z,heading,pitch")
+        out = artifact(args, args.screenshot, args.screenshot)
+        try:
+            screenshot(out, xodr=args.input, at=args.at, camera=camera, scenegraph=args.scenegraph)
+        except (RuntimeError, FileNotFoundError, ValueError) as e:
+            log.error("screenshot: %s", e)
+            return 1
+        return 0
     try:
         odrviewer = esmini_binary("odrviewer")
     except FileNotFoundError as e:
@@ -564,11 +659,10 @@ def cmd_view(args: argparse.Namespace) -> int:
 
 
 def cmd_drive_check(args: argparse.Namespace) -> int:
-    from roadgen.sim.drive_check import drive_lanes, drive_movements
+    from roadgen.sim.drive_check import drive_all
 
     try:
-        results = drive_movements(args.input)
-        lanes = drive_lanes(args.input)
+        results, lanes = drive_all(args.input)
     except FileNotFoundError as e:
         log.error("%s", e)
         return 1
@@ -589,7 +683,7 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     build-failure sweep; optional JSON report."""
     import json
 
-    from roadgen.metrics import network
+    from roadgen.metrics import hdmap, network
     from roadgen.metrics.geometry import (
         GeometryMetricsParams,
         geometry_metrics,
@@ -602,11 +696,16 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     params = GeometryMetricsParams(**section(args.cfg, "metrics"))
     net_params = network.NetworkMetricsParams(**section(args.cfg, "network_metrics"))
     report: dict = {"networks": []}
+    hd_on = section(args.cfg, "hdmap")["enabled"] if args.hd is None else args.hd
     for path in args.inputs:
         with timed(f"metrics {path}"):
             m = geometry_metrics(path, params)
         for line in summary_lines(m):
             log.info("%s", line)
+        if hd_on:
+            m["hdmap"] = hdmap.hdmap_metrics(path)
+            for line in hdmap.summary_lines(m["hdmap"]):
+                log.info("%s", line)
         report["networks"].append(m)
     if args.graph:
         report["graphs"] = []
@@ -619,17 +718,18 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     if args.sweep:
         seeds = range(args.first_seed, args.first_seed + args.sweep)
         with timed("build sweep"):
-            results = build_sweep(args.generator, args.preset, seeds, args.cfg)
+            hd = HdMapParams.from_config(args.cfg, enabled=True) if hd_on else None
+            results = build_sweep(args.generator, args.preset, seeds, args.cfg, hd, args.jobs)
         failed = [r for r in results if not r.ok]
-        log.info("build sweep (%s, preset %s): %d of %d networks failed to build",
-                 args.generator, args.preset, len(failed), len(results))
+        log.info("build sweep (%s, preset %s%s): %d of %d networks failed to build",
+                 args.generator, args.preset, ", HD maps" if hd_on else "", len(failed), len(results))
         for key in ("cnr", "skewed_share", "orientation_entropy"):
             values = [r.network[key] for r in results if r.network]
             if values:
                 log.info("build sweep: %s median %.3f (min %.3f, max %.3f)", key,
                          statistics.median(values), min(values), max(values))
         report["sweep"] = {
-            "generator": args.generator, "preset": args.preset, "seeds": list(seeds),
+            "generator": args.generator, "preset": args.preset, "hd": hd_on, "seeds": list(seeds),
             "failed": len(failed),
             "results": [dataclasses.asdict(r) for r in results],
         }
@@ -654,6 +754,7 @@ def cmd_scenario(args: argparse.Namespace) -> int:
         spawn_mode=args.mode,
         speed_range=(args.speed_min, args.speed_max),
         min_spawn_gap=args.min_gap,
+        lights=args.lights,
     )
     try:
         builder = ScenarioBuilder.from_files(xodr, graph)
@@ -752,7 +853,27 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         "--junction-margin", type=float, default=margin,
         help="extra clearance [m] between junction center region and roads (default %(default)s)",
     )
+    p.add_argument(
+        "--hd", action=argparse.BooleanOptionalAction, default=None,
+        help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
+    )
+    p.add_argument(
+        "--cross-section", choices=PROFILES, metavar="PROFILE",
+        help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
+             "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
+    )
+    p.add_argument(
+        "--no-corner-roads", action="store_true",
+        help="leave out the corner roads (side lanes around junction corners) with --hd: esmini loads "
+             "them slowly, so for throughput benchmarks (default: cross_section.corner_roads)",
+    )
     p.set_defaults(func=cmd_build_xodr)
+
+    p = sub.add_parser("plot-xodr", help="draw an .xodr's lanes coloured by lane type")
+    p.add_argument("input", help=".xodr file")
+    p.add_argument("output", nargs="?", help="output image (default: <input>.lanes.png)")
+    p.add_argument("--step", type=float, default=2.0, help="sample spacing along roads [m] (default %(default)s)")
+    p.set_defaults(func=cmd_plot_xodr)
 
     p = sub.add_parser("generators", help="list registered generators, presets and parameters")
     p.set_defaults(func=cmd_generators)
@@ -763,6 +884,10 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g = gen.add_parser(name, help=get_generator(name).description)
         _add_generator_args(g, name, cfg)
         g.add_argument("-o", "--output", help="output RoadGraph JSON (default: <name>[_<preset>]_s<seed>.json)")
+        g.add_argument(
+            "--hd", action=argparse.BooleanOptionalAction, default=None,
+            help="drape and separate with the roads' HD widths (side lanes); default: hdmap.enabled in the config",
+        )
         g.set_defaults(func=cmd_generate)
 
     p = sub.add_parser("pipeline", help="generate, plot, build .xodr and validate in one go")
@@ -783,6 +908,20 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g.add_argument(
             "--junction-margin", type=float, default=margin,
             help="extra clearance [m] between junction center region and roads (default %(default)s)",
+        )
+        g.add_argument(
+            "--hd", action=argparse.BooleanOptionalAction, default=None,
+            help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
+        )
+        g.add_argument(
+            "--cross-section", choices=PROFILES, metavar="PROFILE",
+            help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
+                 "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
+        )
+        g.add_argument(
+            "--no-corner-roads", action="store_true",
+            help="leave out the corner roads (side lanes around junction corners) with --hd: esmini loads "
+                 "them slowly, so for throughput benchmarks (default: cross_section.corner_roads)",
         )
         g.add_argument(
             "--drive-check", action="store_true",
@@ -823,6 +962,14 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("input", help="RoadGraph JSON file")
     p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.separated.json)")
     p.set_defaults(func=cmd_separate)
+
+    p = sub.add_parser("annotate", help="HD maps: cross-section profiles and junction control from the "
+                                        "population (and style) map")
+    p.add_argument("input", help="RoadGraph JSON file")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
+                   help="population map (required) and style map (suburb districts), repeatable")
+    p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.annotated.json)")
+    p.set_defaults(func=cmd_annotate)
 
     p = sub.add_parser("ground", help="3D ground mesh (.osgt) from maps, levelled under a network")
     p.add_argument("output", nargs="?", help="output .osgt (default: scene.osgt)")
@@ -896,6 +1043,8 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("--min-gap", type=float, default=scenario["min_spawn_gap"],
                    help="min spawn gap in a lane [m] (default %(default)s)")
     p.add_argument("--graph", help="RoadGraph JSON (default: <input>.json if present)")
+    p.add_argument("--lights", action=argparse.BooleanOptionalAction, default=scenario["lights"],
+                   help="switch the traffic lights of the sidecar's signal plans (default %(default)s)")
     p.add_argument("--scenegraph", help="3D model to show with the roads, e.g. <prefix>_buildings.osgt")
     p.set_defaults(func=cmd_scenario)
 
@@ -921,6 +1070,13 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                                         "or <prefix>_scene.osgt (ground + buildings)")
     p.add_argument("--duration", type=float,
                    help="close the viewer after this many seconds [s] (default: when closed)")
+    p.add_argument("--screenshot", metavar="PNG",
+                   help="render one still image with esmini instead of opening the viewer "
+                        "(no window needed: uses xvfb-run without a display); no cars")
+    p.add_argument("--camera", metavar="X,Y,Z[,H,P]",
+                   help="--screenshot camera position [m] and heading, pitch [rad] "
+                        "(default: straight down over the whole network)")
+    p.add_argument("--at", type=float, default=0.3, help="--screenshot time [s] (default %(default)s)")
     p.set_defaults(func=cmd_view)
 
     p = sub.add_parser(
@@ -937,10 +1093,16 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                    help="RoadGraph JSON whose network metrics (junction legs, skew, CNR, "
                         "orientation entropy, blocks) to report, repeatable")
     p.add_argument("--json", metavar="OUT", help="write the full report as JSON")
+    p.add_argument("--hd", action=argparse.BooleanOptionalAction, default=None,
+                   help="also count the .xodr files' HD-map content: lane types, road marks, "
+                        "signals, objects, controllers (and junction control from the sidecar); "
+                        "with --sweep, build the sweep's networks with HD maps (annotate, fit, build); "
+                        "default: hdmap.enabled in the config")
     p.add_argument("--sweep", type=int, metavar="N",
                    help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
                         "and count how many the builder rejects")
     p.add_argument("--first-seed", type=int, default=0, help="first sweep seed (default %(default)s)")
+    p.add_argument("--jobs", type=int, default=1, help="sweep networks built in parallel (default %(default)s)")
     p.add_argument("--generator", default="lsystem", choices=generator_names(),
                    help="sweep generator (default %(default)s)")
     p.add_argument("--preset", default="city", help="sweep generator preset (default %(default)s)")

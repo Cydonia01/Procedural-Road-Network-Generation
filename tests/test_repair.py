@@ -10,6 +10,9 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.base import make_map
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapSet
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 
 def two_junctions(gap: float) -> RoadGraph:
@@ -30,7 +33,7 @@ def test_short_edge_between_junctions_is_collapsed():
     assert 1 not in g.edges and 2 not in g.nodes
     assert g.nodes[1].x == pytest.approx(4.0)
     assert g.degree(1) == 4 and short_edges(g) == []
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 def test_long_enough_edges_are_untouched():
@@ -70,7 +73,7 @@ def _sweep_graph(seed: int):
 def test_sweep_seed_60_now_builds():
     g = _sweep_graph(60)  # 42 m between two junctions needing 21 m each (A0 sweep)
     assert short_edges(g) == []
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
 
 
 def test_buildable_networks_are_unchanged(monkeypatch):
@@ -93,4 +96,55 @@ def test_stub_road_between_junctions_is_merged():
     assert stub_roads(g) == [1]
     assert repair_short_edges(g) == 1
     assert stub_roads(g) == [] and 1 not in g.edges
-    OpenDriveBuilder().build(g)
+    OpenDriveBuilder(hd=PLAIN).build(g)
+
+
+def test_collapse_keeps_the_neighbours_buildable():
+    """Collapsing an edge moves the surviving node, which turns the roads at its
+    neighbours: a collapse that would leave a neighbour's roads under 10 deg apart is
+    refused (B9: an HD sweep seed failed so at a two-road bend)."""
+    from roadgen.generators.repair import _collapse
+
+    g = RoadGraph()
+    # Node 1 is a sharp two-road bend: roads to 2 (0 deg) and to 3 (about 17 deg).
+    # Collapsing the short edge 3-4 moves node 3 to (100, 10): the bend closes to 6 deg.
+    for nid, (x, y) in {1: (0.0, 0.0), 2: (100.0, 0.0), 3: (100.0, 30.0), 4: (100.0, -10.0),
+                        5: (200.0, 60.0), 6: (200.0, -60.0), 7: (100.0, 120.0)}.items():
+        g.add_node(Node(nid, x, y))
+    for eid, (a, b) in enumerate(((1, 2), (1, 3), (3, 4), (3, 5), (4, 6), (3, 7)), 1):
+        g.add_edge(Edge(eid, a, b, "street", 1, 1))
+    assert not _collapse(g, 3, DEFAULTS["opendrive"]["junction_margin"], 5)
+    assert (g.nodes[3].x, g.nodes[3].y) == (100.0, 30.0) and 3 in g.edges and 4 in g.nodes  # undone
+
+
+def test_dissolve_bend_joins_the_same_road():
+    """B9: a two-road bend between two junctions becomes one edge between them (the road
+    stays, the bend node goes); lanes keep their direction, heights are resampled."""
+    from roadgen.generators.repair import _dissolve_bend
+
+    g = RoadGraph()
+    for nid, (x, y) in {1: (0.0, 0.0), 2: (-50.0, 0.0), 3: (0.0, 50.0), 4: (10.0, 10.0), 5: (20.0, 0.0),
+                        6: (70.0, 0.0), 7: (20.0, -50.0)}.items():
+        g.add_node(Node(nid, x, y))
+    g.nodes[4].z = 2.0
+    g.add_edge(Edge(1, 1, 4, "avenue", 2, 1, profile=[1.0]))  # junction 1 -> bend 4
+    g.add_edge(Edge(2, 5, 4, "avenue", 1, 2))  # junction 5 -> bend 4: the same road, drawn the other way
+    for eid, (a, b) in enumerate(((2, 1), (3, 1), (5, 6), (5, 7)), 3):
+        g.add_edge(Edge(eid, a, b, "street", 1, 1))
+    assert _dissolve_bend(g, 1, DEFAULTS["opendrive"]["junction_margin"], None)
+    assert 4 not in g.nodes and 2 not in g.edges and g.metadata["straightened_bends"] == [4]
+    e = g.edges[1]
+    assert (e.from_node, e.to_node, e.lanes_forward, e.lanes_backward) == (1, 5, 2, 1)
+    assert len(e.profile) == 2 and max(e.profile) <= 2.0 and min(e.profile) >= 0.0
+
+
+def test_dissolve_bend_needs_the_same_road():
+    from roadgen.generators.repair import _dissolve_bend
+
+    g = RoadGraph()
+    for nid, (x, y) in {1: (0.0, 0.0), 4: (10.0, 10.0), 5: (20.0, 0.0)}.items():
+        g.add_node(Node(nid, x, y))
+    g.add_edge(Edge(1, 1, 4, "avenue", 2, 2))
+    g.add_edge(Edge(2, 4, 5, "street", 1, 1))  # another class: not one road
+    assert not _dissolve_bend(g, 1, DEFAULTS["opendrive"]["junction_margin"], None)
+    assert set(g.edges) == {1, 2} and 4 in g.nodes

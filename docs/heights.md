@@ -68,7 +68,10 @@ lsystem keeps its own roads under `max_grade` while growing.
 ### Bridges
 
 Stretches of an edge's fitted road over water become `Edge.bridges`. The
-terrain map is sampled at its own resolution to find them.
+terrain map is sampled at its own resolution to find them. With HD maps
+(the default; not with `--no-hd`) a stretch is a bridge where any part of the road's width,
+[sidewalks](geometry.md#cross-sections) included, is over water, not only its
+centre line.
 
 - **Deck.** On a bridge, the deck runs straight from shore to shore and stays
   at least `bridge_clearance` above the water. A node on water is raised the
@@ -96,8 +99,9 @@ becomes an overpass:
   can move a crossing tens of metres.
 - **How high.** `clearance` (6 m: 5 m clearance plus a 1 m deck) above the
   lower road, from the heights already in the graph.
-- **The bump.** A flat top over the lower road (its half width / sin of the
-  crossing angle, plus `flat_margin`, 5 m). Then smoothstep ramps no steeper
+- **The bump.** A flat top over the lower road (its half width, side lanes
+  included with HD maps, / sin of the crossing angle, plus `flat_margin`,
+  5 m). Then smoothstep ramps no steeper
   than `max_grade` (5 %), along the upper road through its straightest
   continuation at each node. The flat top is a bridge span, so the ground
   isn't levelled under it.

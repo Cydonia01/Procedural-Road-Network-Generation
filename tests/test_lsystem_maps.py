@@ -24,8 +24,11 @@ from roadgen.maps.model import (
     save_npz,
 )
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
+
+PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
 GRID = GridSpec((-50.0, -50.0), (1100.0, 700.0), 10.0)  # covers the default 1000 x 600 area
 X, Y = GRID.cell_centers()
@@ -199,7 +202,7 @@ def test_city_on_generated_maps_builds_valid_xodr(tmp_path, seed):
     assert g.validate() == []
     assert classes(g, "highway") and len(g.edges) > 100
     assert g == LSystemGenerator().generate(p, seed, maps)  # deterministic
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=PLAIN)
     b.build(g)
     xodr = tmp_path / "city.xodr"
     b.write(xodr)
@@ -252,7 +255,8 @@ def test_new_params_are_validated():
 
 def test_cli_pipeline_grows_lsystem_on_its_maps(tmp_path):
     prefix = tmp_path / "city"
-    assert main(["pipeline", "lsystem", "--preset", "grid_organic", "--allow-traps", "--maps",
+    # --no-hd: the network as grown (annotate and the HD fit would set profiles and repair)
+    assert main(["pipeline", "lsystem", "--preset", "grid_organic", "--allow-traps", "--maps", "--no-hd",
                  "--seed", "3", "-o", str(prefix)]) == 0
     graph = load_json(prefix.with_suffix(".json"))
     assert "bridges" in graph.metadata
@@ -265,7 +269,7 @@ def test_cli_pipeline_grows_lsystem_on_its_maps(tmp_path):
     out = tmp_path / "again.json"
     files = [f"--map-file={k}={tmp_path / f'city_{k}.npz'}"
              for k in ("terrain", "elevation", "population")]
-    assert main(["generate", "lsystem", "--preset", "grid_organic", "--seed", "3", *files,
+    assert main(["generate", "lsystem", "--preset", "grid_organic", "--seed", "3", *files, "--no-hd",
                  "-o", str(out)]) == 0
     again = load_json(out)
     assert again.edges == graph.edges

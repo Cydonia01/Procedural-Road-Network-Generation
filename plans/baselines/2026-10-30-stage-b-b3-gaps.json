@@ -1,0 +1,310 @@
+[
+ {
+  "xodr": "city.xodr",
+  "junctions": 349,
+  "corner_roads": 596,
+  "closing": 595,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 1,
+    "area_m2": 23.0,
+    "max_m2": 23.0
+   },
+   "interior": {
+    "n": 332,
+    "area_m2": 3125.4,
+    "max_m2": 173.3
+   },
+   "blocks_islands": {
+    "n": 181,
+    "area_m2": 2744765.0,
+    "max_m2": 472187.5
+   }
+  }
+ },
+ {
+  "xodr": "grid.xodr",
+  "junctions": 96,
+  "corner_roads": 352,
+  "closing": 352,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "interior": {
+    "n": 32,
+    "area_m2": 136.8,
+    "max_m2": 4.3
+   },
+   "blocks_islands": {
+    "n": 81,
+    "area_m2": 1175392.1,
+    "max_m2": 14535.1
+   }
+  }
+ },
+ {
+  "xodr": "highway_corridor.xodr",
+  "junctions": 140,
+  "corner_roads": 402,
+  "closing": 401,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 1,
+    "area_m2": 24.5,
+    "max_m2": 24.5
+   },
+   "interior": {
+    "n": 105,
+    "area_m2": 461.4,
+    "max_m2": 12.5
+   },
+   "blocks_islands": {
+    "n": 82,
+    "area_m2": 911759.2,
+    "max_m2": 88494.7
+   }
+  }
+ },
+ {
+  "xodr": "junction_diamond.xodr",
+  "junctions": 4,
+  "corner_roads": 0,
+  "closing": 0,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "interior": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "blocks_islands": {
+    "n": 4,
+    "area_m2": 26207.9,
+    "max_m2": 6552.0
+   }
+  }
+ },
+ {
+  "xodr": "junction_k.xodr",
+  "junctions": 23,
+  "corner_roads": 4,
+  "closing": 4,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "interior": {
+    "n": 3,
+    "area_m2": 53.2,
+    "max_m2": 35.2
+   },
+   "blocks_islands": {
+    "n": 4,
+    "area_m2": 3007.6,
+    "max_m2": 898.1
+   }
+  }
+ },
+ {
+  "xodr": "junction_roundabout.xodr",
+  "junctions": 20,
+  "corner_roads": 12,
+  "closing": 7,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 1,
+    "area_m2": 13.7,
+    "max_m2": 13.7
+   },
+   "interior": {
+    "n": 5,
+    "area_m2": 106.8,
+    "max_m2": 35.2
+   },
+   "blocks_islands": {
+    "n": 4,
+    "area_m2": 5174.6,
+    "max_m2": 2773.7
+   }
+  }
+ },
+ {
+  "xodr": "manhattan_like.xodr",
+  "junctions": 380,
+  "corner_roads": 1440,
+  "closing": 460,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 980,
+    "area_m2": 8321.7,
+    "max_m2": 18.9
+   },
+   "interior": {
+    "n": 390,
+    "area_m2": 2206.2,
+    "max_m2": 82.6
+   },
+   "blocks_islands": {
+    "n": 341,
+    "area_m2": 4119657.7,
+    "max_m2": 17189.5
+   }
+  }
+ },
+ {
+  "xodr": "mixed_city.xodr",
+  "junctions": 450,
+  "corner_roads": 1131,
+  "closing": 1107,
+  "holes": {
+   "closing_corner": {
+    "n": 1,
+    "area_m2": 1.1,
+    "max_m2": 1.1
+   },
+   "other_corner": {
+    "n": 5,
+    "area_m2": 89.8,
+    "max_m2": 24.7
+   },
+   "interior": {
+    "n": 311,
+    "area_m2": 2388.3,
+    "max_m2": 42.8
+   },
+   "blocks_islands": {
+    "n": 268,
+    "area_m2": 2800599.8,
+    "max_m2": 526939.3
+   }
+  }
+ },
+ {
+  "xodr": "organic_town.xodr",
+  "junctions": 120,
+  "corner_roads": 345,
+  "closing": 329,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "interior": {
+    "n": 70,
+    "area_m2": 478.5,
+    "max_m2": 32.0
+   },
+   "blocks_islands": {
+    "n": 64,
+    "area_m2": 987122.3,
+    "max_m2": 50967.7
+   }
+  }
+ },
+ {
+  "xodr": "paris.xodr",
+  "junctions": 226,
+  "corner_roads": 726,
+  "closing": 726,
+  "holes": {
+   "closing_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "other_corner": {
+    "n": 0,
+    "area_m2": 0,
+    "max_m2": 0.0
+   },
+   "interior": {
+    "n": 198,
+    "area_m2": 942.7,
+    "max_m2": 33.6
+   },
+   "blocks_islands": {
+    "n": 156,
+    "area_m2": 1915487.8,
+    "max_m2": 67673.8
+   }
+  }
+ },
+ {
+  "xodr": "suburb.xodr",
+  "junctions": 308,
+  "corner_roads": 604,
+  "closing": 569,
+  "holes": {
+   "closing_corner": {
+    "n": 6,
+    "area_m2": 8.2,
+    "max_m2": 2.5
+   },
+   "other_corner": {
+    "n": 2,
+    "area_m2": 18.7,
+    "max_m2": 17.7
+   },
+   "interior": {
+    "n": 146,
+    "area_m2": 1200.8,
+    "max_m2": 32.7
+   },
+   "blocks_islands": {
+    "n": 147,
+    "area_m2": 870044.3,
+    "max_m2": 41285.8
+   }
+  }
+ }
+]

@@ -19,6 +19,7 @@ what you need.
 | Understand road shapes, curves and speeds | [Road geometry](geometry.md) |
 | Understand slopes, bridges, tunnels and overpasses | [Heights](heights.md) |
 | Understand the `.xodr` the builder writes | [OpenDRIVE builder](opendrive.md) |
+| Understand the HD-map content (side lanes, road marks, signs, lights, right of way, turn lanes), or turn it off with `--no-hd` | [OpenDRIVE builder](opendrive.md), [CLI reference → pipeline](cli-reference.md#pipeline) |
 | Know what is checked, and measure a network | [Validation and metrics](validation.md) |
 | Put traffic on a network and run esmini | [Scenarios and simulation](scenarios-and-simulation.md) |
 | Add ground and buildings to the 3D view | [3D scene](scene.md) |
@@ -39,7 +40,7 @@ what you need.
 | `roadgen/geometry/` | [Road geometry](geometry.md); `vertical.py` and `grade_separation.py` in [Heights](heights.md) |
 | `roadgen/opendrive/` | [OpenDRIVE builder](opendrive.md) |
 | `roadgen/validate/`, `roadgen/metrics/`, `roadgen/sim/drive_check.py` | [Validation and metrics](validation.md) |
-| `roadgen/scenario/`, `roadgen/sim/runner.py`, `roadgen/sim/esmini.py` | [Scenarios and simulation](scenarios-and-simulation.md) |
+| `roadgen/scenario/`, `roadgen/sim/runner.py`, `roadgen/sim/esmini.py`, `roadgen/sim/screenshot.py` | [Scenarios and simulation](scenarios-and-simulation.md) |
 | `roadgen/scene/` | [3D scene](scene.md) |
 | `tests/` | [Development](development.md#tests) |
 | `Dockerfile`, `compose.yaml`, `docker/` | [Docker](docker.md) |

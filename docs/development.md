@@ -22,14 +22,21 @@ found, so a green run without esmini doesn't cover the simulator.
 | Other generators, transforms, repair | `test_junction_generator.py`, `test_roundabout.py`, `test_interchange.py`, `test_repair.py` |
 | Road geometry | `test_geometry.py`, `test_alignment.py`, `test_chain_roads.py`, `test_turns.py` |
 | Heights | `test_align.py`, `test_elevation.py`, `test_banking.py`, `test_grade_separation.py` |
-| OpenDRIVE builder | `test_opendrive.py`, `test_junctions.py`, `test_junction_variety.py` |
-| Validators and metrics | `test_validators.py`, `test_metrics.py`, `test_network_metrics.py` |
+| OpenDRIVE builder | `test_opendrive.py`, `test_junctions.py`, `test_junction_variety.py`, `test_hdmap_identity.py` |
+| Validators and metrics | `test_validators.py`, `test_metrics.py`, `test_network_metrics.py`, `test_hdmap_metrics.py` |
 | Scenario, simulation, scene | `test_scenario.py`, `test_runner.py`, `test_buildings.py` |
 
 `test_lsystem_identity.py` guards a project rule: without maps, and with
 new features at their defaults, the existing lsystem presets must grow
 exactly the networks recorded in `tests/lsystem_identity.py`. New lsystem
 features must therefore default to off.
+
+`test_hdmap_identity.py` does the same for the OpenDRIVE builder during
+stage B (HD maps): with the HD features off, `pipeline` must write a
+byte-identical `.xodr` and `.roadmap.json` for the networks in
+`tests/hdmap_identity.py` (hashes recorded before stage B). Re-record
+(`python -m tests.hdmap_identity`) only for an intended change of the
+builder's output.
 
 ### Fixtures
 
@@ -100,6 +107,7 @@ prompts and decisions.
 | Stage A | Geometry accuracy: fitted curves, design speeds, banking, junction planes, clothoid turns, repair, curved growth | `geometry/`, `metrics/`, `maps/align.py`, `generators/repair.py`, `validate/dynamics.py` |
 | Run folders | One hashed `out/<hash>/` per run, `run.yaml`, replay | `history.py`, `config.py` |
 | Stage C | Long-tail diversity: network metrics, manhattan → lsystem, pattern fields, style maps, cul-de-sacs, junction variety, `junction` generator, roundabouts, overpasses, tunnels, interchanges | `metrics/network.py`, `patterns.py`, `maps/style.py`, `generators/transforms/`, `junction.py`, `geometry/grade_separation.py`, `validate/clearance.py` |
+| Stage B | HD-map completeness, on by default (`--no-hd` gives the plain network): cross-sections with side lanes, curb returns and corner roads, German road marks, junction control and right of way, signs and stop lines, traffic lights with fixed-time plans (also in OpenSCENARIO), crosswalks, speed and curve signs, lane use and arrows, turn pockets, banned turns, the HD repair (bare road ends), the `annotate` step | `geometry/cross_section.py`, `opendrive/marks.py`, `control.py`, `furniture.py`, `lights.py`, `hdmap.py`, `plot.py`, `maps/annotate.py`, `validate/hdmap.py`, `metrics/hdmap.py` |
 
 Phase 6 (a scalability benchmark) was removed: the project trains
 autonomous cars, and `simulate` reports what a single run costs
@@ -125,3 +133,27 @@ autonomous cars, and `simulate` reports what a single run costs
   - Terrain can't see elevation, so forests don't prefer steep or high
     ground. That would need a post-step on the terrain.
   - Style `zones` reads only density and slope, not water or parks.
+
+### esmini load time
+
+esmini 3.9's RoadManager does most of its work while loading: it computes
+OSI points along every lane (`SetLaneOSIPoints`, 1 m steps that shrink
+where the surface's pitch or roll changes). On large HD networks that is
+the bulk of a drive-check or simulation start (`city` about 57 s,
+`mixed_city` about 170 s). Measured in stage B9
+(`plans/2026-10-29-stage-b-implementation.md`, B9 result):
+
+- **Corner roads** are 5 % of `city`'s lane length but 27 s of its load.
+  Neither their OSI point density (about twice the rest) nor their place in
+  the file explains it. `cross_section.corner_roads: false`
+  (`--no-corner-roads`) leaves them out for throughput benchmarks.
+- **Road order:** esmini finds roads by id with a linear scan, so the load
+  depends on where roads stand in the file. Long normal roads first (as
+  built) is about the best order; reversed it takes about twice as long.
+- **The same load varies** on some files by up to three times between runs,
+  all of it CPU time inside esmini (not the Docker VM: no swapping, no
+  memory or CPU pressure). Address-space randomisation could not be ruled
+  out: Docker's default seccomp profile does not allow `setarch -R`.
+- **Not done:** profiling esmini's load needs a build of its RoadManager
+  with profiling (gprof); esmini runs under Rosetta on Apple Silicon, so
+  sampling profilers do not see its code.

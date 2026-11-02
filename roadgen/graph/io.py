@@ -13,7 +13,7 @@ SCHEMA_VERSION = 1
 
 PathLike = Union[str, Path]
 _OPTIONAL: dict[str, Any] = {"z": 0.0, "radius_cap": None, "profile": [], "bridges": [],
-                             "tunnels": []}  # field -> default
+                             "tunnels": [], "control": None, "cross_section": None}  # field -> default
 
 
 def graph_to_dict(graph: RoadGraph) -> dict[str, Any]:
