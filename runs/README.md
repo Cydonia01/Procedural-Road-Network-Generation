@@ -1,6 +1,6 @@
 # Example runs
 
-Eight cities, each the final product: one `pipeline` run with HD maps (side
+Ten networks, each the final product: one `pipeline` run with HD maps (side
 lanes, road marks, signs, lights, turn lanes), buildings, a ground mesh where
 the city is grown on input maps, and a drive-check. Each opens in odrviewer.
 Made by [`examples.sh`](examples.sh); this page is written from the run
@@ -83,4 +83,18 @@ window and is not recorded as a run.
   ```bash
   python -m cli pipeline lsystem --preset highway_corridor --maps --seed 1 --ground --allow-traps --buildings --drive-check -o highway_corridor
   python -m cli view out/f310f3371fd4/highway_corridor.xodr --scenegraph out/f310f3371fd4/highway_corridor_scene.osgt   # look at it
+  ```
+
+- `b92ce0b1c55f` Diamond interchange: freeway crossing an arterial with ramps
+
+  ```bash
+  python -m cli pipeline junction --preset diamond --set interchange_length=800 --allow-traps --drive-check -o diamond
+  python -m cli view out/b92ce0b1c55f/diamond.xodr   # look at it
+  ```
+
+- `90effc296633` Cloverleaf interchange: freeway crossing a freeway with loop ramps
+
+  ```bash
+  python -m cli pipeline junction --preset cloverleaf --set interchange_length=800 --allow-traps --drive-check -o cloverleaf
+  python -m cli view out/90effc296633/cloverleaf.xodr   # look at it
   ```

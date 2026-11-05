@@ -21,6 +21,7 @@ led to them, and record decisions.
 | 2026-10-29 | [Stage B: HD-map completeness, implementation plan](2026-10-29-stage-b-implementation.md) | done (B0–B10) |
 | 2026-10-31 | [esmini issue draft: RoadManager load time (corner roads, run-to-run variance)](2026-10-31-esmini-issue-draft.md) | draft, not filed (user decides) |
 | 2026-11-01 | [Stage B: summary for presentation](2026-11-01-stage-b-summary.md) | done |
+| 2026-11-06 | [Refinement review: natural networks, esmini look, what to add or drop](2026-11-06-refinement-review.md) | review, decided |
 
 The review these come from is `Roadgen AV Readiness Review.pdf` in the repo
 root (written in an earlier chat; its prompts were not saved).

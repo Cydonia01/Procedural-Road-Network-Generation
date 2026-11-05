@@ -1,0 +1,384 @@
+<title>Roadgen Refinement Review</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single printed-report column (~46rem); measurement rows use a figure gutter, issue sections pair screenshot + diagnosis. */
+:root {
+  --bg: #fbfaf7;
+  --surface: #f2f0ea;
+  --fg: #22252a;
+  --muted: #5d6168;
+  --rule: #d9d5cb;
+  --asphalt: #3d4148;
+  --marking: #b8860b;   /* road-marking amber: the accent */
+  --alert: #b3261e;     /* measured problems */
+  --ok: #2e6b3f;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17191c; --surface: #202328; --fg: #e6e4df; --muted: #a3a6ab; --rule: #363a40;
+    --asphalt: #c9ccd1; --marking: #e0b13a; --alert: #ff8a7a; --ok: #7fc493; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17191c; --surface: #202328; --fg: #e6e4df; --muted: #a3a6ab; --rule: #363a40;
+  --asphalt: #c9ccd1; --marking: #e0b13a; --alert: #ff8a7a; --ok: #7fc493; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 400 1rem/1.62 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 46rem; margin: 0 auto; padding-block: 4rem 5rem; display: flex; flex-direction: column; gap: 3.5rem; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.08; text-wrap: balance; margin: 0; letter-spacing: .005em; }
+h1 { font-size: clamp(2.4rem, 6vw, 3.3rem); }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.35rem; font-weight: 600; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: .86em; background: var(--surface); padding: .05em .3em; border-radius: 3px; overflow-wrap: anywhere; }
+.eyebrow { font-family: var(--mono); font-size: .76rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 1.25rem; }
+header { display: flex; flex-direction: column; gap: 1rem; padding-bottom: 2rem; border-bottom: 4px solid var(--marking); }
+.lead { font-size: 1.17rem; line-height: 1.6; }
+.basis { font-size: .9rem; color: var(--muted); }
+
+/* measurement rows */
+.stats { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
+.stat { display: grid; grid-template-columns: 9.5rem 1fr; gap: 1.25rem; padding-block: 1.15rem; border-bottom: 1px solid var(--rule); }
+.stat .fig { font-family: var(--display); font-weight: 700; font-size: 2.1rem; line-height: 1; color: var(--alert); font-variant-numeric: tabular-nums; }
+.stat .unit { display: block; font-family: var(--mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: .35rem; line-height: 1.3; }
+.stat h3 { margin-bottom: .3rem; }
+.stat > div { min-width: 0; }
+
+/* issue sections */
+.issue { display: flex; flex-direction: column; gap: 1rem; padding-top: 1.75rem; border-top: 1px solid var(--rule); }
+.issue figure { margin: 0; display: flex; flex-direction: column; gap: .5rem; }
+.issue img { width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--rule); background: var(--surface); }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+figcaption { font-size: .85rem; color: var(--muted); }
+.diag { display: grid; grid-template-columns: 6.5rem 1fr; gap: .55rem 1rem; }
+.diag dt { font-family: var(--mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding-top: .25rem; }
+.diag dd { margin: 0; min-width: 0; }
+.diag dd.fix { border-left: 3px solid var(--marking); padding-left: .8rem; }
+.tag { font-family: var(--mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; padding: .15rem .45rem; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.tag.ours { color: var(--alert); }
+.tag.esmini { color: var(--muted); }
+.issue-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem 1rem; }
+ul.tight { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .3rem; }
+
+/* tables */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { text-align: left; vertical-align: top; padding: .55rem .7rem .55rem 0; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--mono); font-weight: 500; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 0; padding-left: .7rem; }
+td.hot { color: var(--alert); font-weight: 600; }
+
+/* work items */
+.work { display: flex; flex-direction: column; gap: 2rem; }
+.item { display: grid; grid-template-columns: 3.4rem 1fr; gap: 1rem; }
+.item .code { font-family: var(--display); font-weight: 700; font-size: 1.9rem; line-height: 1; color: var(--marking); }
+.item > div { min-width: 0; display: flex; flex-direction: column; gap: .6rem; }
+.item ol { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .35rem; }
+.done-when { font-size: .92rem; background: var(--surface); padding: .6rem .8rem; border-radius: 4px; }
+.done-when b { font-family: var(--mono); font-weight: 500; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ok); margin-right: .4rem; }
+.order { font-family: var(--mono); font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
+
+footer { font-size: .85rem; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 1.25rem; }
+
+@media (max-width: 560px) {
+  .stat { grid-template-columns: 1fr; gap: .5rem; }
+  .pair { grid-template-columns: 1fr; }
+  .diag { grid-template-columns: 1fr; gap: .2rem; }
+  .diag dd { margin-bottom: .6rem; }
+  .item { grid-template-columns: 1fr; gap: .4rem; }
+}
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">Procedural Road Network Generation · refinement review after stages A, C and B</div>
+  <h1>Roadgen Refinement Review</h1>
+  <p class="lead">The networks build, validate and drive, but they don't yet look like cities. Lane counts follow the direction a road points, not the job it does, so roads jump from four lanes to two along a straight line. About one node in eight is a dead end. Roads are tested as zero-width lines, so their bodies can overlap. The ground mesh is too coarse to stay under curved and banked roads. This review explains the six esmini screenshots, lists what is missing and what can go, and orders the work.</p>
+  <p class="basis">Based on the code on <code>main</code> (merge of stage B), the plans in <code>plans/</code>, and measurements of the example runs in <code>out/</code> with <code>plans/scripts/refinement_probe.py</code>. November 2026. The source file for this review is <code>plans/2026-11-06-refinement-review.md</code>.</p>
+</header>
+
+<section>
+  <h2>What the measurements show</h2>
+  <div class="stats">
+    <div class="stat">
+      <div class="fig">36<span class="unit">lane jumps<br>mixed_city</span></div>
+      <div><h3>Lanes change on straight roads</h3><p>36 of 539 straight continuations in mixed_city change lane count (14 in hill_town, 3 in city). The road class is still chosen by grid axis: along local y means avenue, along local x means street.</p></div>
+    </div>
+    <div class="stat">
+      <div class="fig">11–15 %<span class="unit">of nodes are<br>dead ends</span></div>
+      <div><h3>Many roads lead nowhere</h3><p>city 88 of 605 nodes, mixed_city 79 of 707, hill_town 117 of 1,035. Streets stop at water, parks and failed continuations, and no pass connects or removes them. <code>--allow-traps</code> hides them.</p></div>
+    </div>
+    <div class="stat">
+      <div class="fig">10<span class="unit">body overlaps<br>city</span></div>
+      <div><h3>Roads overlap without a junction</h3><p>Growth and validation look only at centre lines. 10 pairs of road bodies in city overlap without sharing a node (4 in mixed_city, 5 in hill_town).</p></div>
+    </div>
+    <div class="stat">
+      <div class="fig">20 m<span class="unit">ground grid vs<br>0.3 m margin</span></div>
+      <div><h3>The ground is too coarse for the roads on it</h3><p>Ground triangles are up to 28 m across and levelled only at their corners. On banked curves and sags they miss the road surface by about 0.4 m, which is more than the 0.3 m they are meant to sit below it.</p></div>
+    </div>
+    <div class="stat">
+      <div class="fig">39 s<span class="unit">python, city<br>+ 49 s esmini load</span></div>
+      <div><h3>Generation time is spread out</h3><p>Python time divides among fit (6.8 s), build (7.0 s), write (5.0 s), validate (9.4 s) and the lane plot (4.5 s). esmini then takes 49 s to load city and 137 s for mixed_city, mostly because of the corner roads.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The six screenshots</h2>
+
+  <article class="issue">
+    <div class="issue-head"><h3>1, 2 · Four lanes become two, and the ground covers the road</h3><span class="tag ours">ours</span></div>
+    <div class="pair">
+      <figure><img src="img/screen1.png" alt="A curved road narrowing from four lanes to two, with cream ground patches covering the asphalt on the inside of the curve" loading="lazy"><figcaption>1 · Lane drop on a curve; ground over the road.</figcaption></figure>
+      <figure><img src="img/screen2.png" alt="A loop road that changes from two to four lanes beside a building, ground cutting into its edge" loading="lazy"><figcaption>2 · The same on a loop.</figcaption></figure>
+    </div>
+    <dl class="diag">
+      <dt>Decision</dt>
+      <dd>The rule dates from the Phase 3–4 prompts: avenues <code>(2, 2)</code> and streets <code>(1, 1)</code>, later 4-lane and 2-lane one-ways. In lsystem it became an axis rule: <code>major_lanes</code> along local y and <code>minor_lanes</code> along local x (<code>defaults.yaml:30-31</code>, <code>lsystem.py:1733-1749</code>). The rule suits a grid, but on curved, organic or map-driven growth a road's class depends on which way each segment happens to point.</dd>
+      <dt>Why lanes jump</dt>
+      <dd><ul class="tight">
+        <li>A street snaps onto an avenue end within 15 m (<code>resolve</code>, <code>lsystem.py:974</code>) and continues it straight.</li>
+        <li>If travel directions differ, the two-road node stays a junction, and surplus lanes stop with no taper (<code>junctions.py:234-253</code>).</li>
+        <li>Merged roads do taper, but the taper is capped at half the edge (<code>profiles.py:78</code>), so on short edges it is abrupt and often inside a curve.</li>
+        <li>Streets spawned from highways take their class from heading (<code>lsystem.py:1316</code>).</li>
+      </ul></dd>
+      <dt>Why the ground shows</dt>
+      <dd><ul class="tight">
+        <li>The 20 m ground grid is levelled only at vertices within <code>half width + 2 m + 20 m</code>. A triangle on the road edge can reach <code>20·√2 ≈ 28 m</code>, so one corner keeps terrain height and lifts the triangle through the asphalt where the road runs in a cut.</li>
+        <li>Banking is extrapolated 22 m beyond the edge (<code>ground.py:135</code>).</li>
+        <li>On sag curves the flat triangle lies above the road.</li>
+      </ul></dd>
+      <dt>Options</dt>
+      <dd><b>A, chosen: hierarchy by role.</b> After growth, join edges into <em>strokes</em>: the straightest continuation through each node, under about 35° deflection. Rank strokes by length × betweenness, optionally weighted by population, and assign highway / arterial / collector / local by rank. Lanes stay constant along a stroke and change only at real junctions, with a taper on a straight section. B (class per grid line) is dropped because Manhattan grids are not the target; their lines are straight strokes anyway. C (lanes from demand) can be added to A later as a weight.</dd>
+      <dd class="fix" style="grid-column: 1 / -1">Fix in esmini: work items <b>R1</b> (hierarchy) and <b>R4</b> (ground). Both change only the generator and the scene file.</dd>
+    </dl>
+  </article>
+
+  <article class="issue">
+    <div class="issue-head"><h3>3 · The junction is a different grey</h3><span class="tag ours">ours</span><span class="tag esmini">esmini draws it</span></div>
+    <figure><img src="img/screen3.png" alt="A junction where two roads diverge; the triangle between their connecting roads is a lighter grey than the asphalt" loading="lazy"><figcaption>3 · The lighter patch between the diverging connecting roads.</figcaption></figure>
+    <dl class="diag">
+      <dt>Why</dt>
+      <dd>With HD on, every hole in a junction's lane surface larger than a set area becomes an <code>&lt;object type="patch"&gt;</code> with an asphalt outline, 0.02 m above the junction plane (<code>builder.py:682-760</code>). esmini draws outline objects as plain coloured geometry, not with its lane surface material, so the patch looks lighter. The sidewalk and curb lanes of the corner roads add the pale bands at the corners.</dd>
+      <dt>Options</dt>
+      <dd><ul class="tight">
+        <li>(1) Cover the holes with extra lanes or roads. This changes the junction the drive-check and validators read.</li>
+        <li>(2) Draw the junction surface in our scene mesh in esmini's asphalt colour. Visual only.</li>
+        <li>(3) Leave it for Blender.</li>
+      </ul></dd>
+      <dd class="fix" style="grid-column: 1 / -1">Chosen: <b>(2)</b>, because it fixes the look in esmini without touching anything the simulation uses. Patches are still written when no scene file is made. Nothing else in the code reads them. Work item <b>R5</b>.</dd>
+    </dl>
+  </article>
+
+  <article class="issue">
+    <div class="issue-head"><h3>4 · Roads disappear under the ground at the water</h3><span class="tag ours">mostly ours</span><span class="tag esmini">partly esmini</span></div>
+    <figure><img src="img/screen4.png" alt="A divided road crossing water toward a hill; a strip of sand covers the road between two bridge sections" loading="lazy"><figcaption>4 · A land strip inside a bridge span covers the deck.</figcaption></figure>
+    <dl class="diag">
+      <dt>Why</dt>
+      <dd>Under bridge spans the ground is left at terrain height (<code>ground.py:126</code>). A land strip between two water stretches, or a coarse shore cell, stands above the deck. esmini draws no deck, piers or tunnel portals, and that part is an esmini limitation. The stair-step shoreline comes from colouring each 20 m vertex by the nearest terrain class.</dd>
+      <dd class="fix" style="grid-column: 1 / -1">Fix in esmini: clamp the ground under bridges to the deck minus clearance, add simple deck and pier geometry to the scene, and smooth the terrain-class boundaries. Work item <b>R4</b>. Bridge and tunnel detail beyond that can wait for Blender.</dd>
+    </dl>
+  </article>
+
+  <article class="issue">
+    <div class="issue-head"><h3>5 · Roads that lead nowhere</h3><span class="tag ours">ours</span></div>
+    <figure><img src="img/screen5.png" alt="Several roads ending abruptly at the edge of a park area without connecting to another road" loading="lazy"><figcaption>5 · Streets stop at a park, and a branch ends in the open.</figcaption></figure>
+    <dl class="diag">
+      <dt>Why</dt>
+      <dd>Streets that reach water or vegetation are cut at the edge and do not continue (<code>legal_street</code>, <code>lsystem.py:1485-1500</code>). Failed continuations leave free ends too. Nothing cleans them up:
+        <ul class="tight">
+          <li>The connector pass is off (<code>detour_ratio: 0</code>).</li>
+          <li>Cul-de-sacs are off in grid presets.</li>
+          <li><code>repair</code> never removes a dead end.</li>
+          <li><code>--allow-traps</code> turns the trap report into a warning.</li>
+        </ul></dd>
+      <dd class="fix" style="grid-column: 1 / -1">Fix: Parish &amp; Müller's own local constraint. Extend a free end to a nearby road; if that is not allowed, trim a short stub back to its junction; if neither works, give it a turning circle. Work item <b>R3</b>.</dd>
+    </dl>
+  </article>
+
+  <article class="issue">
+    <div class="issue-head"><h3>6 · One road runs into another</h3><span class="tag ours">ours</span></div>
+    <figure><img src="img/screen6.png" alt="Top view: a curved road with sidewalks merges into a straight road at a narrow angle, their bodies overlapping" loading="lazy"><figcaption>6 · A narrow Y where the bodies overlap before the junction.</figcaption></figure>
+    <dl class="diag">
+      <dt>Why</dt>
+      <dd>Growth tests centre lines only: a zero-width crossing test, a 15 m snap and a 30° minimum angle (<code>acceptable</code>, <code>lsystem.py:1014-1051</code>). Nothing checks the spacing between near-parallel roads or their width. The curve fit rejects only contacts it creates itself (<code>alignment.py:297-335</code>). The clearance validator sees only centre lines that cross.</dd>
+      <dd class="fix" style="grid-column: 1 / -1">Fix: width-aware growth (body buffer, spacing, merging near-parallel roads, a minimum angle that depends on width) and a body-overlap validator. Work item <b>R2</b>.</dd>
+    </dl>
+  </article>
+</section>
+
+<section>
+  <h2>Decisions</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Question</th><th>Decision</th><th>By</th></tr></thead>
+    <tbody>
+      <tr><td>Lanes per road</td><td>Role-based hierarchy from strokes (option A). The axis rule goes; Manhattan grids are not designed for.</td><td>user</td></tr>
+      <tr><td>esmini or Blender</td><td>Fix in esmini too. If a fix would break driving, validation or HD data, the look comes second.</td><td>user</td></tr>
+      <tr><td>lsystem identity fingerprints</td><td>Re-recorded once in R1, and the CLAUDE.md rule updated. The <code>--no-hd</code> byte-identity test stays.</td><td>Claude</td></tr>
+      <tr><td>Junction colour</td><td>Junction fill in the scene mesh; patch objects only without a scene.</td><td>Claude</td></tr>
+      <tr><td>Ground under roads</td><td>Quick levelling fixes first, then cut road footprints out of the ground. Scene file only.</td><td>Claude</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>What needs to be implemented</h2>
+  <p class="order">Order: R1 → R2 → R3 → R4 → R5 → R6 → R7, with the performance items P1–P6 alongside. Each item ends with the check that says it is done.</p>
+  <div class="work">
+
+    <div class="item"><div class="code">R1</div><div>
+      <h3>Road hierarchy and lane continuity</h3>
+      <ol>
+        <li>New pure step <code>roadgen/generators/hierarchy.py</code>: build strokes, choosing at each node the continuation with the smallest deflection under about 35°.</li>
+        <li>Rank strokes by length × edge betweenness, using seeded, sampled betweenness for speed and optionally weighting by population. Assign highway, arterial, collector and local by share of network length. Each class's lanes, speed and one-way pattern come from parameters in <code>defaults.yaml</code>.</li>
+        <li>Remove the axis-to-class mapping in <code>_to_graph</code>. The connector pass and highway spurs get their class from the stroke they join.</li>
+        <li>Lane changes happen only at junctions with three or more arms. The taper uses MUTCD lengths (<code>L = W·S²/60</code> below 45 mph, <code>W·S</code> above) and must sit on a straight section. If there is no room, the change moves to the previous junction.</li>
+        <li>Re-record the lsystem identity fingerprints; update CLAUDE.md and <code>docs/lsystem.md</code>.</li>
+      </ol>
+      <p class="done-when"><b>Done when</b>the probe finds 0 lane jumps at two-road nodes and class changes only at junctions with 3+ arms, on every preset; and the 200-seed sweeps still have 0 build failures.</p>
+    </div></div>
+
+    <div class="item"><div class="code">R2</div><div>
+      <h3>Width-aware growth</h3>
+      <ol>
+        <li>In <code>acceptable()</code>, buffer each proposal by its outer half width (side lanes included) and reject it if it touches the body of a road it does not connect to. The existing spatial hash keeps this fast.</li>
+        <li>Minimum spacing between near-parallel roads: <code>(w₁ + w₂)/2 + min_block_depth</code>.</li>
+        <li>A proposal that would run alongside an existing road at under 20° snaps onto it.</li>
+        <li>Minimum angle at a node grows with width, so bodies separate inside the junction trim.</li>
+        <li>Add a body-overlap check to <code>validate/clearance.py</code> using lane polygons, excluding roads in the same junction.</li>
+      </ol>
+      <p class="done-when"><b>Done when</b>body overlaps = 0 on all presets and across the 200-seed sweeps.</p>
+    </div></div>
+
+    <div class="item"><div class="code">R3</div><div>
+      <h3>Dead-end policy</h3>
+      <ol>
+        <li>A pass after growth, on by default. For each free end, try in order: extend to the nearest road within about 1.5 blocks (checking maps, grade, angle and width); trim a stub shorter than one block back to its junction; give it a turning circle (the culdesac transform, opened to all classes except highways).</li>
+        <li>Streets that meet water or a park end at the last junction before it, not mid-segment.</li>
+        <li>Turn the connector pass on in the map presets.</li>
+        <li>Report the dead-end share as a metric. Remove <code>--allow-traps</code> from the examples once they pass without it.</li>
+      </ol>
+      <p class="done-when"><b>Done when</b>dead ends are under 3 % of nodes, not counting intended cul-de-sacs and roads leaving the map, and the examples run without <code>--allow-traps</code>.</p>
+    </div></div>
+
+    <div class="item"><div class="code">R4</div><div>
+      <h3>Ground that stays under the roads (esmini scene)</h3>
+      <ol>
+        <li>Quick fixes in <code>scene/ground.py</code>:
+          <ul class="tight">
+            <li>level out to <code>margin + cell·√2</code>;</li>
+            <li>clamp the banking offset at the road edge;</li>
+            <li>under bridges, keep land below the deck minus clearance;</li>
+            <li>smooth the terrain-class colours.</li>
+          </ul></li>
+        <li>Footprint cut: subtract the union of road and junction surfaces from the ground and triangulate the rest with the road edges as constraints. Edge vertices take the road edge height, so the ground meets the road.</li>
+        <li>Simple bridge decks and piers and tunnel portals in the <code>.osgt</code>, also usable in Blender.</li>
+      </ol>
+      <p class="done-when"><b>Done when</b>a poke-through check (ground above any road-surface sample) reports 0 on city, mixed_city and hill_town, and screenshots 1, 2 and 4 look clean in esmini.</p>
+    </div></div>
+
+    <div class="item"><div class="code">R5</div><div>
+      <h3>Junctions the same colour as roads (esmini)</h3>
+      <ol>
+        <li>Check how esmini renders outline objects and their <code>fillType</code>. If an asphalt fill can use the road material, use that and stop here.</li>
+        <li>Otherwise draw each junction's fill area in the scene mesh in the asphalt colour measured from esmini, just under the lane surfaces. Write the <code>patch</code> objects only when no scene is written.</li>
+        <li>Check that esmini's own model and texture resources are installed. Flat colours everywhere may only mean they are missing.</li>
+      </ol>
+      <p class="done-when"><b>Done when</b>screenshot 3 shows one asphalt colour, and the drive-check and HD validation results are unchanged.</p>
+    </div></div>
+
+    <div class="item"><div class="code">R6</div><div>
+      <h3>Buildings that look like a city</h3>
+      <ol>
+        <li>Split each block, after the sidewalk setback, into parcels by recursive oriented-box splits: frontage about 15–40 m, depth about 20–40 m.</li>
+        <li>Put one building on each parcel with front and side setbacks, without the large rounded corners. Height comes from population and district style.</li>
+        <li>Keep parks, vegetation and water free of buildings.</li>
+      </ol>
+      <p class="done-when"><b>Done when</b>no block is a single building unless it is small, the height distribution follows population, and the views in 1, 2 and 6 show streets lined with separate buildings.</p>
+    </div></div>
+
+    <div class="item"><div class="code">R7</div><div>
+      <h3>Materials, textures and Blender export</h3>
+      <ol>
+        <li>Export our own road mesh per lane type with UVs = (s, t), and road marks as decal strips from the <code>&lt;roadMark&gt;</code> data. Use glTF, which Blender imports directly.</li>
+        <li>Give each surface a material id: asphalt, concrete sidewalk, curb, grass, water, facade.</li>
+        <li>A script fetches CC0 textures (ambientCG, Poly Haven) into a git-ignored folder and records their licences.</li>
+        <li>Check whether esmini's bundled OSG reads textured <code>.osgt</code>. If it does, the ground and buildings get textures in esmini too.</li>
+      </ol>
+      <p class="done-when"><b>Done when</b>a city opens in Blender with textured roads, sidewalks, ground and buildings, aligned with the <code>.xodr</code>.</p>
+    </div></div>
+
+    <div class="item"><div class="code">Q</div><div>
+      <h3>Quality gates for naturalness</h3>
+      <p>Move the probe into <code>roadgen/metrics/network.py</code> and the sweep: dead-end share, lane jumps, class changes, body overlaps and ground poke-through. Add test thresholds so these issues cannot quietly come back.</p>
+    </div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Generation performance</h2>
+  <p>Python time for <code>city</code> with HD, from the stage B baseline (best of 3). The rest of the 39 s is map generation and saving.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Step</th><th class="num">city</th><th class="num">mixed_city</th></tr></thead>
+    <tbody>
+      <tr><td>generate (lsystem)</td><td class="num">1.0 s</td><td class="num">2.1 s</td></tr>
+      <tr><td>align + drape</td><td class="num">1.7 s</td><td class="num">4.4 s</td></tr>
+      <tr><td>fit cross-sections</td><td class="num hot">6.8 s</td><td class="num hot">15.3 s</td></tr>
+      <tr><td>build xodr</td><td class="num hot">7.0 s</td><td class="num hot">9.7 s</td></tr>
+      <tr><td>write xodr</td><td class="num">5.0 s</td><td class="num">6.6 s</td></tr>
+      <tr><td>validate</td><td class="num hot">9.4 s</td><td class="num hot">13.0 s</td></tr>
+      <tr><td>plot + lane plot</td><td class="num">5.2 s</td><td class="num">6.6 s</td></tr>
+      <tr><td><b>pipeline</b></td><td class="num"><b>39.4 s</b></td><td class="num"><b>61.4 s</b></td></tr>
+      <tr><td>esmini load (outside Python)</td><td class="num hot">49 s</td><td class="num hot">137 s</td></tr>
+    </tbody>
+  </table></div>
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>Change</th><th>Expected gain</th></tr></thead>
+    <tbody>
+      <tr><td>P1</td><td>Adjacency index on <code>RoadGraph</code>. <code>incident_edges</code> sorts every edge on every call, so the per-node loops in chains, junction space and pockets cost O(N·E log E).</td><td>align and fit 30–50 % faster</td></tr>
+      <tr><td>P2</td><td>Parse the written <code>.xodr</code> once and pass the tree to all seven validators, which each parse the 25–33 MB file today.</td><td>validate 9 → 3–5 s</td></tr>
+      <tr><td>P3</td><td>Vectorize <code>RoadEval</code> and <code>lane_polygons</code>, which evaluate one point at a time and re-read XML attributes on every call.</td><td>3–5 s (validate, lane plot, junction fill)</td></tr>
+      <tr><td>P4</td><td>Compute <code>network_alignment</code> once and pass it on. Today align, drape, repair, plot, build, ground and buildings each redo it.</td><td>1–3 s per reuse</td></tr>
+      <tr><td>P5</td><td>Make repair checks local to the edge's two end nodes instead of rescanning the network per trial.</td><td>most of the remaining fit time</td></tr>
+      <tr><td>P6</td><td>Make the lane plot opt-in; sweeps default to one job per CPU without plots; corner roads optional for esmini runs; round coordinates.</td><td>4.5 s per run; esmini load; sweeps</td></tr>
+    </tbody>
+  </table></div>
+  <p class="basis">Gains are estimates from reading the code. Each change is measured against the B9 baseline before it is kept. The lsystem already uses a spatial hash, and clearance checks use STRtree, so neither needs work.</p>
+</section>
+
+<section>
+  <h2>What can go</h2>
+  <ul class="tight">
+    <li><b>The axis rule for lanes</b> (<code>major_*</code> / <code>minor_*</code> by direction). R1 replaces it.</li>
+    <li><b>Junction patch objects</b> when a scene file is written. R5 replaces them.</li>
+    <li><b>Corner roads in esmini runs.</b> They cost about 27 s of city's load. Make them optional once the scene draws sidewalks round corners, and keep them for HD output.</li>
+    <li><b>The HD lane plot on every run</b> (4.5 s). Make it opt-in.</li>
+    <li><b>Seven re-parses</b> of the same file during validation (P2).</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Still open from earlier stages</h2>
+  <ul class="tight">
+    <li>Divided carriageways; trumpet interchanges; roundabout splitter islands.</li>
+    <li>Roundabout spur failures: mixed_city, 10 of 200 seeds with HD off.</li>
+    <li>Drive-check for interchanges; lsystem never builds cloverleafs; city seed 7 has no street × street junctions.</li>
+    <li>Comparison with real-city statistics and a training-data export (review PDF, parts D and E).</li>
+  </ul>
+</section>
+
+<footer>Sources: <code>plans/2026-10-24-stage-a-summary.md</code>, <code>plans/2026-10-27-stage-c-summary.md</code>, <code>plans/2026-11-01-stage-b-summary.md</code>, <code>plans/baselines/2026-10-31-stage-b-b9-perf.json</code>, <code>plans/scripts/refinement_probe.py</code>, and the code at the cited lines. Screenshots are from esmini 3D views of the example runs.</footer>
+</main>

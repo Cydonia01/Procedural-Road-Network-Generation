@@ -25,14 +25,16 @@ _run() {
 
 # name | note | pipeline arguments (the output name is added)
 EXAMPLES=(
-"city|Mixed-density city on generated maps: highways, ring roads, river, hills|--preset city --maps --seed 7 --ground"
-"manhattan|Manhattan grid: alternating one-way avenues and streets, ring road|--preset manhattan_like --seed 1"
-"paris|Paris: star of avenues, rings, grid outside|--preset paris"
-"suburb|Suburb: cul-de-sac bulbs, suburban cross-section|--preset suburb --seed 1 --cross-section suburban"
-"mixed_city|Mixed city: style-map districts on generated maps|--preset mixed_city --maps --seed 1 --ground"
-"hill_town|Hill town: contour streets on hilly maps|--preset hill_town --maps --seed 1 --ground"
-"freeways|City with freeways and overpasses|--preset city --maps --seed 1 --set highway_crossings=separated --ground"
-"highway_corridor|Freeway corridor with a diamond interchange, lane adds and drops|--preset highway_corridor --maps --seed 1 --ground"
+"city|Mixed-density city on generated maps: highways, ring roads, river, hills|lsystem --preset city --maps --seed 7 --ground --buildings"
+"manhattan|Manhattan grid: alternating one-way avenues and streets, ring road|lsystem --preset manhattan_like --seed 1 --buildings"
+"paris|Paris: star of avenues, rings, grid outside|lsystem --preset paris --buildings"
+"suburb|Suburb: cul-de-sac bulbs, suburban cross-section|lsystem --preset suburb --seed 1 --cross-section suburban --buildings"
+"mixed_city|Mixed city: style-map districts on generated maps|lsystem --preset mixed_city --maps --seed 1 --ground --buildings"
+"hill_town|Hill town: contour streets on hilly maps|lsystem --preset hill_town --maps --seed 1 --ground --buildings"
+"freeways|City with freeways and overpasses|lsystem --preset city --maps --seed 1 --set highway_crossings=separated --ground --buildings"
+"highway_corridor|Freeway corridor with a diamond interchange, lane adds and drops|lsystem --preset highway_corridor --maps --seed 1 --ground --buildings"
+"diamond|Diamond interchange: freeway crossing an arterial with ramps|junction --preset diamond --set interchange_length=800"
+"cloverleaf|Cloverleaf interchange: freeway crossing a freeway with loop ramps|junction --preset cloverleaf --set interchange_length=800"
 )
 
 generate() {
@@ -41,7 +43,7 @@ generate() {
         IFS='|' read -r name note args <<< "$entry"
         echo "== $name"
         # shellcheck disable=SC2086
-        _run dev --note "$note" pipeline lsystem $args --allow-traps --buildings --drive-check -o "$name"
+        _run dev --note "$note" pipeline $args --allow-traps --drive-check -o "$name"
     done
 }
 
