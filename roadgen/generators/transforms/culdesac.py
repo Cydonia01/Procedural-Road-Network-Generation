@@ -10,7 +10,7 @@ other: a symmetric Y junction. Teng & Bidarra (2017) place cul-de-sac
 patches at dead ends; the teardrop shape is the common US layout.
 
 A bulb is only added where its circle, widened by a lane and a clearance,
-touches no other road, and where an allowed callback (map legality, the
+touches no other road's driving lanes, and where an allowed callback (map legality, the
 generator's area) accepts it. On a wide street the loop grows, so that its
 chords keep room for the junction's trims (radius at least the street's half
 width plus ROOM). Where the room ahead is taken, the end node
@@ -68,6 +68,8 @@ def add_culdesacs(
     lines = {e.id: LineString([(graph.nodes[e.from_node].x, graph.nodes[e.from_node].y),
                                (graph.nodes[e.to_node].x, graph.nodes[e.to_node].y)])
              for e in graph.edges.values()}
+    half = {e.id: e.total_lanes * e.lane_width / 2 for e in graph.edges.values()}  # driving half widths
+    widest = max(half.values())
     ids = list(lines)
     tree = STRtree([lines[i] for i in ids])
     next_node = max(graph.nodes) + 1
@@ -90,9 +92,11 @@ def add_culdesacs(
                 break
             end = (node.x - back * math.cos(heading), node.y - back * math.sin(heading))
             centre = Point(end[0] + r_loop * math.cos(heading), end[1] + r_loop * math.sin(heading))
-            footprint = centre.buffer(r_loop + stem.lane_width + CLEARANCE)
-            hits = [ids[j] for j in tree.query(footprint) if ids[j] != stem.id
-                    and lines[ids[j]].intersects(footprint)]
+            reach = r_loop + stem.lane_width + CLEARANCE
+            footprint = centre.buffer(reach)
+            # Other roads keep their bodies (driving half width) off the footprint.
+            hits = [ids[j] for j in tree.query(centre.buffer(reach + widest)) if ids[j] != stem.id
+                    and lines[ids[j]].distance(centre) < reach + half[ids[j]]]
             if hits or any(footprint.intersects(f) for f in added):
                 continue
             if allowed is not None and not allowed(footprint):

@@ -37,6 +37,7 @@ from shapely.strtree import STRtree
 
 from roadgen.generators.repair import MIN_ROAD_LENGTH
 from roadgen.geometry.alignment import network_alignment
+from roadgen.geometry.cross_section import CrossSectionParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN, node_trims
 from roadgen.graph.model import Edge, Node, RoadGraph
 
@@ -59,17 +60,18 @@ def _arms(graph: RoadGraph, node_id: int) -> list[tuple[float, Edge, int]]:
 
 
 def _plan(graph: RoadGraph, node_id: int, radius_street: float, radius_avenue: float, speed: float,
-          margin: float) -> Optional[dict]:
+          margin: float, cross_section: Optional[CrossSectionParams] = None) -> Optional[dict]:
     """The roundabout replacing node_id (positions, edges), or None if it doesn't fit."""
     for growth in (1.0, RADIUS_GROWTH):
-        plan = _plan_at(graph, node_id, radius_street * growth, radius_avenue * growth, speed, margin)
+        plan = _plan_at(graph, node_id, radius_street * growth, radius_avenue * growth, speed, margin,
+                        cross_section)
         if plan is not None:
             return plan
     return None
 
 
 def _plan_at(graph: RoadGraph, node_id: int, radius_street: float, radius_avenue: float, speed: float,
-             margin: float) -> Optional[dict]:
+             margin: float, cross_section: Optional[CrossSectionParams] = None) -> Optional[dict]:
     arms = _arms(graph, node_id)
     if not 3 <= len(arms) <= 5 or any(e.road_class == "highway" or e.profile or e.bridges for _, e, _ in arms):
         return None
@@ -117,14 +119,23 @@ def _plan_at(graph: RoadGraph, node_id: int, radius_street: float, radius_avenue
         local.add_edge(arm)
         entries[i] = ids[j]
     try:
-        entry_trims = {i: node_trims(local, n, margin) for i, n in entries.items()}
+        entry_trims = {i: node_trims(local, n, margin, cross_section) for i, n in entries.items()}
     except ValueError:
         return None
-    # Each arm keeps a road after the entry's trim and its far end's.
+    # Each arm keeps a road after the entry's trim and its far end's; the far end's trims
+    # come from the arm's new direction (to its entry), and every other road at the far end
+    # must keep its road too (the turned arm can widen their trims there).
     for i, (_, e, far) in enumerate(arms):
-        far_trim = node_trims(graph, far, margin).get(e.id, 0.0) if graph.degree(far) >= 3 else 0.0
-        if local.edge_length(e.id) - entry_trims[i][e.id] - far_trim < MIN_ROAD_LENGTH:
+        far_trims = _far_trims(graph, far, e.id, local.nodes[entries[i]], margin, cross_section) if graph.degree(far) >= 3 else {}
+        if local.edge_length(e.id) - entry_trims[i][e.id] - far_trims.get(e.id, 0.0) < MIN_ROAD_LENGTH:
             return None
+        for x, trim in far_trims.items():
+            if x == e.id or x in {a.id for _, a, _ in arms}:
+                continue
+            other = graph.edges[x].to_node if graph.edges[x].from_node == far else graph.edges[x].from_node
+            other_trim = node_trims(graph, other, margin, cross_section).get(x, 0.0) if graph.degree(other) >= 3 else 0.0
+            if graph.edge_length(x) - trim - other_trim < MIN_ROAD_LENGTH:
+                return None
     # Each ring arc keeps a road between its two entries' trims.
     order = sorted(entries)
     for k, i in enumerate(order):
@@ -147,11 +158,34 @@ def _plan_at(graph: RoadGraph, node_id: int, radius_street: float, radius_avenue
             "footprint": Point(c.x, c.y).buffer(radius + lanes * width + CLEARANCE)}
 
 
+def _far_trims(graph: RoadGraph, far: int, arm: int, entry: Node, margin: float = DEFAULT_MARGIN,
+               cross_section: Optional[CrossSectionParams] = None) -> dict[int, float]:
+    """Trims at node far once edge arm runs to entry instead of the roundabout's centre."""
+    star = RoadGraph(metadata=graph.metadata)
+    star.add_node(graph.nodes[far])
+    for e in graph.incident_edges(far):
+        other = e.to_node if e.from_node == far else e.from_node
+        if e.id == arm:
+            other_node = Node(other, entry.x, entry.y, z=graph.nodes[other].z)
+        else:
+            other_node = graph.nodes[other]
+        if other not in star.nodes:
+            star.add_node(other_node)
+        star.add_edge(e)
+    try:
+        return node_trims(star, far, margin, cross_section)
+    except ValueError:
+        return {arm: math.inf}
+
+
 def add_roundabouts(graph: RoadGraph, rng: np.random.Generator, prob: Callable[[Node], float],
                     radius_street: float, radius_avenue: float, speed: float,
                     allowed: Optional[Callable[[Polygon], bool]] = None,
-                    margin: float = DEFAULT_MARGIN) -> int:
+                    margin: float = DEFAULT_MARGIN, cross_section: Optional[CrossSectionParams] = None) -> int:
     """Turn junctions into roundabouts, each with probability prob(node); returns how many.
+
+    With a cross-section, the roads must keep MIN_ROAD_LENGTH between the junction
+    trims that their side lanes widen (HD maps), not only between the bare ones.
 
     One random draw per candidate (3 to 5 roads) in node-id order, so the
     outcome depends only on rng. Ring edges are one-way at speed [m/s].
@@ -169,7 +203,7 @@ def add_roundabouts(graph: RoadGraph, rng: np.random.Generator, prob: Callable[[
     for node_id, r in zip(candidates, draws):
         if node_id not in graph.nodes or r >= prob(graph.nodes[node_id]):
             continue
-        plan = _plan(graph, node_id, radius_street, radius_avenue, speed, margin)
+        plan = _plan(graph, node_id, radius_street, radius_avenue, speed, margin, cross_section)
         if plan is None:
             continue
         arm_ids = {e.id for _, e, _ in plan["arms"]}

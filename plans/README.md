@@ -22,6 +22,7 @@ led to them, and record decisions.
 | 2026-10-31 | [esmini issue draft: RoadManager load time (corner roads, run-to-run variance)](2026-10-31-esmini-issue-draft.md) | draft, not filed (user decides) |
 | 2026-11-01 | [Stage B: summary for presentation](2026-11-01-stage-b-summary.md) | done |
 | 2026-11-06 | [Refinement review: natural networks, esmini look, what to add or drop](2026-11-06-refinement-review.md) | review, decided |
+| 2026-11-06 | [Stage R (refinement): implementation plan](2026-11-06-stage-r-implementation.md) | in progress (R1–R6, Q done) |
 
 The review these come from is `Roadgen AV Readiness Review.pdf` in the repo
 root (written in an earlier chat; its prompts were not saved).

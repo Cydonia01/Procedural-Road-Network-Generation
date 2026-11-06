@@ -27,11 +27,30 @@ generators:
     min_segment_length: 30.0   # [m]
     min_angle_deg: 30.0        # min angle between roads meeting at a node
     max_segments: 20000
-    major_lanes: [2, 2]        # roads along local y ("avenues")
-    minor_lanes: [1, 1]        # roads along local x ("streets")
+    # Road hierarchy: strokes (continuous roads) ranked by length x betweenness become
+    # arterials (avenues, major_*), collectors (avenues, collector_*) and local roads
+    # (streets, minor_*); "axis" is the rule before stage R (local y major, local x minor).
+    hierarchy: strokes         # strokes | axis
+    major_lanes: [2, 2]        # arterials (axis: roads along local y, "avenues")
+    minor_lanes: [1, 1]        # local roads (axis: roads along local x, "streets")
+    collector_lanes: [1, 1]    # collectors
     lane_width: 3.5
-    major_speed: 13.9
-    minor_speed: 11.1
+    major_speed: 13.9          # [m/s] (50 km/h)
+    minor_speed: 11.1          # [m/s] (40 km/h)
+    collector_speed: 12.5      # [m/s] (45 km/h)
+    stroke_max_deflection_deg: 35.0  # roads meeting at a junction continue one stroke below this turn [deg]
+    arterial_share: 0.15       # share of the road length (highways and ring aside) that is arterial
+    collector_share: 0.25      # ... collector, after the arterials; the rest is local
+    betweenness_samples: 200   # source nodes of the sampled edge betweenness; 0 = exact
+    # Width-aware growth: road bodies (driving lanes + side_width; highways + shoulder) stay apart
+    body_check: true           # also: a road passing within snap_radius of a node ends there
+    side_width: 2.5            # side lanes assumed beside each non-highway road while growing [m]
+    min_block_depth: 15.0      # extra gap between near-parallel roads [m]
+    parallel_deg: 20.0         # roads closer than this in heading are near-parallel [deg]
+    # Dead ends after growth: extend to a road ahead, else trim a short stub, else a turning circle
+    dead_ends: true            # (all dead-end roads but highways; suburb streets and roads leaving the area stay)
+    dead_end_reach: 1.5        # an extension reaches this many block lengths (largest block size)
+    dead_end_trim: 1.0         # stubs shorter than this many block lengths (smallest block size) are cut
     # Input maps (pipeline --maps / --map-file); ignored without maps.
     highways: true             # grow highways first; needs a population map
     highway_length: 150.0      # [m] per segment
@@ -241,10 +260,16 @@ drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/
   bridge_clearance: 2.0    # min bridge deck height above the water surface [m]
   tunnel_cover: 5.0        # a road this far below the terrain is in a tunnel [m] (edges in metadata.tunnels)
 
+scene:  # what the scene file (.osgt) draws besides ground and buildings (roadgen/scene/junctions.py)
+  junction_fill: true       # junction surface no lane covers, in asphalt (the .xodr then has no patch objects)
+  asphalt_color: [0.317, 0.317, 0.317]  # mean of esmini's resources/models/asphalt.jpg
+  fill_below: 0.02          # the fill sits this far under the lanes [m]
+
 ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground`)
   cell_size: 20.0          # mesh resolution [m]
   road_margin: 2.0         # ground levelled this far beyond each road's edge [m]
   below_road: 0.3          # ground under roads and junctions sits this far down [m]
+  under_bridge: 2.0        # land under a bridge stays this far below its deck [m]
 
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]
@@ -254,6 +279,8 @@ opendrive:
 
 hdmap:  # HD-map content of the built roads (stage B): side lanes, ...; pipeline / build-xodr --hd, --no-hd
   enabled: true             # off (--no-hd): the builder writes exactly what it wrote before stage B
+  junction_patches: true    # junction surface no lane covers as <object type="patch">; the pipeline
+                            # leaves them out when it writes a scene, which draws that surface instead
 
 cross_section:  # lanes beside the driving lanes, per profile and road class (roadgen/geometry/cross_section.py)
   profile: urban            # profile of edges without Edge.cross_section: urban | suburban | rural | none
@@ -364,6 +391,11 @@ buildings:
   min_height: 12.0          # [m]
   max_height: 60.0          # [m]
   min_area: 150.0           # smaller footprints are dropped [m^2]
+  parcels: true             # split blocks into parcels, one building each (false: one per block)
+  frontage: [15.0, 40.0]    # parcel width along the street, min and max [m]
+  depth: [20.0, 40.0]       # parcel depth, min and max [m]
+  inset: 1.5                # building inset from its parcel's edges (front and side setbacks) [m]
+  height_density: 10000.0   # buildings reach max_height from this density [people/km^2]; 0 = random heights
   color: [0.78, 0.76, 0.72]
   y_up: true                # .obj only: y-up instead of OpenDRIVE's z-up
 

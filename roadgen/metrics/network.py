@@ -21,7 +21,13 @@ measured and compared with real-city statistics (stage D):
 - tortuosity (length / chord) of every road through its bends, and the
   share of road length that is not straight;
 - block areas: the bounded faces of the street lines (shapely polygonize);
-- counts of stage C features listed in the graph metadata.
+- counts of stage C features listed in the graph metadata;
+- naturalness (stage R quality gates): dead-end share, lane or class changes
+  at two-road nodes (where a road just goes on), class changes along straight
+  continuations (under STRAIGHT_DEG) at any node, and road bodies (straight
+  edges buffered by their driving half width) that overlap by more than
+  OVERLAP_AREA without sharing a node; bridges and tunnels (overpasses) are
+  left out of the overlaps.
 """
 
 from __future__ import annotations
@@ -35,6 +41,7 @@ from typing import Any
 import numpy as np
 from shapely.geometry import LineString, MultiPoint
 from shapely.ops import polygonize, unary_union
+from shapely.strtree import STRtree
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.chains import find_chains
@@ -46,6 +53,8 @@ _D = section(DEFAULTS, "network_metrics")
 LEG_BINS = ("1", "3", "4", "5", "6", "7+")
 FEATURES = ("roundabouts", "culdesacs", "overpasses", "tunnels", "interchanges", "bridges")
 PERCENTILES = (10, 50, 90)
+STRAIGHT_DEG = 30.0  # two arms deflecting less than this continue one road [deg]
+OVERLAP_AREA = 1.0  # [m^2] bodies overlapping by less than this touch only
 
 
 @dataclass(frozen=True)
@@ -170,6 +179,39 @@ def _distribution(values: list[float]) -> dict[str, Any]:
     return out
 
 
+def naturalness(graph: RoadGraph) -> dict[str, Any]:
+    """Quality gates of a natural network (see the module docstring)."""
+    two_road = straight_changes = 0
+    for n in graph.nodes:
+        es = graph.incident_edges(n)
+        if len(es) == 2 and not all(e.road_class == "highway" for e in es):  # highway lane adds are wanted
+            a, b = es
+            two_road += a.road_class != b.road_class or a.total_lanes != b.total_lanes
+        heads = arm_headings(graph, n)
+        for i in range(len(heads)):
+            for j in range(i + 1, len(heads)):
+                turn = math.pi - abs((heads[i][0] - heads[j][0] + math.pi) % (2 * math.pi) - math.pi)
+                a, b = graph.edges[heads[i][1]], graph.edges[heads[j][1]]
+                straight_changes += turn < math.radians(STRAIGHT_DEG) and a.road_class != b.road_class
+    edges = [e for e in graph.edges.values() if not e.bridges and not e.tunnels]
+    bodies = []
+    for e in edges:
+        a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
+        bodies.append(LineString([(a.x, a.y), (b.x, b.y)]).buffer(e.total_lanes * e.lane_width / 2,
+                                                                  cap_style="flat"))
+    overlaps = 0
+    if bodies:
+        for i, j in zip(*STRtree(bodies).query(bodies, predicate="intersects")):
+            a, b = edges[i], edges[j]
+            if i < j and not {a.from_node, a.to_node} & {b.from_node, b.to_node} \
+                    and bodies[i].intersection(bodies[j]).area > OVERLAP_AREA:
+                overlaps += 1
+    dead_ends = sum(1 for n in graph.nodes if graph.degree(n) == 1)
+    return {"dead_end_share": round(dead_ends / len(graph.nodes), 4) if graph.nodes else 0.0,
+            "two_road_changes": two_road, "straight_class_changes": straight_changes,
+            "body_overlaps": overlaps}
+
+
 def network_metrics(graph: RoadGraph, params: NetworkMetricsParams = NetworkMetricsParams()
                     ) -> dict[str, Any]:
     """All network metrics of a graph as a JSON-ready dict."""
@@ -227,6 +269,7 @@ def network_metrics(graph: RoadGraph, params: NetworkMetricsParams = NetworkMetr
         "class_length_share": {k: round(v / length_m, 4) for k, v in sorted(by_class.items())}
         if length_m > 0 else {},
         "features": {k: len(meta.get(k) or []) for k in FEATURES},
+        "naturalness": naturalness(graph),
     }
 
 
@@ -242,4 +285,9 @@ def summary_lines(m: dict[str, Any]) -> list[str]:
         (f"  orientation entropy {m['orientation_entropy']:.2f} (order {m['orientation_order']:.2f}), "
          f"curved length {100 * m['curved_length_share']:.0f} %, "
          f"blocks {m['block_area_m2']['n']}" + (f"; {feats}" if feats else "")),
+        ("  naturalness: dead ends {:.1f} %, lane changes at two-road nodes {}, class changes on "
+         "straight roads {}, body overlaps {}").format(100 * m["naturalness"]["dead_end_share"],
+                                                       m["naturalness"]["two_road_changes"],
+                                                       m["naturalness"]["straight_class_changes"],
+                                                       m["naturalness"]["body_overlaps"]),
     ]

@@ -246,7 +246,10 @@ movement**:
   between turning lanes, the middle of large junctions) becomes a flat
   `<object type="patch">` with a closed asphalt outline, on the junction's
   first connecting road, its corners on the junction plane. esmini draws it
-  in a flat colour; it is an object, not a lane, for CARLA and OSI.
+  in a flat colour; it is an object, not a lane, for CARLA and OSI. The areas
+  are also listed in the sidecar (`junction_fills`, world coordinates).
+  `hdmap.junction_patches: false` leaves the objects out; the pipeline does
+  so when it writes a scene, which [draws the surface](scene.md#junction-surface).
 
 **U-turns** are created only with `u_turns: true`.
 

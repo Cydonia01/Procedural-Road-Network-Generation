@@ -24,6 +24,9 @@ _D = section(DEFAULTS, "hdmap")
 @dataclass(frozen=True)
 class HdMapParams:
     enabled: bool = _D["enabled"]  # off: no stage B content
+    # Junction surface no lane covers as <object type="patch"> (esmini draws these in a plain
+    # colour); off when a scene mesh draws it instead (pipeline --ground / --buildings, R5).
+    junction_patches: bool = _D["junction_patches"]
     seed: int = DEFAULTS["seed"]  # random choices (stop share, light offsets, ...), salted per feature
     cross_section: CrossSectionParams = field(default_factory=CrossSectionParams)
     marks: RoadMarkParams = field(default_factory=RoadMarkParams)
@@ -47,6 +50,7 @@ class HdMapParams:
         overrides hdmap.enabled when given."""
         on = section(cfg, "hdmap")["enabled"] if enabled is None else enabled
         return cls(enabled=on, seed=cfg["seed"] if seed is None else seed,
+                   junction_patches=section(cfg, "hdmap")["junction_patches"],
                    cross_section=CrossSectionParams(**section(cfg, "cross_section")),
                    marks=RoadMarkParams(**section(cfg, "road_marks")),
                    control=JunctionControlParams.preset(cfg["junction_control"].get("preset", "default"),

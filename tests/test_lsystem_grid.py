@@ -27,7 +27,7 @@ def edge_between(g: RoadGraph, a: tuple[float, float], b: tuple[float, float]) -
 
 
 def test_alternating_streets():
-    g = small_grid(3, 4, oneway_pattern=("none", "alternating"))
+    g = small_grid(3, 4, oneway_pattern=("none", "alternating"), hierarchy="axis")
     dx, dy = SPACING
     for j in range(4):
         e = edge_between(g, (0, j * dy), (dx, j * dy))
@@ -39,7 +39,7 @@ def test_alternating_streets():
 
 
 def test_alternating_avenues_whole_lines():
-    g = small_grid(4, 3, oneway_pattern=("alternating", "none"))
+    g = small_grid(4, 3, oneway_pattern=("alternating", "none"), hierarchy="axis")
     for e in g.edges.values():
         if e.road_class != "avenue":
             continue
@@ -50,7 +50,8 @@ def test_alternating_avenues_whole_lines():
 
 def test_lines_count_from_the_seed_point():
     # Grown from the middle: lines are numbered from the seed's, so its own line runs +y.
-    p = LSystemParams.preset("grid", start=(4 / 9, 0.5), oneway_pattern=("alternating", "none"))
+    p = LSystemParams.preset("grid", start=(4 / 9, 0.5), oneway_pattern=("alternating", "none"),
+                            hierarchy="axis")
     from roadgen.generators.lsystem import LSystemGenerator
 
     g = LSystemGenerator().generate(p, 0)
@@ -62,7 +63,7 @@ def test_lines_count_from_the_seed_point():
 
 
 def test_one_way_lanes_without_pattern():
-    g = small_grid(3, 3, major_lanes=(4, 0))
+    g = small_grid(3, 3, major_lanes=(4, 0), hierarchy="axis")
     for e in g.edges.values():
         if e.road_class == "avenue":
             assert (e.lanes_forward, e.lanes_backward) == (4, 0)
@@ -155,7 +156,7 @@ def test_ring_road():
 
 
 def test_ring_extensions_follow_road_direction():
-    g = small_grid(3, 4, preset="manhattan_like", rotation_deg=0.0)
+    g = small_grid(3, 4, preset="manhattan_like", rotation_deg=0.0, hierarchy="axis")
     grid = {node_at(g, i * 250.0, j * 80.0) for i in range(3) for j in range(4)}
     seen = 0
     for e in g.edges.values():

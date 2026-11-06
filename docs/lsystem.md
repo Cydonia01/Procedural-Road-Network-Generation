@@ -25,7 +25,7 @@ python -m cli pipeline lsystem --preset highway_corridor --maps --allow-traps
 | Preset | Goal | What it grows |
 |--------|------|---------------|
 | `grid` | grid | An exact 10 × 10 lattice from a corner (tests check the lattice coordinates) |
-| `manhattan_like` | grid | Midtown: 10 avenues 250 m apart (4 lanes, one-way) and 30 streets 80 m apart (2 lanes, one-way), both alternating, rotated 29°, 11.2 m/s (25 mph), a ring road |
+| `manhattan_like` | grid | Midtown: 10 avenues 250 m apart and 30 streets 80 m apart, both alternating one-way (arterials 4 lanes, others 2), rotated 29°, 11.2 m/s (25 mph), a ring road |
 | `grid_organic` | grid | Noisy headings and lengths, 15 % of branches skipped: irregular blocks, likely dead ends |
 | `organic_curved` | grid | `drift` streets that wander from the grid and bow between junctions |
 | `city` | grid | 3000 × 2400 m noisy grid, `min_angle_deg` 40 so streets can leave curved highways. For `--maps` |
@@ -37,8 +37,9 @@ python -m cli pipeline lsystem --preset highway_corridor --maps --allow-traps
 | `suburb` | field | Suburb pattern only, 30 km/h streets, bulbs at 90 % of dead ends, some roundabouts |
 | `mixed_city` | field | Districts of every pattern from a style map, connectors, staggers, roundabouts. For `--maps` |
 
-Networks with dead ends report traffic traps. Pass `--allow-traps`, or
-remove the traps ([Validation](validation.md#traffic-connectivity)).
+Networks with dead ends report traffic traps. The [dead-end
+pass](#dead-ends-and-road-bodies) removes most; pass `--allow-traps` for the
+rest ([Validation](validation.md#traffic-connectivity)).
 
 ## How growth works
 
@@ -70,10 +71,9 @@ An accepted segment with a free end asks the **global goal** for follow-ups:
 - **`field`**: follow a blend of street patterns
   ([below](#pattern-fields-global_goal-field)).
 
-Roads along local y are **avenues** (`major_*`), and roads along local x are
-**streets** (`minor_*`). On a population map there are also **highways**
-(`highway_*`). Spatial hashing keeps neighbour queries fast. Growth stops
-after `max_segments`.
+On a population map, **highways** (`highway_*`) grow first. Spatial hashing
+keeps neighbour queries fast. Growth stops after `max_segments`. Lanes and
+speeds come afterwards from the [road hierarchy](#road-hierarchy).
 
 At the end, the graph passes through the enabled
 [transforms](generators.md#graph-transforms) and the
@@ -89,8 +89,44 @@ At the end, the graph passes through the enabled
 | `angle_jitter_deg`, `length_jitter` | 0, 0 | Heading noise (std, deg) and relative length noise |
 | `snap_radius`, `min_segment_length`, `min_angle_deg` | 15, 30, 30 | Local constraints [m, m, deg] |
 | `max_segments` | 20000 | Safety cap |
-| `major_lanes`, `minor_lanes` | (2, 2), (1, 1) | (forward, backward) lanes of avenues and streets |
-| `lane_width`, `major_speed`, `minor_speed` | 3.5, 13.9, 11.1 | [m], [m/s] |
+| `lane_width` | 3.5 | [m] |
+
+## Road hierarchy
+
+A road's lanes follow the job it does in the network, not the direction it
+points (`roadgen/generators/hierarchy.py`, step `hierarchy: strokes`):
+
+1. **Strokes.** Edges are joined into continuous roads. At a node with two
+   roads, both belong to the same road, however sharp the bend. At a node with
+   three or more, arms pair up straightest first while they turn less than
+   `stroke_max_deflection_deg`.
+2. **Rank.** Each stroke scores Σ edge length × edge betweenness: the share
+   of shortest paths (by length) through the edge, sampled from
+   `betweenness_samples` seeded source nodes.
+3. **Classes.** The best strokes are **arterials** until they hold
+   `arterial_share` of the road length, then **collectors** up to
+   `collector_share` more; the rest are **local** roads. Highways and the
+   ring road keep their own lanes and take no part.
+
+Every edge of a stroke gets its class, lanes and speed, so lane counts change
+only at junctions with three or more roads. Arterials and collectors are
+`avenue` edges (side lanes, pockets, priority), local roads `street` edges.
+One-way edges (`oneway_pattern`) keep their direction with all lanes forward,
+and asymmetric lane tuples are oriented along the stroke.
+
+`hierarchy: axis` is the rule before stage R, kept to replay older runs and
+for the `--no-hd` identity guard: roads along local y get `major_*`, along
+local x `minor_*`.
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `hierarchy` | `strokes` | `strokes` or `axis` |
+| `major_lanes`, `major_speed` | (2, 2), 13.9 | Arterials (axis: roads along local y) [m/s] |
+| `collector_lanes`, `collector_speed` | (1, 1), 12.5 | Collectors [m/s] |
+| `minor_lanes`, `minor_speed` | (1, 1), 11.1 | Local roads (axis: roads along local x) [m/s] |
+| `stroke_max_deflection_deg` | 35 | Arms of one road at a junction turn less than this [deg] |
+| `arterial_share`, `collector_share` | 0.15, 0.25 | Shares of the road length |
+| `betweenness_samples` | 200 | Sampled source nodes; 0 = exact |
 
 ## Grids
 
@@ -212,6 +248,44 @@ sum without wrap-around artefacts.
 | `snap_deg` | 15 | Snap window at `organic` 0 [deg] |
 | `suburb_block_size`, `suburb_branch_prob`, `suburb_end_prob` | (120, 60), 0.6, 0.25 | Suburb pattern's block size, branching, and chance a street ends at a node |
 | `style_blend_width` | 300 | District blend width [m] |
+
+## Dead ends and road bodies
+
+Local constraints that look at a road's width, not only its centre line, and
+a clean-up of dead ends after growth (Parish & Müller's "extend" rule).
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `body_check` | true | Keep road bodies apart while growing |
+| `side_width` | 2.5 | Side lanes assumed beside each non-highway road [m] |
+| `min_block_depth` | 15 | Extra gap between near-parallel roads [m] |
+| `parallel_deg` | 20 | Roads closer than this in heading are near-parallel [deg] |
+| `dead_ends` | true | Extend, trim or bulb the dead ends after growth |
+| `dead_end_reach` | 1.5 | An extension reaches this many (largest) block lengths |
+| `dead_end_trim` | 1.0 | Stubs shorter than this many (smallest) block lengths go |
+
+- **Bodies.** While growing, classes are not known yet, so every road but a
+  highway or the ring is taken as a local road: half width = its driving
+  lanes plus `side_width`; highways get their lanes plus a 3 m shoulder.
+  - A proposal passing within `snap_radius` of an existing node ends at that
+    node (before a later crossing), so no road passes a dead end at a few
+    centimetres.
+  - A proposal whose body comes closer than the two half widths to a road it
+    does not join is dropped; near-parallel roads need `min_block_depth` more.
+  - The minimum angle at a node grows with the widths: two bodies must part
+    within `min_segment_length` of the node.
+- **Dead ends** (after growth and the connectors, every road but highways;
+  suburb streets, meant to end, stay):
+  1. **Extend** straight on up to `dead_end_reach` block lengths to the first
+     road, else to the nearest node within 60° of straight on, if the
+     segment passes the local constraints and the maps (water, vegetation,
+     grade).
+  2. **Trim** a road shorter than `dead_end_trim` block lengths back to its
+     junction.
+  3. **Bulb**: every dead end left gets a [cul-de-sac bulb](#connectivity-and-cul-de-sacs)
+     where one fits (all classes but highways).
+- The map presets `city`, `hill_town` and `highway_corridor` turn on the
+  connector pass (`detour_ratio: 2.5`).
 
 ## Connectivity and cul-de-sacs
 

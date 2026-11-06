@@ -108,3 +108,33 @@ def test_cli_metrics_graph(tmp_path):
     report = json.loads(out.read_text())
     assert report["graphs"][0]["graph"] == "grid.json"
     assert report["graphs"][0]["legs"]["4"] == 1
+
+
+# --- naturalness gates (stage R) ----------------------------------------------------------
+
+
+def test_naturalness_counts_on_a_hand_made_graph():
+    from roadgen.metrics.network import naturalness
+
+    g = RoadGraph()
+    for n, (x, y) in {1: (0, 0), 2: (100, 0), 3: (200, 0), 4: (0, 3), 5: (-100, 3)}.items():
+        g.add_node(Node(n, x, y))
+    g.add_edge(Edge(1, 1, 2, "avenue", 2, 2))
+    g.add_edge(Edge(2, 2, 3, "street", 1, 1))  # lane and class change at a two-road node
+    g.add_edge(Edge(3, 4, 5, "street", 1, 1))  # starts 3 m beside edge 1's start
+    m = naturalness(g)
+    assert m["two_road_changes"] == 1 and m["straight_class_changes"] == 1
+    assert m["body_overlaps"] == 0  # 4 -> 5 runs away from edge 1; only its end touches
+    g.add_node(Node(6, 90, 3))
+    g.add_edge(Edge(4, 4, 6, "street", 1, 1))
+    assert naturalness(g)["body_overlaps"] == 1  # 4 -> 6 runs along edge 1, 3 m apart
+
+
+@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("grid_organic", 2), ("suburb", 1)])
+def test_presets_pass_the_naturalness_gates(preset, seed):
+    from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
+
+    m = network_metrics(LSystemGenerator().generate(LSystemParams.preset(preset), seed))["naturalness"]
+    assert m["two_road_changes"] == 0
+    assert m["body_overlaps"] == 0
+    assert m["dead_end_share"] <= 0.03

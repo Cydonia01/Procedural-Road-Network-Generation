@@ -28,7 +28,7 @@ Repo layout:
     graph/        model.py, io.py, plot.py
     maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py,
                   image.py, plot.py, align.py, drape.py, annotate.py
-    generators/   base.py, lsystem.py, patterns.py, junction.py, repair.py,
+    generators/   base.py, lsystem.py, patterns.py, hierarchy.py, junction.py, repair.py,
                   transforms/ (drop, culdesac, stagger, roundabout, interchange)
     geometry/     planar.py, junction_space.py, design.py, primitives.py, clothoid.py, chains.py,
                   alignment.py, profiles.py, vertical.py, grade_separation.py, cross_section.py
@@ -39,7 +39,7 @@ Repo layout:
     metrics/      geometry.py, network.py, hdmap.py, sweep.py
     scenario/     xosc_builder.py
     sim/          esmini.py, runner.py, drive_check.py, screenshot.py
-    scene/        ground.py, buildings.py, osgt.py
+    scene/        ground.py, buildings.py, parcels.py, junctions.py, osgt.py
     config.py, history.py, defaults.yaml
   cli.py
   tests/

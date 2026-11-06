@@ -33,7 +33,7 @@ def test_sidecar_has_hdmap_version_only_with_hd_maps(tmp_path):
 def test_pipeline_default_is_hd_and_no_hd_is_plain(tmp_path):
     on, off = tmp_path / "on", tmp_path / "off"
     base = ["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps"]
-    assert main([*base, "-o", str(on)]) == 0
+    assert main([*base, "--lane-plot", "-o", str(on)]) == 0
     assert main([*base, "--no-hd", "-o", str(off)]) == 0
     assert json.loads(on.with_suffix(".roadmap.json").read_text())["hdmap_version"] == HDMAP_VERSION
     assert "hdmap_version" not in json.loads(off.with_suffix(".roadmap.json").read_text())

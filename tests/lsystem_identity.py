@@ -8,7 +8,8 @@ so grows with each new one. On input maps it leaves out the heights too (node
 z and radius_cap, edge profile and bridges, and the height steps' metadata):
 align and drape follow the builder's fitted roads, which geometry fixes may
 change, while the network the generator grows must not. The expected values
-were recorded with the code before stage C (41b8363).
+were recorded with the code before stage C (41b8363) and re-recorded once in
+stage R1, when the road hierarchy from strokes replaced the axis rule.
 """
 
 from __future__ import annotations

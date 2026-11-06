@@ -92,6 +92,12 @@ freeway through the interchanges. After growth a diamond is built at each
 slot (roadgen.generators.transforms.interchange). highway_lane_change_prob
 widens highway stretches by a lane each way (lane adds and drops).
 
+Road hierarchy (stage R1, roadgen.generators.hierarchy): after growth, edges
+are joined into strokes (continuous roads) ranked by length x betweenness;
+the best become arterials (major_*), then collectors (collector_*), the rest
+local roads (minor_*), with lanes constant along each stroke. hierarchy
+"axis" keeps the rule before stage R: roads along local y major, along x minor.
+
 Everything is computed in the area's local frame (lower-left corner at 0,
 x along the grid's first axis) and rotated/translated to world coordinates
 at the end. Output is deterministic for a seed.
@@ -110,14 +116,33 @@ import numpy as np
 
 from roadgen.config import DEFAULTS, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
-from roadgen.generators.patterns import PATTERNS, RADIAL, SUBURB, FieldParams, StreetField
+from roadgen.generators.hierarchy import (
+    ARTERIAL,
+    COLLECTOR,
+    LOCAL,
+    HierarchyParams,
+    Level,
+    assign_hierarchy,
+)
+from roadgen.generators.patterns import (
+    PATTERNS,
+    RADIAL,
+    SUBURB,
+    FieldParams,
+    StreetField,
+)
 from roadgen.generators.repair import repair_short_edges
 from roadgen.generators.transforms.culdesac import add_culdesacs
 from roadgen.generators.transforms.drop import drop_edges
-from roadgen.generators.transforms.interchange import STRAIGHT_TOL, InterchangeParams, add_diamond
+from roadgen.generators.transforms.interchange import (
+    STRAIGHT_TOL,
+    InterchangeParams,
+    add_diamond,
+)
 from roadgen.generators.transforms.roundabout import add_roundabouts
 from roadgen.generators.transforms.stagger import stagger_crossings
 from roadgen.geometry import design
+from roadgen.geometry.cross_section import CrossSectionParams
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.model import (
@@ -141,6 +166,8 @@ OnewayPattern = Literal["none", "alternating"]
 ONEWAY_PATTERNS = ("none", "alternating")
 BoundaryMode = Literal["none", "ring"]
 BOUNDARY_MODES = ("none", "ring")
+Hierarchy = Literal["strokes", "axis"]
+HIERARCHIES = ("strokes", "axis")
 HighwayCrossings = Literal["at_grade", "separated"]
 HIGHWAY_CROSSINGS = ("at_grade", "separated")
 SALT_DROP = 0x6472  # random sub-stream of edge_drop_prob, independent of the growth's
@@ -162,6 +189,7 @@ EPS = 1e-9
 STREET_X, AVENUE_Y, HIGHWAY, RING = 0, 1, 2, 3
 SEED_RAYS = 16  # directions tried for the first two highways
 GRADE_BASELINE = 25.0  # [m] grade is measured over this distance; roads smooth out smaller bumps
+HIGHWAY_SIDE = 3.0  # [m] shoulder assumed beside highways while growing (body check)
 
 _D = section(DEFAULTS, "generators", "lsystem")
 
@@ -182,12 +210,30 @@ class LSystemParams:
     min_segment_length: float = _D["min_segment_length"]  # [m]
     min_angle_deg: float = _D["min_angle_deg"]  # min angle between roads meeting at a node
     max_segments: int = _D["max_segments"]
-    # Roads along local y are "avenues" (major), along local x "streets" (minor).
+    # Road hierarchy (stage R1): "strokes" ranks continuous roads by length x betweenness
+    # into arterials (major_*), collectors (collector_*) and local roads (minor_*);
+    # "axis" is the rule before stage R: roads along local y major, along local x minor.
+    hierarchy: Hierarchy = _D["hierarchy"]
     major_lanes: tuple[int, int] = _D["major_lanes"]
     minor_lanes: tuple[int, int] = _D["minor_lanes"]
+    collector_lanes: tuple[int, int] = _D["collector_lanes"]
     lane_width: float = _D["lane_width"]
     major_speed: float = _D["major_speed"]
     minor_speed: float = _D["minor_speed"]
+    collector_speed: float = _D["collector_speed"]
+    stroke_max_deflection_deg: float = _D["stroke_max_deflection_deg"]  # arms of one stroke turn less
+    arterial_share: float = _D["arterial_share"]  # share of the road length that is arterial
+    collector_share: float = _D["collector_share"]  # ... collector (after the arterials)
+    betweenness_samples: int = _D["betweenness_samples"]  # sampled source nodes; 0 = exact
+    # --- width-aware growth (stage R2) ----------------------------------------------------
+    body_check: bool = _D["body_check"]  # keep road bodies apart while growing
+    side_width: float = _D["side_width"]  # [m] side lanes assumed beside non-highway roads
+    min_block_depth: float = _D["min_block_depth"]  # [m] extra gap between near-parallel roads
+    parallel_deg: float = _D["parallel_deg"]  # roads closer than this in heading are near-parallel
+    # --- dead ends (stage R3) ----------------------------------------------------------------
+    dead_ends: bool = _D["dead_ends"]  # extend, trim or bulb the dead ends after growth
+    dead_end_reach: float = _D["dead_end_reach"]  # an extension reaches this many block lengths
+    dead_end_trim: float = _D["dead_end_trim"]  # stubs shorter than this many block lengths go
     # --- input maps; ignored without maps -----------------------------------------------
     highways: bool = _D["highways"]  # grow highways first (needs a population map)
     highway_length: float = _D["highway_length"]  # [m] per segment
@@ -275,7 +321,19 @@ class LSystemParams:
             raise ValueError("snap_radius must be well below the block size")
         if not 0.0 < self.min_angle_deg < 90.0:
             raise ValueError("min_angle_deg must be in (0, 90)")
-        for lanes in (self.major_lanes, self.minor_lanes, self.highway_lanes, self.ring_lanes):
+        if self.hierarchy not in HIERARCHIES:
+            raise ValueError(f"unknown hierarchy {self.hierarchy!r}; available: {HIERARCHIES}")
+        if not 0.0 <= self.arterial_share <= 1.0 or not 0.0 <= self.collector_share <= 1.0 \
+                or self.arterial_share + self.collector_share > 1.0:
+            raise ValueError("need arterial_share, collector_share in [0, 1] with sum <= 1")
+        if self.dead_end_reach < 0 or self.dead_end_trim < 0:
+            raise ValueError("need dead_end_reach, dead_end_trim >= 0")
+        if self.side_width < 0 or self.min_block_depth < 0 or not 0.0 <= self.parallel_deg < 90.0:
+            raise ValueError("need side_width, min_block_depth >= 0 and parallel_deg in [0, 90)")
+        if not 0.0 < self.stroke_max_deflection_deg < 90.0 or self.betweenness_samples < 0:
+            raise ValueError("need stroke_max_deflection_deg in (0, 90) and betweenness_samples >= 0")
+        for lanes in (self.major_lanes, self.minor_lanes, self.collector_lanes, self.highway_lanes,
+                      self.ring_lanes):
             if len(lanes) != 2 or min(lanes) < 0 or sum(lanes) < 1:
                 raise ValueError(f"invalid lane counts {lanes}")
         if self.highway_length < self.min_segment_length or self.highway_ray_length <= 0:
@@ -386,6 +444,7 @@ PRESETS: dict[str, dict[str, Any]] = {
     # Hill town for input maps: streets follow the terrain's contours (San Francisco rule).
     "hill_town": {
         "extent": (3000.0, 2400.0),
+        "detour_ratio": 2.5,  # connector pass (stage R3)
         "start": (0.5, 0.5),
         "block_size": (180.0, 100.0),
         "branch_prob": 0.85,
@@ -457,6 +516,7 @@ PRESETS: dict[str, dict[str, Any]] = {
     # between population centres, noisy grid streets in between.
     "city": {
         "extent": (3000.0, 2400.0),
+        "detour_ratio": 2.5,  # connector pass (stage R3)
         "start": (0.5, 0.5),
         "block_size": (180.0, 100.0),
         "branch_prob": 0.9,
@@ -484,6 +544,7 @@ PRESETS: dict[str, dict[str, Any]] = {
     # interchanges, with lane adds and drops; streets as in city.
     "highway_corridor": {
         "extent": (3000.0, 2400.0),
+        "detour_ratio": 2.5,  # connector pass (stage R3)
         "start": (0.5, 0.5),
         "block_size": (180.0, 100.0),
         "branch_prob": 0.9,
@@ -651,6 +712,14 @@ class _Growth:
         self.zones: list[Any] = []  # reserved interchange areas (shapely polygons, local frame)
         self.slots: list[tuple[Point, int]] = []  # interchange crossing point, crossing avenue edge
         self.fixed: set[int] = set()  # edges no later pass may change (crossing avenues)
+        # Body half widths while growing [m]: classes come later (hierarchy), so every road
+        # but a highway or the ring is assumed a local road with side lanes.
+        street = sum(p.minor_lanes if p.hierarchy == "strokes" else max(p.major_lanes, p.minor_lanes, key=sum))
+        self.half_width = {STREET_X: street * p.lane_width / 2 + p.side_width,
+                           HIGHWAY: sum(p.highway_lanes) * p.lane_width / 2 + HIGHWAY_SIDE,
+                           RING: sum(p.ring_lanes) * p.lane_width / 2 + p.side_width}
+        self.half_width[AVENUE_Y] = self.half_width[STREET_X]
+        self.widest = max(self.half_width.values())
 
     def make_field(self, seed: int) -> StreetField:
         p = self.p
@@ -704,6 +773,18 @@ class _Growth:
             self.bridges |= {piece for piece, (u, v) in ((first, (a, mid)), (second, (mid, b)))
                              if self.maps.crosses_water(self.pos[u], self.pos[v])}
         return mid
+
+    def remove_edge(self, eid: int) -> None:
+        """Drop an edge, and its end nodes when no road is left at them."""
+        a, b, _ = self.edges.pop(eid)
+        self.line_of.pop(eid, None)
+        self.bridges.discard(eid)
+        self.tunnels.discard(eid)
+        self.edge_index.remove(eid)
+        for n in (a, b):
+            self.adj[n].discard(eid)
+            if not self.adj[n]:
+                self.node_index.remove(n)
 
     def propose(self, t: int, node: int, axis: int, sign: int, heading: float = 0.0,
                 line: Optional[int] = None, follow: bool = False) -> None:
@@ -928,10 +1009,84 @@ class _Growth:
                 break
         log.debug("lsystem: %d connectors (detour ratio %.2f)", added, p.detour_ratio)
 
+    def dead_end_pass(self) -> None:
+        """Dead ends (stage R3, Parish & Mueller's local constraint): each free end of a
+        non-highway road is extended to a road within dead_end_reach block lengths
+        (straight on first, else the nearest node within 60 deg of straight on); if
+        none is allowed, a stub shorter than dead_end_trim block lengths is cut back to
+        its junction. The rest get turning circles later (cul-de-sac bulbs). Suburb
+        streets (meant to end) stay as they are."""
+        p = self.p
+        block = max(p.block_size)
+        reach, trim = p.dead_end_reach * block, p.dead_end_trim * min(p.block_size)
+        counts = defaultdict(int)
+        for node in sorted(self.pos):
+            if len(self.adj[node]) != 1:
+                continue
+            (eid,) = self.adj[node]
+            axis, line = self.edges[eid][2], self.line_of[eid]
+            if axis == HIGHWAY or eid in self.fixed:
+                continue
+            pt = self.pos[node]
+            if self.field is not None and self.field.weights(pt)[SUBURB] >= 0.5:
+                continue
+            v = self._vec(self._other(eid, node), node)
+            d = (v[0] / math.hypot(*v), v[1] / math.hypot(*v))
+            if self.extend(node, d, axis, line, reach):
+                counts["extended"] += 1
+            elif self.trim_stub(node, trim):
+                counts["trimmed"] += 1
+        log.debug("lsystem: dead ends %s", dict(counts))
+
+    def extend(self, node: int, d: Point, axis: int, line: int, reach: float) -> bool:
+        """Join dead end node to a road ahead of it; whether it worked."""
+        pt = self.pos[node]
+        if self.connect(node, (pt[0] + d[0] * reach, pt[1] + d[1] * reach), axis, line, free=False):
+            return True
+        cos60 = 0.5
+        near = []
+        for n in self.node_index.query(pt, pt, reach):
+            if n == node or not self.adj[n]:
+                continue
+            q = self.pos[n]
+            dist = math.dist(pt, q)
+            if self.p.min_segment_length <= dist <= reach and \
+                    ((q[0] - pt[0]) * d[0] + (q[1] - pt[1]) * d[1]) / dist >= cos60:
+                near.append((dist, n))
+        for _, n in sorted(near)[:CONNECT_CANDIDATES]:
+            if self.connect(node, self.pos[n], axis, line, free=False):
+                return True
+        return False
+
+    def trim_stub(self, node: int, trim: float) -> bool:
+        """Cut the road from dead end node back to its junction if shorter than trim."""
+        chain, length, here, prev_edge = [], 0.0, node, None
+        while True:
+            (eid,) = [e for e in self.adj[here] if e != prev_edge][:1] or [None]
+            if eid is None:
+                return False  # an isolated piece: leave it
+            a, b, axis = self.edges[eid]
+            if axis == HIGHWAY or eid in self.fixed:
+                return False
+            chain.append(eid)
+            length += math.dist(self.pos[a], self.pos[b])
+            if length >= trim:
+                return False
+            here, prev_edge = self._other(eid, here), eid
+            if len(self.adj[here]) != 2:
+                break
+        if len(self.adj[here]) < 3:
+            return False  # reached another dead end: the whole road would go
+        for eid in chain:
+            self.remove_edge(eid)
+        return True
+
     def culdesac_prob(self, node: Node) -> float:
         """Chance of a bulb at a dead end (world coordinates): culdesac_prob, or more
         in suburbs (field goal)."""
         p = self.p
+        if p.dead_ends:
+            return 1.0
         if self.field is None or not p.suburb_culdesac_prob:
             return p.culdesac_prob
         suburb = self.field.weights(self.maps.to_local(node.x, node.y))[SUBURB]
@@ -977,6 +1132,16 @@ class _Growth:
             hit = _segment_hit(a, end, self.pos[ea], self.pos[eb])
             if hit and hit[0] > EPS and (best is None or hit[0] < best[0]):
                 best = (hit[0], hit[1], eid)
+        if p.body_check:  # passing right by a node ends there (before any later crossing)
+            passing = None
+            for n in self.node_index.query(a, end, p.snap_radius):
+                if n == node or not self.adj[n] or (self.under and all(self.passes(e) for e in self.adj[n])):
+                    continue
+                v, d = _project(self.pos[n], a, end)
+                if d <= p.snap_radius and EPS < v < 1 - EPS and (passing is None or v < passing[0]):
+                    passing = (v, n)
+            if passing and (best is None or passing[0] < best[0]):
+                return "node", passing[1]
         if best:
             u, v, eid = best
             ea, eb, _ = self.edges[eid]
@@ -1008,8 +1173,10 @@ class _Growth:
             return "split", (eid, (pa[0] + v * (pb[0] - pa[0]), pa[1] + v * (pb[1] - pa[1])))
         return "free", end
 
-    def acceptable(self, a: int, end: Point, end_node: Optional[int], split_edge: Optional[int]) -> bool:
-        """4. length, duplicates, angles, and no crossing of other roads."""
+    def acceptable(self, a: int, end: Point, end_node: Optional[int], split_edge: Optional[int],
+                   axis: int = STREET_X) -> bool:
+        """4. length, duplicates, angles, no crossing of other roads, and (body_check)
+        no road body touching another road's."""
         p, pa = self.p, self.pos[a]
         if math.dist(pa, end) < p.min_segment_length:
             return False
@@ -1023,17 +1190,19 @@ class _Growth:
         direction = (end[0] - pa[0], end[1] - pa[1])
         for eid in self.adj[a]:
             other = self._other(eid, a)
-            if _angle_between(direction, self._vec(a, other)) < p.min_angle_deg:
+            if _angle_between(direction, self._vec(a, other)) < self.min_angle(axis, self.edges[eid][2]):
                 return False
         back = (-direction[0], -direction[1])
         if end_node is not None:
             for eid in self.adj[end_node]:
-                if _angle_between(back, self._vec(end_node, self._other(eid, end_node))) < p.min_angle_deg:
+                if _angle_between(back, self._vec(end_node, self._other(eid, end_node))) \
+                        < self.min_angle(axis, self.edges[eid][2]):
                     return False
         if split_edge is not None:  # the split road continues both ways from the new node
-            ea, eb, _ = self.edges[split_edge]
+            ea, eb, split_axis = self.edges[split_edge]
             for n in (ea, eb):
-                if _angle_between(back, (self.pos[n][0] - end[0], self.pos[n][1] - end[1])) < p.min_angle_deg:
+                if _angle_between(back, (self.pos[n][0] - end[0], self.pos[n][1] - end[1])) \
+                        < self.min_angle(axis, split_axis):
                     return False
         # The (possibly snapped) segment must not cross any other road.
         touching = {a} | ({end_node} if end_node is not None else set())
@@ -1048,7 +1217,41 @@ class _Growth:
                 return False
         if self.zones and self.in_zone(pa, end):
             return False
+        if p.body_check and not self.clear_of_bodies(a, end, end_node, split_edge, axis):
+            return False
         return not self.under or self.clear_of_highways(a, end)
+
+    def min_angle(self, axis: int, other_axis: int) -> float:
+        """Least angle [deg] between two roads at a node: min_angle_deg, or more where
+        their bodies would still overlap min_segment_length from the node (body_check)."""
+        p = self.p
+        if not p.body_check:
+            return p.min_angle_deg
+        reach = (self.half_width[axis] + self.half_width[other_axis]) / p.min_segment_length
+        return max(p.min_angle_deg, math.degrees(math.asin(min(1.0, reach))))
+
+    def clear_of_bodies(self, a: int, end: Point, end_node: Optional[int], split_edge: Optional[int],
+                        axis: int) -> bool:
+        """Whether segment a -> end keeps its body (half width by type) off every road it
+        does not join, and min_block_depth more off near-parallel ones."""
+        p, pa = self.p, self.pos[a]
+        touching = {a} | ({end_node} if end_node is not None else set())
+        hp = self.half_width[axis]
+        direction = (end[0] - pa[0], end[1] - pa[1])
+        for eid in self.edge_index.query(pa, end, hp + self.widest + p.min_block_depth):
+            if eid == split_edge or self.passes(eid):
+                continue
+            ea, eb, other_axis = self.edges[eid]
+            if touching & {ea, eb}:
+                continue
+            qa, qb = self.pos[ea], self.pos[eb]
+            gap = self.half_width[other_axis] + hp
+            angle = _angle_between(direction, (qb[0] - qa[0], qb[1] - qa[1]))
+            if min(angle, 180.0 - angle) < p.parallel_deg:
+                gap += p.min_block_depth
+            if _segment_distance(pa, end, qa, qb) < gap:
+                return False
+        return True
 
     def in_zone(self, a: Point, b: Point) -> bool:
         from shapely.geometry import LineString
@@ -1061,7 +1264,8 @@ class _Growth:
         interchange_spacing apart, inside the area, on legal ground, clear of other
         highways and of the seed point. Each gets a crossing avenue under the highway
         (one edge), a reserved zone, and streets proposed from the avenue's ends."""
-        from shapely.geometry import LineString, Point as ShapelyPoint, Polygon
+        from shapely.geometry import LineString, Polygon
+        from shapely.geometry import Point as ShapelyPoint
 
         p, ip = self.p, InterchangeParams()
         along = ip.diamond_reach + ZONE_MARGIN
@@ -1179,6 +1383,8 @@ class _Growth:
         self.loop()
         if self.p.detour_ratio:
             self.connect_pass()
+        if self.p.dead_ends:
+            self.dead_end_pass()
         if (self.p.curve_mode != "none" or self.field is not None) and self.p.curve_tortuosity > 1.0:
             self.bow_streets()
         if self.p.boundary == "ring":
@@ -1244,14 +1450,18 @@ class _Growth:
                 self.grow_highway(prop, node, heading)
             return
 
-    def connect(self, a: int, end: Point, axis: int, line: int = 0) -> Optional[tuple[int, Optional[int]]]:
+    def connect(self, a: int, end: Point, axis: int, line: int = 0,
+                free: bool = True) -> Optional[tuple[int, Optional[int]]]:
         """Resolve, check and add a segment from a towards end.
 
         Returns None if rejected, else (new edge id, free end node to grow
-        from, or None when the segment ended on an existing road).
+        from, or None when the segment ended on an existing road). With free
+        False it must end on an existing road, on legal ground (dead ends).
         """
         self.under = self.p.highway_crossings == "separated" and axis != HIGHWAY
         kind, data = self.resolve(a, end)
+        if not free and kind == "free":
+            return None
         if kind == "free":
             end, end_node, split = data, None, None
         elif kind == "node":
@@ -1259,10 +1469,14 @@ class _Growth:
         else:
             split, end = data
             end_node = None
-        if not self.acceptable(a, end, end_node, split):
+        if not self.acceptable(a, end, end_node, split, axis):
             return None
         # legal_street checked the proposed segment; snapping may move it over water.
         if axis != HIGHWAY and kind != "free" and self.maps.crosses_water(self.pos[a], end, ends=False):
+            return None
+        if not free and self.maps.active and (self.maps._too_steep(self.pos[a], end) or (
+                self.maps.terrain is not None and self.maps._illegal_for_streets(
+                    *self.maps._line(self.pos[a], end)[:2])[1:-1].any())):
             return None
         if kind == "split":
             end_node = self.split_edge(split, end)
@@ -1612,6 +1826,16 @@ class _MapView:
         return bool(cover.max() >= p.tunnel_min_cover) and len(under) * self.step <= p.max_tunnel_length
 
 
+def hierarchy_params(p: LSystemParams) -> HierarchyParams:
+    """Stroke hierarchy settings of an lsystem: arterials and collectors are avenues."""
+    return HierarchyParams(
+        levels={ARTERIAL: Level("avenue", p.major_lanes, p.major_speed),
+                COLLECTOR: Level("avenue", p.collector_lanes, p.collector_speed),
+                LOCAL: Level("street", p.minor_lanes, p.minor_speed)},
+        max_deflection_deg=p.stroke_max_deflection_deg, arterial_share=p.arterial_share,
+        collector_share=p.collector_share, samples=p.betweenness_samples)
+
+
 def _wrap(angle: float) -> float:
     return (angle + math.pi) % (2 * math.pi) - math.pi
 
@@ -1653,11 +1877,13 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         if params.roundabout_prob and add_roundabouts(
                 graph, np.random.default_rng([seed, SALT_ROUNDABOUT]), lambda node: params.roundabout_prob,
                 params.roundabout_radius, params.roundabout_radius_avenue, params.roundabout_speed,
-                growth.culdesac_allowed):
+                growth.culdesac_allowed, cross_section=CrossSectionParams()):  # HD maps' widest default
             assign_node_kinds(graph)
-        if (params.culdesac_prob or (params.suburb_culdesac_prob and growth.field is not None)) \
+        classes = ("street", "avenue") if params.dead_ends else ("street",)
+        if (params.dead_ends or params.culdesac_prob or (params.suburb_culdesac_prob and growth.field is not None)) \
                 and add_culdesacs(graph, np.random.default_rng([seed, SALT_CULDESAC]), growth.culdesac_prob,
-                                  params.culdesac_radius, params.culdesac_speed, growth.culdesac_allowed):
+                                  params.culdesac_radius, params.culdesac_speed, growth.culdesac_allowed,
+                                  road_classes=classes):
             assign_node_kinds(graph)
         if not graph.edges:
             log.warning("lsystem: no road could be grown from the seed point; on input maps it is "
@@ -1736,10 +1962,15 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
             STREET_X: ("street", p.minor_lanes, p.minor_speed),
             RING: ("avenue", p.ring_lanes, p.major_speed),
         }
+        strokes = p.hierarchy == "strokes"
+        if strokes:  # placeholders, two-way unless a one-way pattern says otherwise
+            roads[AVENUE_Y] = roads[STREET_X] = ("street", (1, 1), p.minor_speed)
         pattern = {AVENUE_Y: p.oneway_pattern[0], STREET_X: p.oneway_pattern[1]}
-        bridges, tunnels = [], []
+        bridges, tunnels, fixed = [], [], []
         for k, (old, (a, b, axis)) in enumerate(sorted(g.edges.items()), 1):
             road_class, lanes, speed = roads[axis]
+            if axis in (HIGHWAY, RING):
+                fixed.append(k)
             if pattern.get(axis) == "alternating":
                 # Even grid lines run along +axis, odd ones against it, all lanes forward.
                 along = g.pos[b][axis] - g.pos[a][axis]
@@ -1752,6 +1983,8 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                 bridges.append(k)
             if old in g.tunnels:
                 tunnels.append(k)
+        if strokes:
+            assign_hierarchy(graph, hierarchy_params(p), seed, fixed)
         if maps is not None:
             graph.metadata["bridges"] = bridges  # edge ids of highways crossing water
             if tunnels:

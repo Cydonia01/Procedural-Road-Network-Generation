@@ -110,7 +110,7 @@ def test_prob_classes_and_allowed():
 def suburb(seed: int = 1, **kw) -> RoadGraph:
     p = LSystemParams(global_goal="field", extent=(1500.0, 1200.0), snap_radius=20.0,
                       min_segment_length=30.0, min_angle_deg=40.0, pattern_weights=(0, 0, 0, 0, 1),
-                      suburb_culdesac_prob=0.0, **kw)
+                      suburb_culdesac_prob=0.0, **{"dead_ends": False, **kw})
     return LSystemGenerator().generate(p, seed)
 
 

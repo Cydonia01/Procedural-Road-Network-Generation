@@ -128,7 +128,9 @@ def grow(**kw) -> RoadGraph:
 
 
 def test_separated_highways_have_crossings_and_no_access():
-    at_grade, separated = grow(), grow(highway_crossings="separated")
+    # body_check off: here highways must cross the small street grid, which the body
+    # check's spacing between highways thins out
+    at_grade, separated = grow(), grow(highway_crossings="separated", body_check=False)
     assert find_crossings(at_grade) == []
     crossings = find_crossings(separated)
     assert crossings and all(separated.edges[c.upper].road_class == "highway" for c in crossings)

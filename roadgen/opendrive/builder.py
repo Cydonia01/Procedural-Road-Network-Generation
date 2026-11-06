@@ -203,6 +203,8 @@ class OpenDriveBuilder:
         self.signal_plans: list[dict] = []  # fixed-time light plans per junction with lights
         self.priority_runs = 0  # priority roads through 2+ priority junctions (306 / 307)
         self.fills = 0  # junction-surface patches (HD maps on)
+        # Junction surface no lane covers: (junction id, [(x, y, z) ...] outline) per area
+        self.fill_areas: list[tuple[int, list[tuple[float, float, float]]]] = []
         self._next_object_id = 0
         self._planes: dict[int, JunctionPlane] = {}
         self.bans: list[dict] = []  # banned turns: junction, from / to road end, reason (HD maps on)
@@ -646,6 +648,8 @@ class OpenDriveBuilder:
                         for e, (r, s0, s1) in sorted(self.edge_s_range.items())
                     },
                     "corners": self._corner_records(),
+                    **({"junction_fills": [{"junction": j, "outline": [[round(v, 3) for v in p] for p in pts]}
+                                           for j, pts in self.fill_areas]} if self.fill_areas else {}),
                     **({"cross_sections": {str(e): p for e, p in self.cross_sections.items()}}
                        if self.cross_sections else {}),
                     **({"corner_roads": [asdict(c) for c in self.corner_roads]} if self.corner_roads else {}),
@@ -685,7 +689,9 @@ class OpenDriveBuilder:
         junction the union of its connecting roads' and arms' lanes is taken, and every
         hole in it larger than FILL_MIN_AREA inside the junction's hull becomes a flat
         <object type="patch"> with a closed asphalt outline, on the junction's first
-        connecting road, its corners on the junction plane."""
+        connecting road, its corners on the junction plane. The areas are kept in
+        fill_areas (world coordinates) for the sidecar; with junction_patches off (a scene
+        mesh draws them, R5) no patch is written."""
         from shapely.geometry import Point, Polygon
         from shapely.ops import unary_union
 
@@ -728,6 +734,7 @@ class OpenDriveBuilder:
 
         next_id = self._next_object_id
         self.fills = 0
+        self.fill_areas = []
         for junction in root.findall("junction"):
             jid = junction.get("id")
             members = members_of.get(jid, [])
@@ -744,9 +751,15 @@ class OpenDriveBuilder:
                      if h.area >= FILL_MIN_AREA and h.intersection(hull).area >= 0.95 * h.area]
             if not holes:
                 continue
+            plane = self._planes.get(int(jid))
+            for hole in holes:
+                self.fill_areas.append((int(jid), [
+                    (x, y, float(plane.height(x, y)) if plane is not None else 0.0)
+                    for x, y in list(hole.exterior.coords)[:-1]]))
+            if not self.hd.junction_patches:
+                continue
             host = roads[members[0]]
             x0, y0, h0 = RoadEval(host).reference(0.0)
-            plane = self._planes.get(int(jid))
             objects = host.find("objects")
             if objects is None:
                 objects = ET.Element("objects")

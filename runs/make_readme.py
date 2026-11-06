@@ -62,6 +62,8 @@ def view_command(folder: Path) -> str | None:
 def main() -> None:
     out = [INTRO, "## Cities\n"]
     for r in RunStore(ROOT / "out").runs():
+        if not r.note:  # examples.sh gives every example a note; other runs stay out
+            continue
         lines = [r.command_line()]
         view = view_command(ROOT / "out" / r.hash)
         if view:
