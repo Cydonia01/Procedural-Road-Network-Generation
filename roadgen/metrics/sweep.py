@@ -82,7 +82,7 @@ def build_one(generator: str, preset: Optional[str], seed: int, cfg: dict = DEFA
         error = str(e)
     m = network_metrics(graph)
     headline = {k: m[k] for k in ("cnr", "skewed_share", "offset_t_pairs", "orientation_entropy",
-                                  "orientation_order", "legs", "features")}
+                                  "orientation_order", "legs", "features", "naturalness")}
     return SweepResult(seed, len(graph.nodes), len(graph.edges), error, headline)
 
 

@@ -272,7 +272,7 @@ def test_plot_xodr(tmp_path):
 def test_pipeline_writes_lane_plot_and_cross_section_flag(tmp_path):
     out = tmp_path / "net"
     assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps", "--hd",
-                 "--cross-section", "rural", "-o", str(out)]) == 0
+                 "--cross-section", "rural", "--lane-plot", "-o", str(out)]) == 0
     assert (tmp_path / "net_hd.png").exists()
     root = etree.parse(str(out.with_suffix(".xodr"))).getroot()
     kinds = {lane.get("type") for lane in root.iter("lane")}

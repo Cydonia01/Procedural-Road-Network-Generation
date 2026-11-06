@@ -1,11 +1,13 @@
-"""Simple 3D buildings: one extruded box per city block.
+"""Simple 3D buildings: one extruded box per parcel (or per city block).
 
 Blocks are the bounded faces of the planar road graph (shapely
 ``polygonize``), drawn along the fitted roads (roadgen.geometry.alignment)
 so that buildings follow the curves the OpenDRIVE builder builds. A block's footprint is the face minus every road widened by
 its half-width plus a setback, so dead-end roads inside a block stay clear
 too; convex corners are rounded so buildings keep clear of the turning
-paths inside junctions. Each footprint is extruded to a random height.
+paths inside junctions. With parcels on (stage R6, roadgen.scene.parcels) each
+block area is split into parcels with one inset building each, as tall as the
+population under it; otherwise each block area is extruded to a random height.
 
 Given an elevation map, a building stands on the ground: its base is
 FOUNDATION below the lowest ground under it, and its height is added to the
@@ -29,7 +31,7 @@ from typing import Iterator, Optional, Union
 import numpy as np
 from shapely.geometry import LineString, MultiPolygon, Polygon
 from shapely.geometry.polygon import orient
-from shapely.ops import polygonize, triangulate, unary_union
+from shapely.ops import polygonize, substring, triangulate, unary_union
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.alignment import network_alignment
@@ -37,7 +39,9 @@ from roadgen.geometry.cross_section import (
     CrossSectionParams,
     loop_edges,
     outer_half_width,
+    pocket_ends,
 )
+from roadgen.geometry.junction_space import node_trims
 from roadgen.graph.model import Edge, RoadGraph
 from roadgen.maps.model import WATER, MapLayer
 from roadgen.scene.osgt import Mesh
@@ -60,12 +64,21 @@ class BuildingParams:
     max_height: float = _D["max_height"]  # [m]
     min_area: float = _D["min_area"]  # smaller footprints are dropped [m^2]
     color: tuple[float, float, float] = _D["color"]
+    # Parcels (stage R6): one building per parcel instead of one per block.
+    parcels: bool = _D["parcels"]
+    frontage: tuple[float, float] = _D["frontage"]  # parcel width along the street, min and max [m]
+    depth: tuple[float, float] = _D["depth"]  # parcel depth, min and max [m]
+    inset: float = _D["inset"]  # building inset from its parcel's edges (front and side setbacks) [m]
+    height_density: float = _D["height_density"]  # max_height from this density [people/km^2]; 0 = random
     # .obj only: write y-up (the usual OBJ convention) instead of OpenDRIVE's z-up.
     y_up: bool = _D["y_up"]
 
     def __post_init__(self) -> None:
         if not 0 < self.min_height <= self.max_height:
             raise ValueError("need 0 < min_height <= max_height")
+        if not 0 < self.frontage[0] <= self.frontage[1] or not 0 < self.depth[0] <= self.depth[1] \
+                or self.inset < 0 or self.height_density < 0:
+            raise ValueError("need 0 < frontage and depth (min <= max), inset >= 0, height_density >= 0")
         if self.setback < 0 or self.corner_radius < 0 or self.min_area < 0:
             raise ValueError("setback, corner_radius and min_area must be non-negative")
 
@@ -106,14 +119,31 @@ def blocks(graph: RoadGraph, lines: Optional[list[tuple[Edge, LineString]]] = No
 def footprints(graph: RoadGraph, params: BuildingParams,
                cross_section: Optional[CrossSectionParams] = None) -> list[Polygon]:
     """Buildable area per block: the face minus the widened roads, corners rounded. With
-    a cross-section the roads include their sidewalks, so setback is the yard behind them."""
+    a cross-section the roads include their sidewalks, so setback is the yard behind them,
+    and with its turn lanes the approaches with a left-turn pocket a lane more."""
     lines = road_lines(graph, cross_section)
     loops = loop_edges(graph) if cross_section is not None else frozenset()
-    roads = unary_union([
+    widened = [
         line.buffer(road_half_extent(e, cross_section, e.id in loops) + params.setback,
                     cap_style="round")  # round: clears dead-end tips
         for e, line in lines
-    ])
+    ]
+    turn_lanes = cross_section.turn_lanes if cross_section is not None else None
+    if turn_lanes is not None:  # a left-turn pocket widens its approach by a lane (either side)
+        by_id = {e.id: (e, line) for e, line in lines}
+        for n in sorted(graph.nodes):
+            pockets = pocket_ends(graph, n, turn_lanes)
+            trims = node_trims(graph, n, cross_section=cross_section) if pockets else {}
+            for eid in sorted(pockets):
+                e, line = by_id[eid]
+                # The pocket starts at the junction's trim (the line runs to the node).
+                reach = min(trims.get(eid, 0.0) + turn_lanes.length(e.road_class) + turn_lanes.pocket_taper,
+                            line.length)
+                stretch = substring(line, line.length - reach, line.length) if n == e.to_node \
+                    else substring(line, 0.0, reach)
+                widened.append(stretch.buffer(road_half_extent(e, cross_section, e.id in loops)
+                                              + e.lane_width + params.setback, cap_style="flat"))
+    roads = unary_union(widened)
     out: list[Polygon] = []
     r = params.corner_radius
     for face in blocks(graph, lines):
@@ -192,15 +222,16 @@ Vec3 = tuple[float, float, float]
 def building_mesh(
     graph: RoadGraph, params: BuildingParams = BuildingParams(),
     elevation: Optional[MapLayer] = None, terrain: Optional[MapLayer] = None,
-    cross_section: Optional[CrossSectionParams] = None,
+    cross_section: Optional[CrossSectionParams] = None, population: Optional[MapLayer] = None,
 ) -> tuple[list[tuple[Vec3, Vec3, Vec3]], list[Vec3], int]:
     """(triangles, one normal per triangle, number of buildings), z-up world coordinates.
 
-    Triangles are counter-clockwise seen from outside the building.
+    Triangles are counter-clockwise seen from outside the building. With parcels on,
+    each block area is split into parcels with one building each (roadgen.scene.parcels),
+    as tall as the population map says; otherwise one building per block area.
     """
     rng = np.random.default_rng(params.seed)
-    polys = footprints(graph, params, cross_section)
-    heights = rng.uniform(params.min_height, params.max_height, size=len(polys))
+    polys, heights = building_footprints(graph, params, rng, terrain, cross_section, population)
     tris: list[tuple[Vec3, Vec3, Vec3]] = []
     normals: list[Vec3] = []
     count = 0
@@ -231,6 +262,34 @@ def building_mesh(
                 tris += [(a, b, c), (a, c, d)]
                 normals += [nrm, nrm]
     return tris, normals, count
+
+
+def building_footprints(graph: RoadGraph, params: BuildingParams, rng: np.random.Generator,
+                        terrain: Optional[MapLayer] = None, cross_section: Optional[CrossSectionParams] = None,
+                        population: Optional[MapLayer] = None) -> tuple[list[Polygon], list[float]]:
+    """Each building's footprint and height [m]."""
+    from roadgen.scene.parcels import (
+        building_footprint,
+        building_height,
+        on_open_land,
+        split_parcels,
+        with_frontage,
+    )
+
+    areas = footprints(graph, params, cross_section)
+    if not params.parcels:
+        return areas, list(rng.uniform(params.min_height, params.max_height, size=len(areas)))
+    polys, heights = [], []
+    for area in areas:
+        for parcel in with_frontage(split_parcels(area, rng, params.frontage, params.depth), area,
+                                    params.frontage[0] / 2):
+            fp = building_footprint(parcel, params.inset, params.min_area)
+            if fp is None or not on_open_land(fp, terrain):
+                continue
+            polys.append(fp)
+            heights.append(building_height(fp, rng, params.min_height, params.max_height, population,
+                                           params.height_density))
+    return polys, heights
 
 
 def write_osgt(path: Path, tris, normals, color: tuple[float, float, float]) -> None:

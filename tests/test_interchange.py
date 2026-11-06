@@ -25,6 +25,7 @@ from roadgen.geometry.grade_separation import find_crossings, separate
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.metrics.network import network_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.clearance import check_clearance
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
@@ -139,7 +140,7 @@ def test_lsystem_freeway_corridor_has_a_diamond():
     g = gen.generate(params, 1, MapSet(**layers))
     assert [ic["type"] for ic in g.metadata["interchanges"]] == ["diamond"]
     assert g.validate() == []
-    OpenDriveBuilder().build(separate(g))
+    OpenDriveBuilder(hd=HdMapParams(enabled=False)).build(separate(g))  # HD repair is the pipeline's job
 
 
 @pytest.mark.parametrize("kw", [{"interchanges": True}, {"interchange_spacing": 0.0},

@@ -87,12 +87,12 @@ class RoadGraph:
         return edge
 
     def incident_edges(self, node_id: int) -> list[Edge]:
-        """Edges touching node_id, sorted by edge id."""
-        return [
-            e
-            for _, e in sorted(self.edges.items())
-            if node_id in (e.from_node, e.to_node)
-        ]
+        """Edges touching node_id, sorted by edge id.
+
+        One scan over the edges, sorting only the few that touch the node (not
+        an index: transforms change edges in place, which an index would miss)."""
+        return sorted((e for e in self.edges.values() if node_id in (e.from_node, e.to_node)),
+                      key=lambda e: e.id)
 
     def neighbors(self, node_id: int) -> list[int]:
         """Distinct node ids connected to node_id by an edge, sorted."""

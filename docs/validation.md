@@ -127,6 +127,12 @@ Contacts within 1 m of a road's end don't count. A dead end reaching
 another road is the generator's layout, e.g. a dead end stopping right next
 to a street that grew past it later.
 
+**Road bodies** (`check_body_overlaps`). The driving lanes of two normal
+roads must not overlap by more than 1 m² unless the roads meet: one links to
+the other, or both end at the same junction (its trims separate them), or one
+passes over the other with the clearance above between them. Overlaps are
+logged as warnings: they are the generator's layout, not a broken file.
+
 ### HD-map content
 
 *Is the HD-map content consistent?* Runs in `pipeline` and `build-xodr`
@@ -286,6 +292,7 @@ from the RoadGraph alone, for comparison with real-city statistics:
 | **Tortuosity** | Length / chord of every road through its bends, and the share of length on roads at least `straight_tortuosity` (1.01) |
 | **Block areas** | Bounded faces of the street lines |
 | **Features** | Counts of the `metadata` lists: roundabouts, cul-de-sacs, overpasses, tunnels, interchanges, bridges |
+| **Naturalness** | Quality gates: dead-end share; lane or class changes at two-road nodes (where a road just goes on; highway lane adds aside); class changes along straight continuations (under 30°) at any node; road bodies (driving width) overlapping by more than 1 m² without a shared node (bridges and tunnels aside) |
 
 ### HD-map metrics
 

@@ -52,18 +52,18 @@ def test_dead_end_inside_a_block_is_kept_clear():
 
 
 def test_heights_and_determinism():
-    g, p = grid(), BuildingParams(seed=5, min_height=20, max_height=30)
+    g, p = grid(), BuildingParams(seed=5, min_height=20, max_height=30, parcels=False)  # one per block
     tris, normals, n = building_mesh(g, p)
     assert n == 12 and len(tris) == len(normals)
     roofs = {round(t[0][2], 6) for t, nrm in zip(tris, normals) if nrm == (0.0, 0.0, 1.0)}
     assert len(roofs) == n and all(20 <= h <= 30 for h in roofs)
     assert building_mesh(g, p) == (tris, normals, n)
-    assert building_mesh(g, BuildingParams(seed=6))[0] != tris
+    assert building_mesh(g, BuildingParams(seed=6, parcels=False))[0] != tris
 
 
 def test_walls_face_outward():
     g = grid(2, 2)
-    tris, normals, _ = building_mesh(g, BuildingParams(corner_radius=0))
+    tris, normals, _ = building_mesh(g, BuildingParams(corner_radius=0, parcels=False))
     (poly,) = footprints(g, BuildingParams(corner_radius=0))
     cx, cy = poly.centroid.x, poly.centroid.y
     for tri, (nx, ny, nz) in zip(tris, normals):
@@ -75,7 +75,7 @@ def test_walls_face_outward():
 
 def test_osgt_structure(tmp_path):
     path = tmp_path / "b.osgt"
-    n = export_buildings(grid(), path, BuildingParams())
+    n = export_buildings(grid(), path, BuildingParams(parcels=False))
     text = path.read_text()
     assert n == 12
     assert text.startswith("#Ascii Scene \n#Version 161 \n#Generator roadgen 0.1 ")
@@ -142,3 +142,60 @@ def test_runner_keeps_roads_visible_with_scenegraph(tmp_path):
     result = run_esmini(xosc, record=False, csv=False, timeout=60)
     assert result.ok, result.errors
     assert "--enforce_generate_model" in result.command
+
+
+def test_pipeline_scene_draws_the_junction_fill(tmp_path):
+    from cli import main
+    from tests.grids import grid_cli
+
+    prefix = tmp_path / "net"
+    assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), "--buildings", "-o", str(prefix)]) == 0
+    root = etree.parse(str(prefix.with_suffix(".xodr"))).getroot()
+    assert not [o for o in root.iter("object") if o.get("type") == "patch"]  # drawn by the scene instead
+    text = (tmp_path / "net_buildings.osgt").read_text()
+    assert 'Name "buildings"' in text and 'Name "junction_fill"' in text
+
+
+# --- parcels (stage R6) ------------------------------------------------------------------------
+
+
+def test_parcels_split_a_block_with_street_frontage():
+    import numpy as np
+    from shapely.geometry import Polygon, box
+
+    from roadgen.scene.parcels import split_parcels, with_frontage
+
+    block = box(0, 0, 200, 70)
+    parcels = split_parcels(block, np.random.default_rng(0), (15.0, 40.0), (20.0, 40.0))
+    assert sum(p.area for p in parcels) == pytest.approx(block.area)
+    assert all(p.minimum_rotated_rectangle.length <= 2 * (40.0 + 35.0) + 1e-6 for p in parcels)
+    fronted = with_frontage(parcels, block, 7.5)
+    assert fronted == parcels  # 70 m deep: two rows back to back, all on a street
+    deep = box(0, 0, 200, 200)  # rows of rows: the middle ones have no street
+    inner = split_parcels(deep, np.random.default_rng(0), (15.0, 40.0), (20.0, 40.0))
+    assert len(with_frontage(inner, deep, 7.5)) < len(inner)
+    assert isinstance(parcels[0], Polygon)
+
+
+def test_one_building_per_parcel_not_per_block():
+    g = grid()
+    blocks_only = building_mesh(g, BuildingParams(parcels=False))[2]
+    tris, normals, n = building_mesh(g, BuildingParams())
+    assert n > 3 * blocks_only and len(tris) == len(normals)
+    assert building_mesh(g, BuildingParams()) == (tris, normals, n)  # deterministic
+
+
+def test_heights_follow_the_population():
+    import numpy as np
+
+    from roadgen.maps.model import GridSpec, MapLayer
+    from roadgen.scene.buildings import building_footprints
+
+    g = grid()
+    spec = GridSpec((-100.0, -100.0), (1000.0, 600.0), 10.0)
+    x, _ = spec.cell_centers()
+    dense = MapLayer("population", spec, np.where(x < 300.0, 12000.0, 500.0).astype(np.float32))
+    polys, heights = building_footprints(g, BuildingParams(), np.random.default_rng(0), population=dense)
+    west = [h for p, h in zip(polys, heights) if p.centroid.x < 250.0]
+    east = [h for p, h in zip(polys, heights) if p.centroid.x > 350.0]
+    assert west and east and sum(west) / len(west) > 2 * sum(east) / len(east)

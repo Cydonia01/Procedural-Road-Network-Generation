@@ -1,0 +1,15 @@
+fazlalıkları atalım
+her aşamanın kaç saniye sürdüğünü test edip rapora ekleyebiliriz
+
+
+end to end inceleyip eksiklikleri inceleyip kusurları azaltalım
+stage stage validation
+blender taşıması
+serbest uçuş 
+Ekran görüntülerindeki gibi birleşimleri ortadan kaldırmak için ne yapılabilir? 
+yeni oluşturulan hiyerarşideki yolların textureı yok.
+raporu yaz
+
+already logged open items dediği yerde trafik ışığının çalışmadığını söyle. bir de o stagelerde çözülmemiş veya bug gibi duran şeyler var mı onu sor. yani implement edilmemiş featureları söylemesin.
+
+openx-assets

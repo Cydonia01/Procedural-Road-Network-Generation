@@ -31,8 +31,9 @@ def build(preset: str, seed: int, maps: bool, extra: tuple[str, ...] = ()) -> di
 
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "net"
+        # hierarchy=axis: the graphs these hashes were recorded on (before the stage R hierarchy)
         argv = ["--no-history", *extra, "pipeline", "lsystem", "--preset", preset, "--seed", str(seed),
-                "--allow-traps", "--no-hd", "-o", str(out)]
+                "--set", "hierarchy=axis", "--allow-traps", "--no-hd", "-o", str(out)]
         if maps:
             argv.append("--maps")
         if main(argv) != 0:

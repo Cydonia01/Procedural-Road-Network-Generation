@@ -1,5 +1,6 @@
-"""Stage C features are off by default: the existing lsystem presets grow exactly the
-networks they grew before (tests/lsystem_identity.py, recorded before stage C)."""
+"""New lsystem features are off by default: the existing lsystem presets grow exactly the
+networks they grew before (tests/lsystem_identity.py, recorded before stage C,
+re-recorded for the stage R1 road hierarchy)."""
 
 from __future__ import annotations
 

@@ -34,7 +34,7 @@ from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, 
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.sim.esmini import esmini_binary
-from roadgen.validate.clearance import check_clearance
+from roadgen.validate.clearance import check_body_overlaps, check_clearance
 from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
@@ -153,6 +153,10 @@ def build_and_validate(
         if hd.enabled:
             errors += check_hdmap(xodr_path)
         errors += validate_schema(xodr_path, xsd) or []
+        overlaps = check_body_overlaps(xodr_path,
+                                       min_gap=section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
+    for warning in overlaps[:MAX_LISTED_WARNINGS]:  # the generator's layout, not a broken file
+        log.warning("clearance: %s", warning)
     for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
         log.warning("%s", warning)
     if len(curvature_warnings) > MAX_LISTED_WARNINGS:
@@ -380,6 +384,9 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     prefix = artifact(args, args.output, default_output(args))
     graph, layers = generate_graph(args)
     hd = hd_params(args)
+    fill = (args.ground or args.buildings) and section(args.cfg, "scene")["junction_fill"]
+    if fill:  # the scene draws the junction surface no lane covers; no patch objects (R5)
+        hd = dataclasses.replace(hd, junction_patches=False)
     if hd.enabled:
         graph = annotate_graph(graph, layers, args.cfg)
     graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
@@ -396,7 +403,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
     errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd)
-    if hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
+    if args.lane_plot and hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
         from roadgen.opendrive.plot import plot_xodr
 
         with timed("plot lanes"):
@@ -407,17 +414,20 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
             raise SystemExit("error: --ground needs an elevation map (--maps, --elevation or --map-file)")
         scenegraph = Path(f"{prefix}_scene.osgt")
         write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
-                    args.junction_margin, hd.active_cross_section)
+                    args.junction_margin, hd.active_cross_section, fills=junction_fills(xodr, fill))
     elif args.buildings:
-        from roadgen.scene.buildings import BuildingParams, export_buildings
+        from roadgen.scene.buildings import BuildingParams, building_mesh
+        from roadgen.scene.osgt import Mesh, write_osgt
 
         scenegraph = Path(f"{prefix}_buildings.osgt")
         # Buildings stand on the ground only if the roads do.
         ground = layers.get("elevation") if graph.has_elevation else None
         with timed("buildings"):
             params = BuildingParams(seed=args.seed, **section(args.cfg, "buildings"))
-            n = export_buildings(graph, scenegraph, params, ground, layers.get("terrain"),
-                                 hd.active_cross_section)
+            tris, normals, n = building_mesh(graph, params, ground, layers.get("terrain"),
+                                             hd.active_cross_section, layers.get("population"))
+            write_osgt(scenegraph, [Mesh("buildings", tris, normals, tuple(params.color)),
+                                    *fill_meshes(junction_fills(xodr, fill), args.cfg)])
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
         errors += ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
@@ -427,22 +437,54 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def junction_fills(xodr: Path, on: bool) -> list:
+    """The junction fill outlines of a built .xodr (its sidecar), [] if off or not built."""
+    from roadgen.opendrive.builder import sidecar_path
+    from roadgen.scene.junctions import read_fills
+
+    sidecar = sidecar_path(xodr)
+    return read_fills(sidecar) if on and sidecar.exists() else []
+
+
+def fill_meshes(fills: list, cfg: dict) -> list:
+    """[the junction fill mesh] if there are fills, else []."""
+    from roadgen.scene.junctions import SceneParams, junction_fill_mesh
+
+    return [junction_fill_mesh(fills, SceneParams(**section(cfg, "scene")))] if fills else []
+
+
 def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
-                seed: int, buildings: bool, junction_margin: float, cross_section=None) -> None:
+                seed: int, buildings: bool, junction_margin: float, cross_section=None,
+                fills: Optional[list] = None) -> None:
     """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile; with a
     cross-section (HD maps) levelled under the side lanes, buildings behind them."""
     from roadgen.scene.buildings import BuildingParams, building_mesh
-    from roadgen.scene.ground import GroundParams, ground_mesh
+    from roadgen.scene.ground import (
+        GroundParams,
+        ground_heights,
+        mesh_from_heights,
+        poke_through,
+    )
     from roadgen.scene.osgt import Mesh, write_osgt
 
     elevation, terrain = layers["elevation"], layers.get("terrain")
+    ground, design = GroundParams(**section(cfg, "ground")), DesignParams(**section(cfg, "design"))
     with timed("scene"):
-        meshes = [ground_mesh(elevation, terrain, graph, GroundParams(**section(cfg, "ground")),
-                              junction_margin, DesignParams(**section(cfg, "design")), cross_section)]
+        x, y, z = ground_heights(elevation, graph, ground, terrain, junction_margin, design, cross_section)
+        if graph.has_elevation:
+            try:
+                samples, covered, worst = poke_through(x, y, z, graph, junction_margin, design, cross_section)
+                (log.warning if covered else log.info)(
+                    "ground: %d of %d road-surface samples under the ground (worst %.2f m)",
+                    covered, samples, worst)
+            except ValueError as err:
+                log.warning("ground: poke-through not checked (%s)", err)
+        meshes = [mesh_from_heights(x, y, z, terrain, ground.cell_size), *fill_meshes(fills or [], cfg)]
         n = 0
         if buildings:
             params = BuildingParams(seed=seed, **section(cfg, "buildings"))
-            tris, normals, n = building_mesh(graph, params, elevation, terrain, cross_section)
+            tris, normals, n = building_mesh(graph, params, elevation, terrain, cross_section,
+                                             layers.get("population"))
             meshes.append(Mesh("buildings", tris, normals, tuple(params.color)))
         write_osgt(path, meshes)
     log.info("wrote %s (ground%s)", path, f" + {n} buildings" if buildings else "")
@@ -927,6 +969,8 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
             "--drive-check", action="store_true",
             help="also drive every junction movement with esmini's RoadManager",
         )
+        g.add_argument("--lane-plot", action="store_true",
+                       help="also draw the built lanes to <prefix>_hd.png with HD maps (plot-xodr; ~5 s on a city)")
         g.add_argument("--buildings", action="store_true",
                        help="also export building boxes per block to <prefix>_buildings.osgt "
                             "(used as SceneGraphFile by --simulate)")

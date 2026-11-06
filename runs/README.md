@@ -29,72 +29,72 @@ window and is not recorded as a run.
 
 ## Cities
 
-- `c25a4b5b6566` Mixed-density city on generated maps: highways, ring roads, river, hills
+- `9ce0717e2ee9` Mixed-density city on generated maps: highways, ring roads, river, hills
 
   ```bash
-  python -m cli pipeline lsystem --preset city --maps --seed 7 --ground --allow-traps --buildings --drive-check -o city
-  python -m cli view out/c25a4b5b6566/city.xodr --scenegraph out/c25a4b5b6566/city_scene.osgt   # look at it
+  python -m cli pipeline lsystem --preset city --maps --seed 7 --ground --buildings --allow-traps --drive-check --lane-plot -o city
+  python -m cli view out/9ce0717e2ee9/city.xodr --scenegraph out/9ce0717e2ee9/city_scene.osgt   # look at it
   ```
 
-- `3fb83c4ca4af` Manhattan grid: alternating one-way avenues and streets, ring road
+- `b30f79e6c69f` Manhattan grid: alternating one-way avenues and streets, ring road
 
   ```bash
-  python -m cli pipeline lsystem --preset manhattan_like --seed 1 --allow-traps --buildings --drive-check -o manhattan
-  python -m cli view out/3fb83c4ca4af/manhattan.xodr --scenegraph out/3fb83c4ca4af/manhattan_buildings.osgt   # look at it
+  python -m cli pipeline lsystem --preset manhattan_like --seed 1 --buildings --allow-traps --drive-check --lane-plot -o manhattan
+  python -m cli view out/b30f79e6c69f/manhattan.xodr --scenegraph out/b30f79e6c69f/manhattan_buildings.osgt   # look at it
   ```
 
-- `51cf2255da53` Paris: star of avenues, rings, grid outside
+- `29a66fc7eb9b` Paris: star of avenues, rings, grid outside
 
   ```bash
-  python -m cli pipeline lsystem --preset paris --allow-traps --buildings --drive-check -o paris
-  python -m cli view out/51cf2255da53/paris.xodr --scenegraph out/51cf2255da53/paris_buildings.osgt   # look at it
+  python -m cli pipeline lsystem --preset paris --buildings --allow-traps --drive-check --lane-plot -o paris
+  python -m cli view out/29a66fc7eb9b/paris.xodr --scenegraph out/29a66fc7eb9b/paris_buildings.osgt   # look at it
   ```
 
-- `1a781d6dc182` Suburb: cul-de-sac bulbs, suburban cross-section
+- `4932d8403b35` Suburb: cul-de-sac bulbs, suburban cross-section
 
   ```bash
-  python -m cli pipeline lsystem --preset suburb --seed 1 --cross-section suburban --allow-traps --buildings --drive-check -o suburb
-  python -m cli view out/1a781d6dc182/suburb.xodr --scenegraph out/1a781d6dc182/suburb_buildings.osgt   # look at it
+  python -m cli pipeline lsystem --preset suburb --seed 1 --cross-section suburban --buildings --allow-traps --drive-check --lane-plot -o suburb
+  python -m cli view out/4932d8403b35/suburb.xodr --scenegraph out/4932d8403b35/suburb_buildings.osgt   # look at it
   ```
 
-- `fe6fa20f0885` Mixed city: style-map districts on generated maps
+- `ea18f01d0693` Mixed city: style-map districts on generated maps
 
   ```bash
-  python -m cli pipeline lsystem --preset mixed_city --maps --seed 1 --ground --allow-traps --buildings --drive-check -o mixed_city
-  python -m cli view out/fe6fa20f0885/mixed_city.xodr --scenegraph out/fe6fa20f0885/mixed_city_scene.osgt   # look at it
+  python -m cli pipeline lsystem --preset mixed_city --maps --seed 1 --ground --buildings --allow-traps --drive-check --lane-plot -o mixed_city
+  python -m cli view out/ea18f01d0693/mixed_city.xodr --scenegraph out/ea18f01d0693/mixed_city_scene.osgt   # look at it
   ```
 
-- `50712981312c` Hill town: contour streets on hilly maps
+- `805902244ce5` Hill town: contour streets on hilly maps
 
   ```bash
-  python -m cli pipeline lsystem --preset hill_town --maps --seed 1 --ground --allow-traps --buildings --drive-check -o hill_town
-  python -m cli view out/50712981312c/hill_town.xodr --scenegraph out/50712981312c/hill_town_scene.osgt   # look at it
+  python -m cli pipeline lsystem --preset hill_town --maps --seed 1 --ground --buildings --allow-traps --drive-check --lane-plot -o hill_town
+  python -m cli view out/805902244ce5/hill_town.xodr --scenegraph out/805902244ce5/hill_town_scene.osgt   # look at it
   ```
 
-- `f059ec3a9d87` City with freeways and overpasses
+- `6c26de989dee` City with freeways and overpasses
 
   ```bash
-  python -m cli pipeline lsystem --preset city --maps --seed 1 --set highway_crossings=separated --ground --allow-traps --buildings --drive-check -o freeways
-  python -m cli view out/f059ec3a9d87/freeways.xodr --scenegraph out/f059ec3a9d87/freeways_scene.osgt   # look at it
+  python -m cli pipeline lsystem --preset city --maps --seed 1 --set highway_crossings=separated --ground --buildings --allow-traps --drive-check --lane-plot -o freeways
+  python -m cli view out/6c26de989dee/freeways.xodr --scenegraph out/6c26de989dee/freeways_scene.osgt   # look at it
   ```
 
-- `f310f3371fd4` Freeway corridor with a diamond interchange, lane adds and drops
+- `7d021bfe5299` Freeway corridor with a diamond interchange, lane adds and drops
 
   ```bash
-  python -m cli pipeline lsystem --preset highway_corridor --maps --seed 1 --ground --allow-traps --buildings --drive-check -o highway_corridor
-  python -m cli view out/f310f3371fd4/highway_corridor.xodr --scenegraph out/f310f3371fd4/highway_corridor_scene.osgt   # look at it
+  python -m cli pipeline lsystem --preset highway_corridor --maps --seed 1 --ground --buildings --allow-traps --drive-check --lane-plot -o highway_corridor
+  python -m cli view out/7d021bfe5299/highway_corridor.xodr --scenegraph out/7d021bfe5299/highway_corridor_scene.osgt   # look at it
   ```
 
-- `b92ce0b1c55f` Diamond interchange: freeway crossing an arterial with ramps
+- `91a8b2a32f37` Diamond interchange: freeway crossing an arterial with ramps
 
   ```bash
-  python -m cli pipeline junction --preset diamond --set interchange_length=800 --allow-traps --drive-check -o diamond
-  python -m cli view out/b92ce0b1c55f/diamond.xodr   # look at it
+  python -m cli pipeline junction --preset diamond --set interchange_length=800 --allow-traps --drive-check --lane-plot -o diamond
+  python -m cli view out/91a8b2a32f37/diamond.xodr   # look at it
   ```
 
-- `90effc296633` Cloverleaf interchange: freeway crossing a freeway with loop ramps
+- `56d725c4bd7d` Cloverleaf interchange: freeway crossing a freeway with loop ramps
 
   ```bash
-  python -m cli pipeline junction --preset cloverleaf --set interchange_length=800 --allow-traps --drive-check -o cloverleaf
-  python -m cli view out/90effc296633/cloverleaf.xodr   # look at it
+  python -m cli pipeline junction --preset cloverleaf --set interchange_length=800 --allow-traps --drive-check --lane-plot -o cloverleaf
+  python -m cli view out/56d725c4bd7d/cloverleaf.xodr   # look at it
   ```

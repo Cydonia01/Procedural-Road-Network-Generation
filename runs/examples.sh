@@ -43,7 +43,7 @@ generate() {
         IFS='|' read -r name note args <<< "$entry"
         echo "== $name"
         # shellcheck disable=SC2086
-        _run dev --note "$note" pipeline $args --allow-traps --drive-check -o "$name"
+        _run dev --note "$note" pipeline $args --allow-traps --drive-check --lane-plot -o "$name"
     done
 }
 

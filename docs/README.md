@@ -13,7 +13,7 @@ what you need.
 | Look up a command or flag | [CLI reference](cli-reference.md) |
 | Change parameters, or use a `--config` file | [CLI reference → Parameters](cli-reference.md#parameters-and---config) |
 | Find, rerun or share a run | [CLI reference → Run folders](cli-reference.md#run-folders-history-replay-run) |
-| Generate a city (grids, patterns, roundabouts, freeways …) | [lsystem](lsystem.md) |
+| Generate a city (grids, patterns, road hierarchy, roundabouts, freeways …) | [lsystem](lsystem.md) |
 | Generate one unusual junction or interchange | [Generators → junction](generators.md#junction-one-junction-per-seed) |
 | Grow on terrain, or use real maps | [Input maps](maps.md) |
 | Understand road shapes, curves and speeds | [Road geometry](geometry.md) |
@@ -35,7 +35,7 @@ what you need.
 | `roadgen/graph/` | [RoadGraph](road-graph.md) |
 | `roadgen/maps/` (except `align.py`, `drape.py`) | [Input maps](maps.md) |
 | `roadgen/maps/align.py`, `roadgen/maps/drape.py` | [Heights](heights.md) |
-| `roadgen/generators/lsystem.py`, `patterns.py` | [lsystem](lsystem.md) |
+| `roadgen/generators/lsystem.py`, `patterns.py`, `hierarchy.py` | [lsystem](lsystem.md) |
 | `roadgen/generators/base.py`, `junction.py`, `repair.py`, `transforms/` | [Generators](generators.md) |
 | `roadgen/geometry/` | [Road geometry](geometry.md); `vertical.py` and `grade_separation.py` in [Heights](heights.md) |
 | `roadgen/opendrive/` | [OpenDRIVE builder](opendrive.md) |

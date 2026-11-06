@@ -50,7 +50,7 @@ def lattice(a: int, s: int, dx: float, dy: float, rotation_deg: float = 0.0,
 
 
 def test_grid_preset_is_a_10x10_lattice():
-    g = grow(preset="grid")
+    g = grow(preset="grid", hierarchy="axis")  # axis: classes by grid axis, as lattice() labels them
     assert road_set(g) == lattice(10, 10, 250.0, 80.0)
     assert g.validate() == []
 
@@ -63,7 +63,7 @@ def test_grid_goal_grows_the_lattice_from_any_lattice_start(start):
     sx = round(start[0] * (a - 1)) / (a - 1)
     sy = round(start[1] * (s - 1)) / (s - 1)
     g = grow(extent=((a - 1) * dx, (s - 1) * dy), block_size=(dx, dy), start=(sx, sy),
-             rotation_deg=20.0, origin=(100.0, -50.0))
+             rotation_deg=20.0, origin=(100.0, -50.0), hierarchy="axis")
     assert road_set(g) == lattice(a, s, dx, dy, 20.0, (100.0, -50.0))
 
 
@@ -72,7 +72,7 @@ def test_grid_goal_grows_the_lattice_from_any_lattice_start(start):
 
 @pytest.mark.parametrize("seed", range(5))
 def test_organic_growth_respects_constraints(seed):
-    p = LSystemParams.preset("grid_organic")
+    p = LSystemParams.preset("grid_organic", dead_ends=False)  # bulbs are added after growth
     g = LSystemGenerator().generate(p, seed)
     assert g.validate() == []
     assert len(g.edges) > 50
@@ -113,7 +113,7 @@ def test_deterministic():
 
 
 def test_max_segments_budget():
-    g = grow(preset="grid", max_segments=25)
+    g = grow(preset="grid", max_segments=25, dead_ends=False)
     assert len(g.edges) == 25
 
 
@@ -125,6 +125,8 @@ def test_max_segments_budget():
     {"snap_radius": 200.0},
     {"min_angle_deg": 95.0},
     {"major_lanes": (0, 0)},
+    {"hierarchy": "rank"},
+    {"arterial_share": 0.6, "collector_share": 0.6},
 ])
 def test_invalid_params(kw):
     with pytest.raises(ValueError):

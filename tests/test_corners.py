@@ -17,6 +17,7 @@ from roadgen.geometry.grade_separation import find_crossings, separate
 from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.drape import drape
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.plot import lane_polygons
 from roadgen.scene.buildings import BuildingParams, footprints
 from roadgen.scene.ground import GroundParams, ground_heights
@@ -138,7 +139,8 @@ def test_buildings_stand_behind_the_sidewalks(tmp_path):
     root = etree.parse(str(out.with_suffix(".xodr"))).getroot()
     normal = {r.get("id") for r in root.findall("road") if r.get("junction") == "-1"}
     surface = unary_union(_polys(root, normal))
-    buildings = unary_union(footprints(g, BuildingParams(setback=0.0), CS))
+    built = HdMapParams().active_cross_section  # the build's, turn pockets included
+    buildings = unary_union(footprints(g, BuildingParams(setback=0.0), built))
     assert buildings.area > 0
     assert buildings.intersection(surface).area < 1.0
     plain = unary_union(footprints(g, BuildingParams(setback=0.0)))

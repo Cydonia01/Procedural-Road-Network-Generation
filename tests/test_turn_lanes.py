@@ -181,6 +181,28 @@ def test_junction_surface_fill(tmp_path):
     assert check_hdmap(path) == []
 
 
+def test_junction_fill_in_the_scene_instead_of_patches(tmp_path):
+    import dataclasses
+
+    from shapely.geometry import Polygon
+
+    from roadgen.scene.junctions import junction_fill_mesh, read_fills
+
+    with_patches, root, sidecar, b = _build(_cross(), tmp_path)
+    fills = read_fills(with_patches.with_suffix(".roadmap.json"))
+    assert len(fills) == b.fills == len(sidecar["junction_fills"]) > 0
+    path, root, _, b2 = _build(_cross(), tmp_path, dataclasses.replace(HD, junction_patches=False), "nopatch")
+    assert not [o for o in root.iter("object") if o.get("type") == "patch"] and b2.fills == 0
+    assert read_fills(path.with_suffix(".roadmap.json")) == fills  # the areas are listed all the same
+    assert check_hdmap(path) == []
+    mesh = junction_fill_mesh(fills)
+    area = sum(Polygon([p[:2] for p in t]).area for t in mesh.tris)
+    assert area == pytest.approx(sum(Polygon([p[:2] for p in f]).area for f in fills), rel=1e-6)
+    assert all(n[2] > 0.99 for n in mesh.normals)  # a flat junction: facing up
+    z = {round(p[2], 6) for t in mesh.tris for p in t}
+    assert max(z) <= max(p[2] for f in fills for p in f) - 0.02 + 1e-6  # under the lanes
+
+
 def test_hd_off_unchanged_by_b8(tmp_path):
     _, root, sidecar, _ = _build(_cross(), tmp_path, HdMapParams(enabled=False))
     assert "lane_use" not in sidecar and "banned" not in sidecar

@@ -108,6 +108,7 @@ prompts and decisions.
 | Run folders | One hashed `out/<hash>/` per run, `run.yaml`, replay | `history.py`, `config.py` |
 | Stage C | Long-tail diversity: network metrics, manhattan → lsystem, pattern fields, style maps, cul-de-sacs, junction variety, `junction` generator, roundabouts, overpasses, tunnels, interchanges | `metrics/network.py`, `patterns.py`, `maps/style.py`, `generators/transforms/`, `junction.py`, `geometry/grade_separation.py`, `validate/clearance.py` |
 | Stage B | HD-map completeness, on by default (`--no-hd` gives the plain network): cross-sections with side lanes, curb returns and corner roads, German road marks, junction control and right of way, signs and stop lines, traffic lights with fixed-time plans (also in OpenSCENARIO), crosswalks, speed and curve signs, lane use and arrows, turn pockets, banned turns, the HD repair (bare road ends), the `annotate` step | `geometry/cross_section.py`, `opendrive/marks.py`, `control.py`, `furniture.py`, `lights.py`, `hdmap.py`, `plot.py`, `maps/annotate.py`, `validate/hdmap.py`, `metrics/hdmap.py` |
+| Stage R | Refinement for natural networks: road hierarchy from strokes, width-aware growth and body-overlap check, dead-end pass, ground that stays under the roads, junction surface drawn in the scene, naturalness metrics | `generators/hierarchy.py`, `lsystem.py`, `validate/clearance.py`, `scene/ground.py`, `scene/junctions.py`, `metrics/network.py` |
 
 Phase 6 (a scalability benchmark) was removed: the project trains
 autonomous cars, and `simulate` reports what a single run costs
@@ -121,6 +122,9 @@ autonomous cars, and `simulate` reports what a single run costs
   `killed == "memory"`. On macOS, where no kernel limit is set, the test
   passes. Either the runner should treat this exit as a memory kill, or the
   test should accept it on Linux.
+- **`test_hdmap_identity.py` fails for three cases** (manhattan_like,
+  organic_town, city_maps) already on 3ae2780, before stage R; only `grid`
+  still matches the hashes recorded in B0.
 - **The schema check needs the ASAM XSD,** which can't be redistributed.
 - **Old hashes.** Hashes quoted in plans before 2026-10-25 are old
   `runs/history.json` hashes, and `out/migration.json` maps them to run

@@ -36,7 +36,7 @@ flowchart LR
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
 | Scenario | `.xodr` + sidecar → `.xosc` | `roadgen/scenario/` | [Scenarios](scenarios-and-simulation.md) |
 | Simulate | `.xosc` → `SimResult` (timing, memory, errors) | `roadgen/sim/runner.py` | [Scenarios](scenarios-and-simulation.md#running-esmini) |
-| Scene | `RoadGraph` + maps → ground and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
+| Scene | `RoadGraph` + maps → ground, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
 `python -m cli pipeline` runs the stages in this order. Every stage also has
 its own command ([CLI reference](cli-reference.md)).
@@ -131,6 +131,7 @@ roadgen/
     base.py                RoadNetworkGenerator ABC, registry, params loading
     lsystem.py             city growth after Parish & Müller (grid and field goals, maps)
     patterns.py            street pattern fields: grid, radial, organic, contour, suburb
+    hierarchy.py           road hierarchy: strokes ranked by length x betweenness -> lanes
     junction.py            one junction or interchange per seed
     repair.py              fixes edges too short for their junctions
     transforms/            graph → graph passes: drop, culdesac, stagger, roundabout, interchange
@@ -180,6 +181,8 @@ roadgen/
   scene/
     ground.py              ground mesh from the maps, levelled under the roads
     buildings.py           extruded building blocks
+    junctions.py           junction surface no lane covers, drawn in asphalt
+    parcels.py             blocks split into parcels, one building each, heights from population
     osgt.py                OpenSceneGraph ASCII writer
 tests/                     pytest suite; fixtures/ and data/ hold RoadGraph JSONs
 runs/                      example runs (examples.sh, generated README) and inputs
@@ -199,7 +202,7 @@ per successful command
 | `net.png` | `pipeline`, `plot-graph` | Top-down plot: highways orange, avenues red, streets blue, one-way arrows |
 | `net.xodr` | `build-xodr`, `pipeline` | OpenDRIVE 1.6 road network |
 | `net.roadmap.json` | same | Edge → road and node → junction ids, every junction movement ([sidecar](opendrive.md#the-roadmapjson-sidecar)) |
-| `net_hd.png` | `pipeline` (HD maps on), `plot-xodr` | The built lanes coloured by type, with their marks ([plot-xodr](cli-reference.md#plot-map-plot-graph-plot-xodr)) |
+| `net_hd.png` | `pipeline --lane-plot` (HD maps on), `plot-xodr` | The built lanes coloured by type, with their marks ([plot-xodr](cli-reference.md#plot-map-plot-graph-plot-xodr)) |
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
 | `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
 | `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh plus buildings |

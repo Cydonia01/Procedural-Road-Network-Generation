@@ -18,6 +18,7 @@ from roadgen.graph.io import graph_from_dict, graph_to_dict, load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.drape import DrapeParams, drape
 from roadgen.maps.model import LAND, WATER, GridSpec, MapLayer, load_npz
+from roadgen.maps.terrain import TERRAIN_COLORS
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.scene.buildings import (
@@ -270,7 +271,7 @@ def test_ground_mesh_and_osgt(tmp_path):
 
 def test_buildings_stand_on_the_ground_and_not_on_water():
     g = network()
-    params = BuildingParams(corner_radius=0.0)
+    params = BuildingParams(corner_radius=0.0, parcels=False)  # one building per block
     flat_tris, _, flat_n = building_mesh(g, params)
     assert flat_n == len(footprints(g, params)) and min(p[2] for t in flat_tris for p in t) == 0.0
     tris, _, n = building_mesh(g, params, SLOPE)
@@ -322,3 +323,52 @@ def test_cli_ground_needs_an_elevation_map(tmp_path):
     with pytest.raises(SystemExit, match="--ground needs an elevation map"):
         main(["pipeline", "lsystem", *grid_cli(2, 2), *ON_MAPS, "--ground",
               "-o", str(tmp_path / "n")])
+
+
+# --- ground under the roads (stage R4) ------------------------------------------------------------
+
+
+def test_mesh_height_is_exact_on_a_plane():
+    from roadgen.scene.ground import mesh_height
+
+    x, y = np.meshgrid(np.linspace(0, 100, 6), np.linspace(0, 60, 4))
+    z = 1.0 + 0.02 * x - 0.03 * y
+    px, py = np.array([3.0, 55.5, 99.0, 12.0]), np.array([1.0, 30.2, 59.0, 47.0])
+    assert np.allclose(mesh_height(x, y, z, px, py), 1.0 + 0.02 * px - 0.03 * py)
+
+
+def test_terrain_colors_blend_at_a_shore():
+    from roadgen.scene.ground import vertex_colors
+
+    t = terrain(RIVER)
+    x, y = np.meshgrid(np.array([300.0, 482.0, 700.0]), np.array([100.0]))
+    c = vertex_colors(t, x, y, 20.0)
+    land, water = np.array(TERRAIN_COLORS[LAND]), np.array(TERRAIN_COLORS[WATER])
+    assert np.allclose(c[0, 0], land) and np.allclose(c[0, 2], land)
+    assert not np.allclose(c[0, 1], land) and not np.allclose(c[0, 1], water)  # mixed at the shore
+
+
+@pytest.mark.parametrize("cell", [10.0, 20.0, 40.0])
+def test_ground_never_covers_a_road(cell):
+    from roadgen.scene.ground import poke_through
+
+    t = terrain(RIVER)
+    g = drape(network(), VALLEY, t)
+    x, y, z = ground_heights(VALLEY, g, GroundParams(cell_size=cell), t)
+    samples, covered, _ = poke_through(x, y, z, g)
+    assert samples > 1000 and covered == 0
+
+
+def test_land_under_a_bridge_stays_below_the_deck():
+    # A land strip in the middle of the river, as high as the banks.
+    island = (X > 484.0) & (X < 496.0)  # under edge 1, which ends at x = 500
+    t = terrain(RIVER & ~island)
+    valley = elevation(np.where(RIVER & ~island, 0.0, 2.0 + 0.04 * np.abs(X - 510.0)))
+    g = drape(network(), valley, t)
+    p = GroundParams(cell_size=5.0)
+    x, y, z = ground_heights(valley, g, p, t)
+    deck = [g.edges[e] for e in g.edges if g.edges[e].bridges]
+    assert deck
+    strip = (x > 486.0) & (x < 494.0) & (np.abs(y - 100.0) < 3.0)
+    road_z = np.interp(x[strip], *(100.0 + np.array(g.edge_profile(1)[0]), g.edge_profile(1)[1]))
+    assert np.all(z[strip] <= road_z - p.under_bridge + 0.05)

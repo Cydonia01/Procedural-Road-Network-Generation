@@ -171,13 +171,18 @@ def test_streets_stop_where_nobody_lives():
 def test_roads_respect_max_grade():
     ramp = 0.3 * Y  # 30% uphill along y, flat along x
     elev = elevation(ramp)
-    g = grow(MapSet(elevation=elev), max_grade=0.15)
-    assert g.edges and not classes(g, "avenue")  # avenues run along y
+    g = grow(MapSet(elevation=elev), max_grade=0.15, dead_ends=False)  # no bulbs: only grown roads
+
+    def along_y(g: RoadGraph) -> list[int]:
+        return [eid for eid, e in g.edges.items()
+                if abs(g.nodes[e.to_node].y - g.nodes[e.from_node].y) > abs(g.nodes[e.to_node].x - g.nodes[e.from_node].x)]
+
+    assert g.edges and not along_y(g)  # no road climbs the ramp
     for eid, e in g.edges.items():
         a, b = g.nodes[e.from_node], g.nodes[e.to_node]
         grade = abs(elev.sample(b.x, b.y) - elev.sample(a.x, a.y)) / g.edge_length(eid)
         assert grade <= 0.15 + 1e-6
-    assert classes(grow(MapSet(elevation=elev), max_grade=0.0), "avenue")
+    assert along_y(grow(MapSet(elevation=elev), max_grade=0.0))
 
 
 # --- whole networks -------------------------------------------------------------------------------
