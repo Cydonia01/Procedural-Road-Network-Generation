@@ -38,8 +38,8 @@ live in the Copilot instructions and apply here too:
   driving-lane network. Tests that build networks without the pipeline
   pass `HdMapParams(enabled=False)` where they assume driving lanes only.
 - The generated `.xodr` is the product; everything after it (scene,
-  buildings, scenario, `view`) is for presentation only, and `view` is how
-  networks are presented. There is no `simulate` command any more.
+  buildings, `view`) is for presentation only, and `view` is how networks
+  are presented. There are no `simulate` or `scenario` commands any more.
 - lsystem is the only city generator (the `manhattan` generator was removed
   in stage C): grids, pattern fields (`patterns.py`) and graph transforms
   (`roadgen/generators/transforms/`).

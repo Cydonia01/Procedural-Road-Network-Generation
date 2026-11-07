@@ -759,30 +759,6 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_scenario(args: argparse.Namespace) -> int:
-    from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
-
-    xodr = Path(args.input)
-    graph_path = Path(args.graph) if args.graph else xodr.with_suffix(".json")
-    graph = load_json(graph_path) if graph_path.is_file() else None
-    params = ScenarioParams(
-        n_vehicles=args.vehicles,
-        seed=args.seed,
-        sim_duration=args.duration,
-        speed_range=(args.speed_min, args.speed_max),
-        min_spawn_gap=args.min_gap,
-        lights=args.lights,
-    )
-    try:
-        builder = ScenarioBuilder.from_files(xodr, graph)
-        builder.write(params, artifact(args, args.output, xodr.with_suffix(".xosc")),
-                      scenegraph=args.scenegraph)
-    except (FileNotFoundError, ValueError) as e:
-        log.error("%s", e)
-        return 1
-    return 0
-
-
 def add_config_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config", dest="config_file", metavar="FILE",
@@ -802,7 +778,7 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     parser.set_defaults(cfg=cfg)
     sub = parser.add_subparsers(dest="command", required=True)
     margin = cfg["opendrive"]["junction_margin"]
-    scenario, esmini = cfg["scenario"], cfg["esmini"]
+    esmini = cfg["esmini"]
 
     p = sub.add_parser("history", help="list recorded runs in out/<hash>/ (hash, note, command)")
     p.add_argument("--grep", metavar="TEXT", help="only runs whose note or command contains TEXT")
@@ -1000,25 +976,6 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("output", nargs="?", help="output image (default: <input>.png)")
     p.add_argument("--graph", help="RoadGraph JSON to draw on top")
     p.set_defaults(func=cmd_plot_map)
-
-    p = sub.add_parser("scenario", help="generate an OpenSCENARIO file with many vehicles")
-    p.add_argument("input", help=".xodr written by build-xodr/pipeline (needs its .roadmap.json)")
-    p.add_argument("-o", "--output", help="output .xosc (default: <input>.xosc)")
-    p.add_argument("--vehicles", type=int, required=True)
-    p.add_argument("--seed", type=int, default=cfg["seed"], help="(default %(default)s)")
-    p.add_argument("--duration", type=float, default=scenario["sim_duration"],
-                   help="simulated time [s] (default %(default)s)")
-    p.add_argument("--speed-min", type=float, default=scenario["speed_range"][0],
-                   help="[m/s] (default %(default)s)")
-    p.add_argument("--speed-max", type=float, default=scenario["speed_range"][1],
-                   help="[m/s] (default %(default)s)")
-    p.add_argument("--min-gap", type=float, default=scenario["min_spawn_gap"],
-                   help="min spawn gap in a lane [m] (default %(default)s)")
-    p.add_argument("--graph", help="RoadGraph JSON (default: <input>.json if present)")
-    p.add_argument("--lights", action=argparse.BooleanOptionalAction, default=scenario["lights"],
-                   help="switch the traffic lights of the sidecar's signal plans (default %(default)s)")
-    p.add_argument("--scenegraph", help="3D model to show with the roads, e.g. <prefix>_buildings.osgt")
-    p.set_defaults(func=cmd_scenario)
 
     p = sub.add_parser("view", help="open an .xodr in esmini's odrviewer")
     p.add_argument("input", help=".xodr file")

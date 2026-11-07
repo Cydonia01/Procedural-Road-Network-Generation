@@ -77,7 +77,8 @@ kept, blob path removed), D14 (monitoring and `pipeline --simulate` removed;
 Kept: D4 (user), D16 (two entry points, not legacy). D20: moved to
 `plans/2026-10-08-copilot-phase-prompts.md` (user).
 Moved to fixes: D17 (F20). D18 and D19 done 2026-11-08, and `simulate`
-was removed completely (D14). New: D22 (`scenario`, decision needed).
+was removed completely (D14). D22: `scenario` removed too (user, 2026-11-08). Section 1 is closed apart
+from D7, kept as is.
 F1 and F2 (the two failing tests) went with D8 and D14.
 
 Each item below was replaced by a better one, but the old path is still
@@ -123,7 +124,7 @@ reachable by a flag or parameter. Keeping it costs code paths, tests
 |---|---|---|---|---|
 | D19 | `out/migration.json` and pre-2026-10-25 hashes quoted in plans | Keep the plans as history; delete the migration map once no old hash is needed. | P3 | Done |
 | D20 | `copilot_prompts.md` (Phase 1–10 prompts, OSM-era wording) | Move into `plans/` as history, or delete. It still describes the axis rule as current. | P3 | Done |
-| D22 | `scenario` command and `roadgen/scenario/` (NEW, after `simulate` was removed) | Nothing in roadgen runs an `.xosc` any more; `view` presents with odrviewer's own cars. The scenario builder (random cars, the light plans as storyboard events) only serves people who run esmini by hand. **Decision needed:** keep, or remove with its tests and docs. | P2 | |
+| D22 | `scenario` command and `roadgen/scenario/` (NEW, after `simulate` was removed) | Nothing in roadgen runs an `.xosc` any more; `view` presents with odrviewer's own cars. The scenario builder (random cars, the light plans as storyboard events) only serves people who run esmini by hand. **Decision needed:** keep, or remove with its tests and docs. | P2 | Done (removed) |
 | D21 | `plans/scripts/*` one-off scripts that import removed parameters (after D1–D13) | Keep (traceability), but mark them as "ran on commit X" so nobody expects them to run on HEAD. | P3 | Done |
 
 ---

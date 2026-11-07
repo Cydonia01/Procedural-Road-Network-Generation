@@ -9,7 +9,7 @@
 # < command-line flags and --set. All of it ends up in one run config: the
 # config part of out/<hash>/run.yaml, which holds only what differs from here.
 
-seed: 0  # random seed for generate, pipeline, scenario and buildings
+seed: 0  # random seed for generate, pipeline and buildings
 
 generators:
   lsystem:
@@ -368,12 +368,6 @@ network_metrics:  # `metrics --graph`: layout and junction variety of a RoadGrap
   skew_threshold_deg: 15.0  # a junction whose arms are this far off 90 / 180 deg is skewed [deg]
   offset_t_distance: 50.0   # two T junctions this close with stems on opposite sides form an offset T [m]
   straight_tortuosity: 1.01 # roads with length / chord below this count as straight
-
-scenario:
-  sim_duration: 60.0        # simulated time [s]
-  speed_range: [8.0, 13.9]  # [m/s]
-  min_spawn_gap: 10.0       # min spawn gap in a lane [m]
-  lights: true              # switch the network's traffic lights (sidecar signal_plans); scenario --no-lights
 
 buildings:
   setback: 3.0              # sidewalk between road edge and building [m]

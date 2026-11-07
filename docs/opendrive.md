@@ -68,8 +68,7 @@ reference line, and left lanes (positive ids) drive against it.
   run the whole road, 0 m wide where they are absent, and keep their own
   width changes (curb extensions, tapers) inside a section as several
   `<width>` records, so they add no sections. Driving lanes keep one width
-  record per section, which the drive-check and the scenario's lane slots
-  rely on.
+  record per section, which the drive-check relies on.
   - Lanes are linked by **role** across section boundaries: the same kind and
     position in the [lane layout](geometry.md#along-road-profiles). A side lane
     outside a driving lane that ends keeps its links while its id shifts
@@ -94,7 +93,7 @@ reference line, and left lanes (positive ids) drive against it.
   (MUTCD shift taper) to end 5 m before every junction. The median lane runs
   the whole road, 0 m wide where there is no median, so the driving lanes
   keep their ids (−2, −3, … and 2, 3, …) along the road. Anything that
-  follows a lane by id (esmini's drive-check, the scenario's routes) thus
+  follows a lane by id (esmini's drive-check, odrviewer's cars) thus
   stays on the same lane. Junction connections start from the driving lanes.
 - **Left-turn pockets** (HD maps on, `turn_lanes` section;
   [details](#lane-use-pockets-and-banned-turns-hd-maps)): an innermost lane
@@ -103,7 +102,7 @@ reference line, and left lanes (positive ids) drive against it.
   lane width over the last 25 / 40 / 60 m (`pocket_length`, street / avenue
   / highway). Like the median, its position runs the whole road: type
   `none` and 0 m wide elsewhere, so the driving lanes keep their ids.
-- Only **driving** lanes get movements, scenario spawn slots and routes;
+- Only **driving** lanes get movements;
   esmini's own traffic (odrviewer) also keeps to driving-type lanes.
 - **Corner roads** (`junctions.py::corner_roads`). Where two neighbouring arms
   of a junction both have side lanes at the junction, a connecting road with
@@ -430,15 +429,12 @@ plan:
 In the `.xodr`: a top-level `<controller>` per junction with lights, with a
 `<control signalId>` per light (between the roads and the junctions), and a
 `<junction><controller>` naming it. The plans themselves go to the sidecar
-(`signal_plans`); [`scenario`](scenarios-and-simulation.md#traffic-lights)
-turns them into OpenSCENARIO.
+(`signal_plans`): cycle, offset and phases with every light's state.
 
 ## The `.roadmap.json` sidecar
 
 Written next to every `.xodr`. Later stages depend on it:
 
-- the scenario builder uses it to tell normal roads from connecting roads and
-  to plan routes;
 - drive-check uses it to know what to drive.
 
 Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,

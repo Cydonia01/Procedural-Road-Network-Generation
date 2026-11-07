@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "roadgen"
 version = "0.1.0"
-description = "Procedural road network generation for OpenDRIVE / OpenSCENARIO and esmini"
+description = "Procedural road network generation for OpenDRIVE and esmini"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

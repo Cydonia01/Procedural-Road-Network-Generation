@@ -1,9 +1,8 @@
 # Architecture
 
-roadgen generates road networks as training and test environments for
-autonomous driving. A network starts as a generator's abstract graph and ends
-as an esmini-ready OpenDRIVE file, a traffic scenario and, optionally, a 3D
-scene.
+roadgen generates road networks. A network starts as a generator's abstract
+graph and ends as an esmini-ready OpenDRIVE file, the product, and optionally
+a 3D scene (ground and buildings) for viewing it in esmini.
 
 ## Pipeline
 
@@ -17,10 +16,10 @@ flowchart LR
     J --> B["OpenDRIVE<br/>builder"]
     B --> X[(".xodr +<br/>.roadmap.json")]
     X --> V{"validators<br/>drive-check"}
-    X --> S["Scenario<br/>builder"] --> O[(".xosc")] --> E["esmini"]
     J --> SC["Ground +<br/>buildings"] --> OS[(".osgt")]
     MP -.-> SC
-    OS -.SceneGraphFile.-> O
+    X --> E["esmini view<br/>(presentation)"]
+    OS -.-> E
 ```
 
 | Stage | Input → output | Code | Docs |
@@ -34,7 +33,6 @@ flowchart LR
 | Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` (shape from `roadgen/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
 | Validate | `RoadGraph` / `.xodr` → errors | `roadgen/validate/` | [Validation](validation.md) |
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
-| Scenario | `.xodr` + sidecar → `.xosc` | `roadgen/scenario/` | [Scenarios](scenarios-and-simulation.md) |
 | Scene | `RoadGraph` + maps → ground, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
 `python -m cli pipeline` runs the stages in this order. Every stage also has
@@ -76,7 +74,7 @@ Details are in [Heights](heights.md).
    result without them. Each kind has its own registry. An `image`
    generator or `--map-file` can replace any procedural one.
 3. **Every stage runs from the CLI and can be tested on its own.** Stages
-   exchange files (`.json`, `.npz`, `.xodr`, `.roadmap.json`, `.xosc`).
+   exchange files (`.json`, `.npz`, `.xodr`, `.roadmap.json`, `.osgt`).
 4. **Output is deterministic.** The same parameters and seed give
    byte-identical files.
    - Randomness comes only from `numpy.random.default_rng(seed)`, with draws in
@@ -170,8 +168,6 @@ roadgen/
     network.py             layout and junction variety of a RoadGraph
     hdmap.py               HD-map content of an .xodr: lane types, marks, signals, objects, controllers
     sweep.py               build-failure sweep over seeds
-  scenario/
-    xosc_builder.py        vehicle spawning, routes, .xosc writing
   sim/
     esmini.py              locating esmini binaries and libraries
     drive_check.py         driving every movement and lane with esmini's RoadManager
@@ -204,5 +200,4 @@ per successful command
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
 | `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
 | `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh plus buildings |
-| `net.xosc` | `scenario` | OpenSCENARIO traffic scenario |
 | `run.yaml` | every recorded command | The command and every parameter that differs from the defaults |

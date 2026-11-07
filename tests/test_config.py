@@ -21,7 +21,6 @@ from roadgen.opendrive.control import JunctionControlParams
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.lights import TrafficLightParams
 from roadgen.opendrive.marks import RoadMarkParams
-from roadgen.scenario.xosc_builder import ScenarioParams
 from roadgen.scene.buildings import BuildingParams
 from roadgen.scene.ground import GroundParams
 
@@ -29,7 +28,6 @@ from roadgen.scene.ground import GroundParams
 @pytest.mark.parametrize("params_type, keys", [
     (LSystemParams, ("generators", "lsystem")),
     (BuildingParams, ("buildings",)),
-    (ScenarioParams, ("scenario",)),
     (DrapeParams, ("drape",)),
     (GroundParams, ("ground",)),
     (GeometryMetricsParams, ("metrics",)),
@@ -69,8 +67,8 @@ def test_load_config_overrides_and_rejects_unknown_keys(tmp_path):
     assert cfg["generators"]["lsystem"]["lane_width"] == 3.0
     assert cfg["generators"]["lsystem"]["block_size"] == [250.0, 80.0]
 
-    path.write_text(yaml.safe_dump({"scenario": {"speed": 1}}))
-    with pytest.raises(ValueError, match="scenario"):
+    path.write_text(yaml.safe_dump({"buildings": {"speed": 1}}))
+    with pytest.raises(ValueError, match="buildings"):
         load_config(path)
 
 
@@ -84,13 +82,11 @@ def test_param_precedence_defaults_preset_overrides():
 
 
 def test_parser_defaults_follow_config():
-    cfg = merge(load_config(), {"seed": 7, "scenario": {"sim_duration": 12.0}})
-    args = build_parser(cfg).parse_args(["scenario", "x.xodr", "-o", "x.xosc", "--vehicles", "1"])
-    assert (args.seed, args.duration) == (7, 12.0)
-    args = build_parser(cfg).parse_args(
-        ["scenario", "x.xodr", "-o", "x.xosc", "--vehicles", "1", "--duration", "3"]
-    )
-    assert args.duration == 3.0  # flag beats config
+    cfg = merge(load_config(), {"seed": 7, "esmini": {"view_density": 2.0}})
+    assert build_parser(cfg).parse_args(["view", "x.xodr"]).density == 2.0
+    assert build_parser(cfg).parse_args(["ground", "--map-file", "elevation=e.npz"]).seed == 7
+    args = build_parser(cfg).parse_args(["view", "x.xodr", "--density", "3"])
+    assert args.density == 3.0  # flag beats config
 
 
 def test_cli_config_file(tmp_path):

@@ -19,8 +19,7 @@ python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osg
 | `ground` command | `scene.osgt` | The same, from map files and a draped graph ([CLI](cli-reference.md#ground)) |
 
 esmini takes a single SceneGraphFile, so ground and buildings share one
-file. `view --scenegraph` shows it with the roads, and `scenario --scenegraph`
-attaches it to a scenario.
+file. `view --scenegraph` shows it with the roads.
 
 ## Ground
 

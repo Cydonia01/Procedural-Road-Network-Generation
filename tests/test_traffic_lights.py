@@ -1,12 +1,10 @@
-"""Stage B6: traffic lights, controllers, fixed-time plans, lights in OpenSCENARIO."""
+"""Stage B6: traffic lights, controllers, fixed-time plans."""
 
 from __future__ import annotations
 
 import dataclasses
 import json
 import math
-import re
-import subprocess
 
 import pytest
 from lxml import etree
@@ -18,13 +16,10 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.lights import (
     GREEN,
     RED,
-    YELLOW,
     TrafficLightParams,
     phase_groups,
     signal_plan,
-    state_changes,
 )
-from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
 from roadgen.validate.hdmap import check_hdmap, check_hdmap_tree
 
 HD = HdMapParams(enabled=True)
@@ -72,23 +67,6 @@ def test_min_green_stretches_the_cycle():
     assert len(plan.groups) == 5
     assert all(p["duration"] >= 15.0 for p in plan.phases if p["kind"] == "green")
     assert plan.cycle > P.cycle[1]
-
-
-def test_state_changes_follow_the_plan():
-    approaches = _approaches([0, 90, 180, 270])
-    lights = {a.key: [str(k)] for k, a in enumerate(approaches, 1)}
-    plan = signal_plan(9, 3, approaches, {}, lights, P, seed=1)
-    changes = state_changes(plan, 200.0)
-    assert changes[0][0] == 0.0 and set(changes[0][1]) == {"1", "2", "3", "4"}
-    times = [t for t, _ in changes]
-    assert times == sorted(times) and times[-1] <= 200.0
-    state = {}
-    for t, st in changes:
-        state.update(st)
-        assert set(state.values()) <= {RED, YELLOW, GREEN}
-        assert sum(v == GREEN for v in state.values()) in (0, 2)  # one opposite pair at a time
-    seen = {s for _, st in changes for s, v in st.items() if v == GREEN}
-    assert seen == {"1", "2", "3", "4"}
 
 
 def _signal_fixture():
@@ -177,58 +155,6 @@ def test_validator_catches_broken_lights(tmp_path):
     assert any("below min_green" in e for e in errors(edit_plan=short_green))
     assert any("never turn green" in e for e in errors(edit_plan=never_green))
     assert any("no facing light" in e for e in errors(no_light))
-
-
-def test_scenario_writes_controllers_and_light_events(tmp_path):
-    path, _, sidecar = _build(_signal_fixture(), tmp_path)
-    xosc = tmp_path / "net.xosc"
-    ScenarioBuilder.from_files(path).write(ScenarioParams(2, sim_duration=120.0), xosc)
-    root = etree.parse(str(xosc)).getroot()
-    (ctrl,) = root.findall("RoadNetwork/TrafficSignals/TrafficSignalController")
-    plan = sidecar["signal_plans"][0]
-    assert len(ctrl.findall("Phase")) == len(plan["phases"])
-    assert float(ctrl.get("delay")) == pytest.approx((plan["cycle"] - plan["offset"]) % plan["cycle"])
-    actions = root.findall(".//TrafficSignalStateAction")
-    assert {a.get("name") for a in actions} == set(plan["lights"])
-    times = [float(c.get("value")) for c in root.findall(".//Event//SimulationTimeCondition")]
-    assert min(times) == 0.0 and max(times) <= 120.0 and len(times) >= 2 * len(plan["phases"])
-    off = tmp_path / "off.xosc"
-    ScenarioBuilder.from_files(path).write(ScenarioParams(2, lights=False), off)
-    off_root = etree.parse(str(off)).getroot()
-    assert not off_root.findall(".//TrafficSignalStateAction") and not off_root.findall(".//TrafficSignalController")
-
-
-def _esmini_available() -> bool:
-    try:
-        from roadgen.sim.esmini import esmini_binary
-
-        esmini_binary("esmini")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _esmini_available(), reason="esmini not found")
-def test_esmini_switches_the_lights(tmp_path):
-    from roadgen.sim.esmini import esmini_binary
-
-    path, _, sidecar = _build(_signal_fixture(), tmp_path)
-    xosc = tmp_path / "net.xosc"
-    ScenarioBuilder.from_files(path).write(ScenarioParams(0, sim_duration=40.0), xosc)
-    log = tmp_path / "esmini.log"
-    subprocess.run([str(esmini_binary("esmini")), "--osc", str(xosc), "--headless", "--fixed_timestep", "0.1",
-                    "--logfile_path", str(log)], capture_output=True, check=True, timeout=120)
-    text = log.read_text()
-    jid = sidecar["signal_plans"][0]["junction"]
-    fired = re.findall(rf"\[(\d+\.\d+)\] \[info\] j{jid}_(\d+) standbyState -> startTransition -> runningState", text)
-    plan = sidecar["signal_plans"][0]
-    from roadgen.opendrive.lights import SignalPlan
-
-    expected = state_changes(SignalPlan(jid, plan["cycle"], plan["offset"], (), tuple(plan["phases"])), 40.0)
-    assert len(fired) == len(expected) >= 3  # the initial states and at least two changes
-    for (at, k), (want, _) in zip(sorted(fired, key=lambda f: int(f[1])), expected):
-        assert float(at) == pytest.approx(want, abs=0.11)
-    assert "error" not in text.lower()
 
 
 def test_hd_off_has_no_lights(tmp_path):

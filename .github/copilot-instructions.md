@@ -10,8 +10,7 @@ Pipeline:
   Input maps (terrain, elevation, population, style) -> Generator (optional input)
   Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators, drive-check, metrics
                                                        -> presentation: scene (ground, buildings),
-                                                          esmini `view` (odrviewer with its own cars),
-                                                          optional .xosc (scenario builder)
+                                                          esmini `view` (odrviewer with its own cars)
 
 Everything after the .xodr is for presentation only. When a fix would trade the
 .xodr's correctness for looks, the .xodr wins. Scalability (bigger cities) is
@@ -25,7 +24,7 @@ Architecture rules:
 Tech stack:
 - Python 3.10+, type hints everywhere, dataclasses for models.
 - numpy, shapely, networkx, matplotlib, lxml, pytest.
-- `scenariogeneration` package (xodr + xosc modules) for writing OpenDRIVE/OpenSCENARIO XML.
+- `scenariogeneration` package (xodr module) for writing OpenDRIVE XML.
   Wrap it behind our own builder classes so it can be replaced later.
 - esmini binaries (odrviewer, esmini) and its RoadManager library are external
   tools, used to view networks and to drive-check them; their path comes from
@@ -45,7 +44,6 @@ Repo layout:
     validate/     connectivity.py, topology.py, continuity.py, dynamics.py, clearance.py, hdmap.py,
                   schema.py
     metrics/      geometry.py, network.py, hdmap.py, sweep.py
-    scenario/     xosc_builder.py
     sim/          esmini.py, drive_check.py, screenshot.py
     scene/        ground.py, buildings.py, parcels.py, junctions.py, osgt.py
     config.py, history.py, defaults.yaml

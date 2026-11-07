@@ -24,7 +24,7 @@ found, so a green run without esmini doesn't cover the simulator.
 | Heights | `test_align.py`, `test_elevation.py`, `test_banking.py`, `test_grade_separation.py` |
 | OpenDRIVE builder | `test_opendrive.py`, `test_junctions.py`, `test_junction_variety.py`, `test_hdmap_default.py` |
 | Validators and metrics | `test_validators.py`, `test_metrics.py`, `test_network_metrics.py`, `test_hdmap_metrics.py` |
-| Scenario, simulation, scene | `test_scenario.py`, `test_buildings.py` |
+| Scene | `test_buildings.py` |
 
 `test_lsystem_identity.py` guards a project rule: without maps, and with
 new features at their defaults, the existing lsystem presets must grow
@@ -96,7 +96,7 @@ prompts and decisions.
 | 1 | Single road → OpenDRIVE → esmini | `opendrive/builder.py`, `lanes.py`, `validate/` |
 | 2 | Junctions | `opendrive/junctions.py`, `geometry/junction_space.py`, `sim/drive_check.py` |
 | 3–4 | Manhattan grid generator (later folded into lsystem): one-way, multi-lane, ring road, connectivity | `validate/connectivity.py` |
-| 5 | Agent scenarios | `scenario/` |
+| 5 | Agent scenarios (removed in the polish stage) | — |
 | 7 | Pluggable generators and 3D | `generators/base.py`, `lsystem.py`, `scene/` |
 | 8–9 | Input maps and map-driven growth: highways, bridges, terrain, density and grade constraints | `maps/`, `lsystem.py` |
 | Stage A | Geometry accuracy: fitted curves, design speeds, banking, junction planes, clothoid turns, repair, curved growth | `geometry/`, `metrics/`, `maps/align.py`, `generators/repair.py`, `validate/dynamics.py` |
@@ -107,7 +107,7 @@ prompts and decisions.
 
 Phase 6 (a scalability benchmark) was removed
 ([plan](../plans/2026-10-27-slim-benchmark.md)), and the `simulate` command
-and its esmini runner went in the polish stage
+and its esmini runner, then the `scenario` command, went in the polish stage
 ([plan](../plans/2026-11-08-polish-drops.md)): the generated `.xodr` is the
 product, and `view` is the presentation.
 

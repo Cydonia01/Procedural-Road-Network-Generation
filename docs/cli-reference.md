@@ -28,7 +28,6 @@ check or simulation failed.
 | [`metrics`](#metrics) | Geometry and network metrics, build-failure sweep |
 | **Scene and simulation** | |
 | [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps |
-| [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
 | [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
 | **Runs** | |
 | [`history`, `replay`, `run`](#run-folders-history-replay-run) | List, rerun or define recorded runs |
@@ -55,7 +54,7 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
 `maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
-`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scenario`, `buildings`, `esmini`, `pipeline`.
+`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scene`, `ground`, `buildings`, `esmini`.
 
 Parameters are layered. Each layer overrides the one before it:
 
@@ -78,8 +77,8 @@ maps:
   grid: {cell_size: 5.0}
   terrain:
     noise: {water_fraction: 0.25}
-scenario:
-  speed_range: [5.0, 10.0]
+buildings:
+  max_height: 40.0
 ```
 
 A `--params` file holds a generator's (or map generator's) fields directly,
@@ -273,23 +272,6 @@ python -m cli ground [OUT.osgt] --map-file elevation=E.npz [--map-file terrain=T
 A ground mesh from the maps. `--graph` (a draped network) levels it under the
 roads, and `--buildings` adds that network's buildings. `--junction-margin`
 must match the `.xodr`. Parameters go in `ground:`. See [3D scene](scene.md).
-
-## scenario
-
-```bash
-python -m cli scenario NETWORK.xodr --vehicles N [options] [-o OUT.xosc]   # default: <input>.xosc
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--vehicles N` | required | Number of vehicles |
-| `--seed N` | 0 | |
-| `--duration S` | 60 | Simulated time [s] |
-| `--speed-min`, `--speed-max` | 8.0, 13.9 | Target speed range [m/s] |
-| `--min-gap M` | 10 | Minimum gap between vehicles in a lane [m] |
-| `--graph FILE` | `<input>.json` if present | RoadGraph for consistency checks |
-| `--lights`, `--no-lights` | `scenario.lights` (on) | Switch the network's [traffic lights](scenarios-and-simulation.md#traffic-lights) |
-| `--scenegraph FILE` | – | 3D scene `.osgt` shown with the roads |
 
 ## view
 

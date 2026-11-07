@@ -7,8 +7,6 @@ from lxml import etree
 from shapely.geometry import LineString
 
 from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
 from roadgen.scene.buildings import (
     BuildingParams,
     blocks,
@@ -106,21 +104,6 @@ def test_obj_export(tmp_path):
 def test_unsupported_format(tmp_path):
     with pytest.raises(ValueError, match="unsupported"):
         export_buildings(grid(2, 2), tmp_path / "b.fbx")
-
-
-def test_scenario_references_scenegraph(tmp_path):
-    g = grid(3, 3)
-    b = OpenDriveBuilder()
-    b.build(g)
-    b.write(tmp_path / "net" / "g.xodr")
-    export_buildings(g, tmp_path / "net" / "g_buildings.osgt")
-    xosc = ScenarioBuilder.from_files(tmp_path / "net" / "g.xodr").write(
-        ScenarioParams(3, sim_duration=2.0), tmp_path / "scen" / "g.xosc",
-        scenegraph=tmp_path / "net" / "g_buildings.osgt",
-    )
-    root = etree.parse(str(xosc)).getroot()
-    assert root.find("RoadNetwork/SceneGraphFile").get("filepath") == "../net/g_buildings.osgt"
-    assert root.find("RoadNetwork/LogicFile").get("filepath") == "../net/g.xodr"
 
 
 def test_pipeline_scene_draws_the_junction_fill(tmp_path):

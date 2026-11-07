@@ -16,7 +16,6 @@ from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.scenario.xosc_builder import ScenarioBuilder
 from roadgen.validate.continuity import RoadEval, _width, check_continuity
 from roadgen.validate.topology import check_topology
 from tests.grids import GRID_CLI
@@ -225,21 +224,6 @@ def test_loops_have_curb_and_sidewalk_outside_and_curb_inside(tmp_path):
     assert _types(sec, "left") == ["curb"]
     assert "biking" not in _types(sec, "right") and "parking" not in _types(sec, "right")
     assert sidecar["cross_sections"][str(min(ring))] == "urban"
-
-
-def test_scenario_spawns_only_on_driving_lanes(tmp_path):
-    path, root = _build(_highway(), tmp_path)
-    roads = {r.get("id"): RoadEval(r) for r in root.findall("road")}
-
-    def lane_type(road: int, lane: int, s: float) -> str:
-        sec = roads[str(road)]._section(s)
-        return next(x.get("type") for x in sec.iter("lane") if x.get("id") == str(lane))
-
-    sb = ScenarioBuilder.from_files(path)
-    assert sb.slots
-    for sl in sb.slots:  # driving over the whole slot
-        for s in (sl.s0 + 1e-3, 0.5 * (sl.s0 + sl.s1), sl.s1 - 1e-3):
-            assert lane_type(sl.road, sl.lane, s) == "driving"
 
 
 @pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")

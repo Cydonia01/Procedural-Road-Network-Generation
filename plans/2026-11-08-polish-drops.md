@@ -31,6 +31,10 @@ still reachable by a flag after better ones replaced them. Item numbers
 
 (With a screenshot of an esmini view: two-lane roads with edge lines only.)
 
+**2026-11-08, prompt 4** (answer to D22: keep or remove `scenario`)
+
+> remove its tests and doc
+
 ## Decisions
 
 | # | Question | Decision | By |
@@ -49,6 +53,7 @@ still reachable by a flag after better ones replaced them. Item numbers
 | 12 | Simulation (D14, D15) | *(Changed while implementing.)* `simulate` **stays** as a thin presentation command: it is the only way in the repo to watch a scenario (cars, lights switching) in esmini with `--gui`. What goes is everything that served throughput benchmarking: `pipeline --simulate` (and the `pipeline` config section), the runner's memory cap, peak-memory sampling, load-time and real-time measurement (`run_monitored`, psutil), the `.dat` / `.csv` outputs, `test_runner.py` (with the known failing memory test), and `scenario`'s `explicit_routes`. `scenario`, `view` and `drive-check` (which checks the `.xodr`: every movement drivable) stay. | Claude |
 | 13 | `--allow-traps` on the examples (D17) | **Not done.** `hill_town` and `city` still report a few traffic traps (dead ends at water and at the area's edge), on HEAD too, so without the flag those examples fail. It becomes a fix item: the dead-end pass or the trap check must handle them first. | Claude |
 | 14 | `replay` (D16) | **Kept.** `replay HASH` (and its shortcut `python -m cli HASH`) and `run FILE` take different inputs; neither replaced the other. | Claude |
+| 19 | `scenario` (D22, prompt 4) | Removed with its tests and docs: `roadgen/scenario/`, the `scenario` command and config section, `test_scenario.py`, the scenario tests in `test_traffic_lights.py` (light events, esmini switching the lights), `test_side_lanes.py` and `test_buildings.py`, and `lights.state_changes` (only the light events used it). The `.xodr` keeps its controllers and the sidecar its `signal_plans`. `docs/scenarios-and-simulation.md` is deleted; the docs index points at `view` instead. `view --screenshot` keeps its own still `.xosc` (`sim/screenshot.py`). | user |
 | 15 | `copilot_prompts.md` (D20) | Moved to `plans/2026-10-08-copilot-phase-prompts.md` (the date it was added) with a short history note at the top; references updated. | user |
 | 16 | `simulate` (prompt 3) | Removed completely: the command, `roadgen/sim/runner.py`, the `esmini.timestep` / `esmini.camera` defaults and their tests. Presentation is `view` only (odrviewer drives its own cars). `scenario` stays for now; whether it goes too is D22. | user |
 | 17 | D18, D19 (prompt 3) | `metrics --sweep --jobs` defaults to 0 = one per CPU (the sweep never drew plots). `runs/history.json` (the pre-2026-10-25 run history; `out/migration.json` was already gone) is deleted; it stays in git history. | Claude |
