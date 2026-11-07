@@ -126,7 +126,7 @@ reference line, and left lanes (positive ids) drive against it.
     movement drives the turn. They are not movements: drive-check, scenarios
     and esmini's traffic never use them.
   - **esmini loads them slowly:** on `city` they are 5 % of the lane length
-    but 27 s of its 57 s load (`plans/scripts/b9_osi_points.py`).
+    but 27 s of its 57 s load ([stage B plan](../plans/2026-10-29-stage-b-implementation.md)).
     `cross_section.corner_roads: false` (`--no-corner-roads`) leaves them
     out for throughput benchmarks.
 - **Road marks** (without HD maps). A solid centre line, broken lines between

@@ -67,7 +67,9 @@ live in the Copilot instructions and apply here too:
 - When implementation deviates from a plan, update the plan file in the
   same change and note why.
 - Small helper scripts used to produce numbers quoted in a plan go in
-  `plans/scripts/`.
+  `plans/scripts/` while they are still used; the timestamped plan files
+  are the record (quote the numbers there), so scripts nothing uses any
+  more are deleted.
 
 ## Conventions beyond the Copilot file
 
