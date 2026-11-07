@@ -1,5 +1,12 @@
 # Copilot Prompts — Procedural Road Network → OpenDRIVE → esmini
 
+> **History.** The prompts the project was first built from (Phases 0–10,
+> written for GitHub Copilot before the stage plans in this folder). Moved
+> here from the repository root on 2026-11-08 (was `copilot_prompts.md`).
+> Parts are out of date: OpenStreetMap wording, the Manhattan generator, the
+> scalability experiments and the axis rule for lanes were all replaced
+> later; the stage plans record how.
+
 **How to use these prompts**
 - Put **Prompt 0 (Project Context)** in `.github/copilot-instructions.md`. Copilot reads that file automatically on every request.
 - Use Copilot Chat in **Agent mode**. Paste **one phase prompt at a time**.

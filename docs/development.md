@@ -84,7 +84,8 @@ Step-by-step guides:
 
 ## Project history
 
-The project was built in phases from the prompts in `copilot_prompts.md`.
+The project was built in phases from the prompts in
+[`plans/2026-10-08-copilot-phase-prompts.md`](../plans/2026-10-08-copilot-phase-prompts.md).
 Each phase had acceptance checks before the next one started. Later stages
 were planned in `plans/` ([index](../plans/README.md)), each with its
 prompts and decisions.
