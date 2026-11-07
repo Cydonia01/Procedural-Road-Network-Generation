@@ -58,7 +58,6 @@ folder holds:
 | `first.png` | Top-down plot of the graph |
 | `first.xodr` | OpenDRIVE road network |
 | `first.roadmap.json` | Graph id → OpenDRIVE id mapping, every junction movement |
-| `first.xosc` | Traffic scenario (from `--simulate`) |
 | `run.yaml` | The command and its non-default parameters, enough to rerun it |
 
 Every output file is listed in
@@ -69,11 +68,12 @@ are explained in the
 ## Viewing results
 
 `view` opens a network in esmini's `odrviewer` with random cars, and
-`simulate --gui` shows a scenario running:
+`simulate --gui` shows a scenario (written by `scenario`) running:
 
 ```bash
 python -m cli view out/<hash>/first.xodr
-python -m cli simulate out/<hash>/first.xosc --gui
+python -m cli scenario out/<hash>/first.xodr --vehicles 50 -o first.xosc
+python -m cli simulate out/<hash2>/first.xosc --gui
 ```
 
 Both need a display. The Docker `dev` service has none: `odrviewer` exits

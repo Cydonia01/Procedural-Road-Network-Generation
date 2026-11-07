@@ -52,7 +52,6 @@ def spawns(xosc: Path) -> dict[str, tuple[int, int, float]]:
 @pytest.mark.parametrize("kw", [
     {"n_vehicles": -1},
     {"n_vehicles": 1, "sim_duration": 0},
-    {"n_vehicles": 1, "spawn_mode": "teleport"},
     {"n_vehicles": 1, "speed_range": (10.0, 5.0)},
     {"n_vehicles": 1, "min_spawn_gap": -1.0},
 ])
@@ -64,9 +63,8 @@ def test_invalid_params(kw):
 # --- structure ------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("mode", ["random_lanes", "explicit_routes"])
-def test_xosc_parses_with_vehicles_and_stop_trigger(grid, tmp_path, mode):
-    xosc = write(grid, tmp_path / "s.xosc", spawn_mode=mode, sim_duration=42.0)
+def test_xosc_parses_with_vehicles_and_stop_trigger(grid, tmp_path):
+    xosc = write(grid, tmp_path / "s.xosc", sim_duration=42.0)
     root = etree.parse(str(xosc)).getroot()
     assert root.tag == "OpenSCENARIO"
     assert len(root.findall("Entities/ScenarioObject")) == 30
@@ -75,14 +73,12 @@ def test_xosc_parses_with_vehicles_and_stop_trigger(grid, tmp_path, mode):
     assert float(cond.get("value")) == 42.0 and cond.get("rule") == "greaterThan"
     speeds = [float(a.get("value")) for a in root.iter("AbsoluteTargetSpeed")]
     assert len(speeds) == 30 and all(8.0 <= v <= 13.9 for v in speeds)
-    has_routes = root.find(".//AssignRouteAction") is not None
-    assert has_routes == (mode == "explicit_routes")
+    assert root.find(".//AssignRouteAction") is None  # no routes: random choices at junctions
 
 
-@pytest.mark.parametrize("mode", ["random_lanes", "explicit_routes"])
-def test_spawns_on_valid_lanes_with_gaps(grid, tmp_path, mode):
+def test_spawns_on_valid_lanes_with_gaps(grid, tmp_path):
     gap = 15.0
-    xosc = write(grid, tmp_path / "s.xosc", n_vehicles=60, min_spawn_gap=gap, spawn_mode=mode)
+    xosc = write(grid, tmp_path / "s.xosc", n_vehicles=60, min_spawn_gap=gap)
     roads = roads_by_id(grid)
     lanes_used = defaultdict(list)
     for road_id, lane_id, s in spawns(xosc).values():
@@ -99,46 +95,16 @@ def test_spawns_on_valid_lanes_with_gaps(grid, tmp_path, mode):
 
 
 def test_deterministic(grid, tmp_path):
-    a = write(grid, tmp_path / "a.xosc", spawn_mode="explicit_routes")
-    b = write(grid, tmp_path / "b.xosc", spawn_mode="explicit_routes")
-    c = write(grid, tmp_path / "c.xosc", spawn_mode="explicit_routes", seed=2)
+    a = write(grid, tmp_path / "a.xosc")
+    b = write(grid, tmp_path / "b.xosc")
+    c = write(grid, tmp_path / "c.xosc", seed=2)
     assert a.read_bytes() == b.read_bytes()
     assert spawns(a) != spawns(c)
-
-
-def test_explicit_routes_follow_movements(grid, tmp_path):
-    builder = ScenarioBuilder.from_files(grid)
-    plans = builder.plan(ScenarioParams(40, seed=3, spawn_mode="explicit_routes"))
-    allowed = {
-        ((m["from_road"], m["from_lane"]), (m["to_road"], m["to_lane"])) for m in builder.movements
-    }
-    normal = set(builder.edge_to_road.values())
-    for p in plans:
-        assert p.route[0] == (p.road, p.lane)
-        assert len(p.route) >= 2
-        assert all(road in normal for road, _ in p.route)
-        assert all(step in allowed for step in zip(p.route, p.route[1:]))
-
-
-def test_explicit_route_waypoints_in_xosc(grid, tmp_path):
-    xosc = write(grid, tmp_path / "s.xosc", n_vehicles=5, spawn_mode="explicit_routes")
-    root = etree.parse(str(xosc)).getroot()
-    builder = ScenarioBuilder.from_files(grid)
-    plans = builder.plan(ScenarioParams(5, seed=1, sim_duration=20.0, spawn_mode="explicit_routes"))
-    for plan, route in zip(plans, root.iter("Route")):
-        wps = [(int(lp.get("roadId")), int(lp.get("laneId"))) for lp in route.iter("LanePosition")]
-        assert wps == plan.route
 
 
 def test_too_many_vehicles(grid, tmp_path):
     with pytest.raises(ValueError, match="could only place"):
         write(grid, tmp_path / "s.xosc", n_vehicles=5000, min_spawn_gap=50.0)
-
-
-def test_explicit_routes_need_movements(grid, tmp_path):
-    builder = ScenarioBuilder(grid, None, ScenarioBuilder.from_files(grid).edge_to_road, movements=[])
-    with pytest.raises(ValueError, match="movements"):
-        builder.plan(ScenarioParams(3, spawn_mode="explicit_routes"))
 
 
 def test_graph_mapping_checked(grid):
@@ -194,8 +160,7 @@ def _esmini_available() -> bool:
 
 
 @pytest.mark.skipif(not _esmini_available(), reason="esmini not found ($ESMINI_HOME unset)")
-@pytest.mark.parametrize("mode", ["random_lanes", "explicit_routes"])
-def test_tiny_scenario_runs_in_esmini(tmp_path, monkeypatch, mode):
+def test_tiny_scenario_runs_in_esmini(tmp_path, monkeypatch):
     from roadgen.sim.runner import run_esmini
 
     g = small_grid(2, 2)
@@ -203,7 +168,7 @@ def test_tiny_scenario_runs_in_esmini(tmp_path, monkeypatch, mode):
     b.build(g)
     b.write(tmp_path / "net" / "tiny.xodr")
     xosc = ScenarioBuilder.from_files(tmp_path / "net" / "tiny.xodr").write(
-        ScenarioParams(5, seed=1, sim_duration=10.0, spawn_mode=mode), tmp_path / "scen" / "tiny.xosc"
+        ScenarioParams(5, seed=1, sim_duration=10.0), tmp_path / "scen" / "tiny.xosc"
     )
     monkeypatch.chdir(tmp_path)  # the .xodr path inside the .xosc must not depend on cwd
     result = run_esmini(xosc, timeout=120)
@@ -211,5 +176,4 @@ def test_tiny_scenario_runs_in_esmini(tmp_path, monkeypatch, mode):
     assert result.ok, result.errors
     assert result.n_vehicles == 5
     assert result.sim_time == pytest.approx(10.0, abs=0.2)
-    assert result.record_path.is_file() and result.csv_path.is_file()
-    assert result.real_time_factor > 1.0
+    assert result.log_path.is_file()

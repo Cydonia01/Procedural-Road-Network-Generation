@@ -371,7 +371,6 @@ network_metrics:  # `metrics --graph`: layout and junction variety of a RoadGrap
 
 scenario:
   sim_duration: 60.0        # simulated time [s]
-  spawn_mode: random_lanes  # random_lanes | explicit_routes
   speed_range: [8.0, 13.9]  # [m/s]
   min_spawn_gap: 10.0       # min spawn gap in a lane [m]
   lights: true              # switch the network's traffic lights (sidecar signal_plans); scenario --no-lights
@@ -382,7 +381,6 @@ buildings:
   min_height: 12.0          # [m]
   max_height: 60.0          # [m]
   min_area: 150.0           # smaller footprints are dropped [m^2]
-  parcels: true             # split blocks into parcels, one building each (false: one per block)
   frontage: [15.0, 40.0]    # parcel width along the street, min and max [m]
   depth: [20.0, 40.0]       # parcel depth, min and max [m]
   inset: 1.5                # building inset from its parcel's edges (front and side setbacks) [m]
@@ -399,7 +397,3 @@ esmini:
 history:  # every successful CLI run in <dir>/<hash>/ with its outputs (`history`, `replay`, `run`)
   dir: out                  # $ROADGEN_HISTORY overrides; "off" disables (outputs go where -o says)
 
-pipeline:
-  sim_vehicles: 50      # --simulate: number of vehicles
-  sim_duration: 30.0    # --simulate: simulated time [s]
-  sim_timeout: 600.0    # --simulate: wall-clock limit for esmini [s]

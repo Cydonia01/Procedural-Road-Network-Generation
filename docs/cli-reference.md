@@ -174,8 +174,6 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--ground` | Also write `PREFIX_scene.osgt`: ground plus buildings. Needs an elevation map |
 | `--drive-check` | Also run [drive-check](#drive-check), if there are no errors so far |
 | `--lane-plot` | With HD maps, also draw the built lanes to `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr); about 5 s on a city) |
-| `--simulate` | Also write `PREFIX.xosc` and run it headless, if there are no errors so far |
-| `--sim-vehicles N`, `--sim-duration S` | For `--simulate` (default 50 vehicles, 30 s; 600 s timeout) |
 
 ## map
 
@@ -288,7 +286,6 @@ python -m cli scenario NETWORK.xodr --vehicles N [options] [-o OUT.xosc]   # def
 | `--vehicles N` | required | Number of vehicles |
 | `--seed N` | 0 | |
 | `--duration S` | 60 | Simulated time [s] |
-| `--mode` | `random_lanes` | or `explicit_routes` ([spawn modes](scenarios-and-simulation.md#spawn-modes)) |
 | `--speed-min`, `--speed-max` | 8.0, 13.9 | Target speed range [m/s] |
 | `--min-gap M` | 10 | Minimum gap between vehicles in a lane [m] |
 | `--graph FILE` | `<input>.json` if present | RoadGraph for consistency checks |
@@ -306,11 +303,10 @@ python -m cli simulate SCENARIO.xosc [options]
 | `--gui` | off | Show the esmini window (needs a display) |
 | `--camera MODE` | `top` | With `--gui`: `orbit`, `fixed`, `flex`, `flex-orbit`, `top`, `driver` |
 | `--timestep S` | 0.05 | Fixed timestep [s] |
-| `--no-record`, `--no-csv` | – | Skip the `.dat` recording / the `.csv` log |
 
-It logs the vehicles, simulated and wall time, real-time factor, load time,
-peak memory, and esmini errors and warnings. The `.log`, `.dat` and `.csv` go
-into the run's folder (next to the `.xosc` with `--no-history`).
+For looking at a network with traffic ([running esmini](scenarios-and-simulation.md#running-esmini)).
+It logs the vehicles, the simulated time, and esmini's errors and warnings.
+The `.log` goes into the run's folder (next to the `.xosc` with `--no-history`).
 
 ## view
 

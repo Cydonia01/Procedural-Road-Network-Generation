@@ -30,18 +30,12 @@ in the [CLI reference](cli-reference.md#scenario).
 - **Vehicle.** A generic car bounding box (4.5 × 1.8 × 1.5 m). esmini draws
   a box or a default model.
 
-### Spawn modes
+### Junctions
 
-| Mode | Behaviour |
-|------|-----------|
-| `random_lanes` (default) | No route. esmini's default controller follows the lane and picks a random connection at every junction |
-| `explicit_routes` | Each vehicle gets the shortest path (by road length) to a random reachable destination, as waypoints |
-
-esmini's default controller never changes lanes, so routes are planned on the
-**lane-level movement graph** built from the sidecar. Every step is drivable
-from the lane the vehicle is actually in. With `explicit_routes`, vehicles
-spawn only on lanes that run the whole road and have a way on, since esmini's
-route planner reports errors for lanes missing in some lane section.
+Vehicles get no route: esmini's default controller follows the lane and
+picks a random connection at every junction. It never changes lanes, so a
+vehicle reaches a left-turn pocket's movements only if it starts in the
+pocket.
 
 ### Traffic lights
 
@@ -61,62 +55,39 @@ esmini's default controller does not stop vehicles at red lights; they drive
 through. The lights are there for the HD map, for rendering and for
 controllers that read them.
 
-Routes follow the movements, so `explicit_routes` never takes a banned turn
-(HD maps); a vehicle reaches a left-turn pocket's movements only if it
-starts in the pocket, since esmini's default controller does not change
-lanes.
-
 The storyboard stops when simulation time exceeds `--duration`. The output is
 deterministic for a seed, and the header date is fixed. `--scenegraph`
 attaches a [3D scene](scene.md).
 
 ## Running esmini
 
-`roadgen/sim/runner.py`; esmini is located by `roadgen/sim/esmini.py`
-through `ESMINI_HOME`.
+The scenario is for looking at a network with traffic; the generated `.xodr`
+is the product. `roadgen/sim/runner.py` runs esmini on it; esmini is located
+by `roadgen/sim/esmini.py` through `ESMINI_HOME`.
 
 ```bash
-python -m cli simulate out/<hash>/grid10x10.xosc                  # headless
-python -m cli simulate out/<hash>/grid10x10.xosc --gui --camera orbit
+python -m cli simulate out/<hash>/grid10x10.xosc --gui --camera orbit   # in a window
+python -m cli simulate out/<hash>/grid10x10.xosc                        # headless: log only
 ```
 
 `run_esmini()` builds the command line:
 
 - `--headless`, or `--window 60 60 1280 800` with `--gui`;
 - `--fixed_timestep` (0.05 s);
-- `--logfile_path`, plus `--record` (`.dat`) and `--csv_logger` (`.csv`)
-  unless `--no-record` / `--no-csv`;
+- `--logfile_path`;
 - `--enforce_generate_model` when the scenario has a SceneGraphFile, since
   esmini would otherwise not draw the roads.
 
-The outputs `<stem>.log`, `.stdout`, `.dat` and `.csv` go into the run's
-folder.
-
-### Monitoring
-
-`run_monitored()` runs esmini as a child process and:
-
-- **samples peak RSS** of esmini and its children every 20 ms with `psutil`.
-  It also reads the kernel's exact peak from `wait4` rusage, so very short
-  runs are measured too;
-- **enforces a timeout and a memory cap.** The child is killed and the run
-  reported as `killed="timeout"` or `"memory"`. On Linux, the cap is also set
-  as a kernel `RLIMIT_AS` limit. `pipeline --simulate` uses a 600 s timeout;
-- **measures load time.** The child writes to a pseudo-terminal, which makes
-  its output line-buffered. The first simulation-timestamped log line
-  (`[0.050] …`) marks the end of loading.
-
-`simulate` logs all of this. The load time, stepping real-time factor and
-peak memory show what one network and vehicle count cost esmini, which bounds
-how fast it can be used for training.
+The log (`<stem>.log`) and esmini's console output (`.stdout`) go into the
+run's folder. `simulate` reports the vehicles, the simulated time and the
+errors and warnings from the log.
 
 ### Result (`SimResult`)
 
 | Field | Meaning |
 |-------|---------|
-| `wall_time`, `load_time`, `step_wall_time` | Seconds: total, until the first step, stepping only |
-| `sim_time`, `real_time_factor` | Last simulated timestamp, and `sim_time / wall_time` |
-| `n_vehicles`, `peak_rss_mb`, `returncode`, `killed` | As named |
-| `errors`, `warnings` | Parsed from the esmini log |
+| `sim_time` | Last simulated timestamp [s] |
+| `n_vehicles`, `returncode` | As named |
+| `errors`, `warnings` | Parsed from the esmini log; a run over the time limit is an error |
 | `asset_warnings` | Missing 3D model or texture messages: counted but ignored, since they only affect rendering |
-| `ok` | Return code 0, no errors, not killed |
+| `ok` | Return code 0 and no errors |

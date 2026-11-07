@@ -271,9 +271,9 @@ def test_ground_mesh_and_osgt(tmp_path):
 
 def test_buildings_stand_on_the_ground_and_not_on_water():
     g = network()
-    params = BuildingParams(corner_radius=0.0, parcels=False)  # one building per block
+    params = BuildingParams(corner_radius=0.0)
     flat_tris, _, flat_n = building_mesh(g, params)
-    assert flat_n == len(footprints(g, params)) and min(p[2] for t in flat_tris for p in t) == 0.0
+    assert flat_n >= len(footprints(g, params)) and min(p[2] for t in flat_tris for p in t) == 0.0
     tris, _, n = building_mesh(g, params, SLOPE)
     assert n == flat_n
     assert min(p[2] for t in tris for p in t) == pytest.approx(0.05 * 100.0 - FOUNDATION, abs=1.0)

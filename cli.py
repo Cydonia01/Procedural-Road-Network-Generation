@@ -430,8 +430,6 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
         errors += ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
-    if args.simulate and not errors:  # .xosc and esmini's outputs next to the .xodr
-        errors += simulate_network(xodr, args, scenegraph)
     log.info("pipeline %s (%s)", "FAILED" if errors else "passed", prefix)
     return 1 if errors else 0
 
@@ -631,29 +629,6 @@ def cmd_maps(args: argparse.Namespace) -> int:
     return 0
 
 
-def simulate_network(xodr: Path, args: argparse.Namespace, scenegraph: Optional[Path]) -> list[str]:
-    """Short headless esmini run with random traffic; returns errors."""
-    from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
-    from roadgen.sim.runner import run_esmini
-
-    xosc = xodr.with_suffix(".xosc")
-    defaults = {**section(args.cfg, "scenario"), "seed": args.seed, "sim_duration": args.sim_duration}
-    params = ScenarioParams(args.sim_vehicles, **defaults)
-    try:
-        ScenarioBuilder.from_files(xodr).write(params, xosc, scenegraph=scenegraph)
-        result = run_esmini(
-            xosc, timestep=args.cfg["esmini"]["timestep"], record=False, csv=False,
-            timeout=args.cfg["pipeline"]["sim_timeout"],
-        )
-    except (FileNotFoundError, ValueError) as e:
-        return [f"simulate: {e}"]
-    log.info(
-        "esmini: %d vehicles, %.1f s simulated in %.2f s (load %.2f s), %d errors",
-        result.n_vehicles, result.sim_time, result.wall_time, result.load_time or 0.0, len(result.errors),
-    )
-    return [f"esmini: {e}" for e in result.errors]
-
-
 def cmd_generators(args: argparse.Namespace) -> int:
     """List registered generators with their presets and parameters."""
     for name in generator_names():
@@ -792,7 +767,6 @@ def cmd_scenario(args: argparse.Namespace) -> int:
         n_vehicles=args.vehicles,
         seed=args.seed,
         sim_duration=args.duration,
-        spawn_mode=args.mode,
         speed_range=(args.speed_min, args.speed_max),
         min_spawn_gap=args.min_gap,
         lights=args.lights,
@@ -808,6 +782,7 @@ def cmd_scenario(args: argparse.Namespace) -> int:
 
 
 def cmd_simulate(args: argparse.Namespace) -> int:
+    """Run an .xosc in esmini (headless, or in a window with --gui) and report its log."""
     from roadgen.sim.runner import run_esmini
 
     extra = ["--camera_mode", args.camera] if args.gui and args.camera else []
@@ -816,8 +791,6 @@ def cmd_simulate(args: argparse.Namespace) -> int:
             args.input,
             headless=not args.gui,
             timestep=args.timestep,
-            record=not args.no_record,
-            csv=not args.no_csv,
             extra_args=extra,
             out_dir=getattr(args, "run_dir", None),  # default: next to the .xosc
             window=args.cfg["esmini"]["window"],
@@ -829,17 +802,9 @@ def cmd_simulate(args: argparse.Namespace) -> int:
         log.warning("esmini: %s", w)
     for e in result.errors:
         log.error("esmini: %s", e)
-    log.info(
-        "%d vehicles, %.1f s simulated in %.2f s wall (%.1fx real time), "
-        "%d errors, %d warnings (+%d missing-asset warnings ignored); log: %s",
-        result.n_vehicles, result.sim_time, result.wall_time, result.real_time_factor,
-        len(result.errors), len(result.warnings), result.asset_warnings, result.log_path,
-    )
-    if result.load_time is not None:
-        log.info("load %.2f s, stepping %.2f s (%.1fx real time), peak memory %.0f MB",
-                 result.load_time, result.step_wall_time,
-                 result.sim_time / result.step_wall_time if result.step_wall_time else 0.0,
-                 result.peak_rss_mb)
+    log.info("%d vehicles, %.1f s simulated, %d errors, %d warnings (+%d missing-asset warnings "
+             "ignored); log: %s", result.n_vehicles, result.sim_time, len(result.errors),
+             len(result.warnings), result.asset_warnings, result.log_path)
     return 0 if result.ok else 1
 
 
@@ -862,7 +827,7 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     parser.set_defaults(cfg=cfg)
     sub = parser.add_subparsers(dest="command", required=True)
     margin = cfg["opendrive"]["junction_margin"]
-    scenario, esmini, pipeline = cfg["scenario"], cfg["esmini"], cfg["pipeline"]
+    scenario, esmini = cfg["scenario"], cfg["esmini"]
 
     p = sub.add_parser("history", help="list recorded runs in out/<hash>/ (hash, note, command)")
     p.add_argument("--grep", metavar="TEXT", help="only runs whose note or command contains TEXT")
@@ -971,18 +936,12 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g.add_argument("--lane-plot", action="store_true",
                        help="also draw the built lanes to <prefix>_hd.png with HD maps (plot-xodr; ~5 s on a city)")
         g.add_argument("--buildings", action="store_true",
-                       help="also export building boxes per block to <prefix>_buildings.osgt "
-                            "(used as SceneGraphFile by --simulate)")
+                       help="also export buildings (one per parcel) to <prefix>_buildings.osgt "
+                            "(for view --scenegraph)")
         g.add_argument("--ground", action="store_true",
                        help="also export a 3D ground mesh from the maps (with the --buildings on it) "
-                            "to <prefix>_scene.osgt (used as SceneGraphFile by --simulate)")
-        g.add_argument("--simulate", action="store_true",
-                       help="also run a short headless esmini simulation with random traffic")
+                            "to <prefix>_scene.osgt (for view --scenegraph)")
         _add_pipeline_map_args(g, cfg)
-        g.add_argument("--sim-vehicles", type=int, default=pipeline["sim_vehicles"],
-                       help="(default %(default)s)")
-        g.add_argument("--sim-duration", type=float, default=pipeline["sim_duration"],
-                       help="[s] (default %(default)s)")
         g.set_defaults(func=cmd_pipeline)
 
     p = sub.add_parser("align", help="cap bend radii where a fitted curve would leave legal "
@@ -1074,11 +1033,6 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=cfg["seed"], help="(default %(default)s)")
     p.add_argument("--duration", type=float, default=scenario["sim_duration"],
                    help="simulated time [s] (default %(default)s)")
-    p.add_argument(
-        "--mode", choices=("random_lanes", "explicit_routes"), default=scenario["spawn_mode"],
-        help="random junction choices, or shortest-path routes to random destinations "
-             "(default %(default)s)",
-    )
     p.add_argument("--speed-min", type=float, default=scenario["speed_range"][0],
                    help="[m/s] (default %(default)s)")
     p.add_argument("--speed-max", type=float, default=scenario["speed_range"][1],
@@ -1091,7 +1045,7 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("--scenegraph", help="3D model to show with the roads, e.g. <prefix>_buildings.osgt")
     p.set_defaults(func=cmd_scenario)
 
-    p = sub.add_parser("simulate", help="run an .xosc in esmini and summarize the run")
+    p = sub.add_parser("simulate", help="run an .xosc in esmini (to look at it with --gui) and report its log")
     p.add_argument("input", help=".xosc file")
     p.add_argument("--gui", action="store_true", help="show the esmini window")
     p.add_argument(
@@ -1101,8 +1055,6 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     )
     p.add_argument("--timestep", type=float, default=esmini["timestep"],
                    help="fixed timestep [s] (default %(default)s)")
-    p.add_argument("--no-record", action="store_true", help="skip the .dat recording")
-    p.add_argument("--no-csv", action="store_true", help="skip the .csv log")
     p.set_defaults(func=cmd_simulate)
 
     p = sub.add_parser("view", help="open an .xodr in esmini's odrviewer")

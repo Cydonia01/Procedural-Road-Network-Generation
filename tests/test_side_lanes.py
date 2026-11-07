@@ -236,7 +236,7 @@ def test_scenario_spawns_only_on_driving_lanes(tmp_path):
         return next(x.get("type") for x in sec.iter("lane") if x.get("id") == str(lane))
 
     sb = ScenarioBuilder.from_files(path)
-    assert sb.slots and sb.lane_graph.number_of_nodes()
+    assert sb.slots
     for sl in sb.slots:  # driving over the whole slot
         for s in (sl.s0 + 1e-3, 0.5 * (sl.s0 + sl.s1), sl.s1 - 1e-3):
             assert lane_type(sl.road, sl.lane, s) == "driving"
