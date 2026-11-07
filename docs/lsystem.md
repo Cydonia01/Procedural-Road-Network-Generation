@@ -271,7 +271,9 @@ a clean-up of dead ends after growth (Parish & Müller's "extend" rule).
      segment passes the local constraints and the maps (water, vegetation,
      grade).
   2. **Trim** a road shorter than `dead_end_trim` block lengths back to its
-     junction.
+     junction. A road cut off by the edge of the area (it cannot go on
+     `min_segment_length` without leaving it) goes back to its junction
+     whatever its length, in suburbs too, unless `boundary: ring` collects it.
   3. **Bulb**: every dead end left gets a [cul-de-sac bulb](#connectivity-and-cul-de-sacs)
      where one fits (all classes but highways).
 - The map presets `city`, `hill_town` and `highway_corridor` turn on the

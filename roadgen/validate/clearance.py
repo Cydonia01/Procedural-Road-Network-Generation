@@ -103,6 +103,8 @@ def check_body_overlaps_tree(tree: etree._ElementTree, min_area: float = 1.0,
         if parts:
             bodies.append(unary_union(parts))
             owners.append(road)
+    if len(bodies) < 2:  # nothing can overlap (and shapely rejects an empty query)
+        return []
     links = [_neighbours(r) for r in owners]
     evals: dict[int, RoadEval] = {}
     index = STRtree(bodies)

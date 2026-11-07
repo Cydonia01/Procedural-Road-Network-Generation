@@ -140,7 +140,9 @@ def test_district_angles_turn_the_grid():
     style = zones(shares=(1, 0, 0, 0, 0), angle_spread_deg=0.0)
     angle = style.metadata["sites"][0][3]
     g = LSystemGenerator().generate(field_params(), 1, MapSet(style=style))
-    turns = {round(math.degrees(g.edge_heading(e)) % 90.0, 1) for e in g.edges}
+    bulbs = {n for b in g.metadata.get("culdesacs") or [] for n in b["loop"]}
+    turns = {round(math.degrees(g.edge_heading(e.id)) % 90.0, 1) for e in g.edges.values()
+             if e.from_node not in bulbs and e.to_node not in bulbs}  # bulb loops are round
     expected = round((90.0 + angle) % 90.0, 1)
     assert turns == {expected}
 

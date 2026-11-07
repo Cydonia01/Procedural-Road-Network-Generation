@@ -935,7 +935,10 @@ class _Growth:
         (straight on first, else the nearest node within 60 deg of straight on); if
         none is allowed, a stub shorter than dead_end_trim block lengths is cut back to
         its junction. The rest get turning circles later (cul-de-sac bulbs). Suburb
-        streets (meant to end) stay as they are."""
+        streets (meant to end) stay as they are. A road cut off by the edge of the area
+        (it cannot go on min_segment_length without leaving it) is not a dead end by
+        design: it is extended, else cut back to its junction whatever its length, also
+        in suburbs (boundary "ring" collects these ends instead)."""
         p = self.p
         block = max(p.block_size)
         reach, trim = p.dead_end_reach * block, p.dead_end_trim * min(p.block_size)
@@ -948,14 +951,16 @@ class _Growth:
             if axis == HIGHWAY or eid in self.fixed:
                 continue
             pt = self.pos[node]
-            if self.field is not None and self.field.weights(pt)[SUBURB] >= 0.5:
-                continue
             v = self._vec(self._other(eid, node), node)
             d = (v[0] / math.hypot(*v), v[1] / math.hypot(*v))
+            ahead = (pt[0] + d[0] * p.min_segment_length, pt[1] + d[1] * p.min_segment_length)
+            at_edge = p.boundary != "ring" and not self.inside(ahead)
+            if not at_edge and self.field is not None and self.field.weights(pt)[SUBURB] >= 0.5:
+                continue
             if self.extend(node, d, axis, line, reach):
                 counts["extended"] += 1
-            elif self.trim_stub(node, trim):
-                counts["trimmed"] += 1
+            elif self.trim_stub(node, math.inf if at_edge else trim):
+                counts["trimmed at the edge" if at_edge else "trimmed"] += 1
         log.debug("lsystem: dead ends %s", dict(counts))
 
     def extend(self, node: int, d: Point, axis: int, line: int, reach: float) -> bool:
