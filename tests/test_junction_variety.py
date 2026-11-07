@@ -77,12 +77,11 @@ def test_shapes_build_and_drive(name, tmp_path):
 # --- lane splits ------------------------------------------------------------------------
 
 
-def test_straight_pairs_policies():
-    assert straight_pairs([-1], [1, 2], "none") == [(-1, 1)]
-    assert straight_pairs([-1], [1, 2], "outer") == [(-1, 1), (-1, 2)]
-    assert straight_pairs([-1, -2], [1, 2, 3], "outer") == [(-1, 1), (-2, 2), (-2, 3)]
-    assert straight_pairs([-1, -2], [1, 2, 3], "inner") == [(-1, 1), (-1, 2), (-2, 3)]
-    assert straight_pairs([-1, -2], [1], "outer") == [(-1, 1)]  # merges are fill_pair's
+def test_straight_pairs_split():
+    assert straight_pairs([-1], [1, 2]) == [(-1, 1)]  # ramp nodes: no split
+    assert straight_pairs([-1], [1, 2], split=True) == [(-1, 1), (-1, 2)]
+    assert straight_pairs([-1, -2], [1, 2, 3], split=True) == [(-1, 1), (-2, 2), (-2, 3)]
+    assert straight_pairs([-1, -2], [1], split=True) == [(-1, 1)]  # merges are fill_pair's
 
 
 def end(edge: int, hdg: float, right: int, left: int) -> RoadEnd:
@@ -95,10 +94,9 @@ def test_lane_split_feeds_every_outgoing_lane():
     # A 1+1 street continues straight as a 2+2 avenue at a T junction.
     ends = [end(1, 0.0, 1, 1), RoadEnd(2, 2, "start", Pose(0, 0, 0.0), 2, 2, 3.5, 13.9),
             end(3, math.pi / 2, 1, 1)]
-    for policy, fed in (("outer", {-1, -2}), ("none", {-1})):
-        moves = plan_movements(1, ends, 10, JunctionParams(lane_split=policy))
-        straight = {m.to_lane for m in moves if m.from_edge == 1 and m.to_edge == 2}
-        assert straight == fed
+    moves = plan_movements(1, ends, 10, JunctionParams())
+    straight = {m.to_lane for m in moves if m.from_edge == 1 and m.to_edge == 2}
+    assert straight == {-1, -2}
 
 
 def test_lane_split_builds_and_drives(tmp_path):
@@ -106,11 +104,6 @@ def test_lane_split_builds_and_drives(tmp_path):
     b = build_and_check(g, tmp_path)
     from_street = [m for m in b.movements if m.from_edge == 1 and m.to_edge == 2]
     assert len(from_street) == 2 and len({m.from_lane for m in from_street}) == 1
-
-
-def test_invalid_lane_split():
-    with pytest.raises(ValueError):
-        JunctionParams(lane_split="middle")
 
 
 # --- staggered crossings ----------------------------------------------------------------

@@ -352,13 +352,6 @@ def test_roundabout_entries_yield_with_sign_215(tmp_path):
     assert (float(marking.get("lineLength")), float(marking.get("spaceLength"))) == (0.5, 0.25)
 
 
-def test_priorities_off_keeps_them_in_the_sidecar_only(tmp_path):
-    hd = dataclasses.replace(HD, control=dataclasses.replace(HD.control, priorities=False))
-    _, root, sidecar = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, hd)
-    assert not root.findall("junction/priority")
-    assert any(c["yields_to"] for c in sidecar["movement_control"].values())
-
-
 def test_validator_catches_broken_furniture(tmp_path):
     path, _, sidecar = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path)
 

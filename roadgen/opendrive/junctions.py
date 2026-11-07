@@ -10,11 +10,9 @@ Conventions (right-hand traffic):
   lane -1 is centered on it with a laneOffset of half the lane width.
 
 Lane splits (stage C5, JunctionArt stage 3): where a straight exit has more
-lanes than its entry, one incoming lane feeds two (or more) outgoing lanes,
-so every outgoing lane is fed: the outermost incoming lane by default
-(JunctionParams.lane_split "outer"), or the innermost ("inner"), with the
-other lanes shifted outward so that no two connecting roads of one approach
-cross. "none" leaves the extra lanes to the turns from other approaches.
+lanes than its entry, the outermost incoming lane also feeds the extra
+outgoing lanes, so every outgoing lane is fed (not at ramp nodes, where the
+extra lanes are left to the merging ramp).
 
 Ramp nodes (stage C9, Node.kind "ramp"): where interchange ramps leave or
 join a highway, a junction keeps only straight-through movements, right
@@ -83,21 +81,16 @@ from roadgen.geometry.vertical import JunctionPlane, path_profiles
 Contact = Literal["start", "end"]
 MovementKind = Literal["straight", "left", "right", "uturn"]
 PathKind = Literal["line", "clothoid", "poly3"]
-LaneSplit = Literal["outer", "inner", "none"]
-LANE_SPLITS = ("outer", "inner", "none")
 
 _D = {k: v for k, v in section(DEFAULTS, "opendrive").items() if k != "junction_margin"}
 
 
 @dataclass(frozen=True)
 class JunctionParams:
-    lane_split: LaneSplit = _D["lane_split"]  # which incoming lane feeds a straight exit's extra lanes
     u_turns: bool = _D["u_turns"]  # U-turn movements where the road is wide enough
     u_turn_radius: float = _D["u_turn_radius"]  # [m] tightest U-turn: lane centres 2x this apart
 
     def __post_init__(self) -> None:
-        if self.lane_split not in LANE_SPLITS:
-            raise ValueError(f"unknown lane_split {self.lane_split!r}; available: {LANE_SPLITS}")
         if self.u_turn_radius <= 0:
             raise ValueError("u_turn_radius must be positive")
 
@@ -215,30 +208,25 @@ def classify_exits(turns: dict[int, float], threshold: float = STRAIGHT_THRESHOL
 
 
 def lane_pairs(kind: MovementKind, in_lanes: list[int], out_lanes: list[int],
-               lane_split: LaneSplit = "none") -> list[tuple[int, int]]:
+               split: bool = False) -> list[tuple[int, int]]:
     if not in_lanes or not out_lanes:
         return []
     if kind == "straight":
-        return straight_pairs(in_lanes, out_lanes, lane_split)
+        return straight_pairs(in_lanes, out_lanes, split)
     if kind == "right":
         return [(in_lanes[-1], out_lanes[-1])]
     return [(in_lanes[0], out_lanes[0])]
 
 
 def straight_pairs(in_lanes: list[int], out_lanes: list[int],
-                   lane_split: LaneSplit = "none") -> list[tuple[int, int]]:
+                   split: bool = False) -> list[tuple[int, int]]:
     """Lane-to-lane straight movements, centre outward. With more outgoing than
-    incoming lanes, lane_split says which incoming lane also feeds the extra
-    ones: "outer" the outermost (it fans out to the outer lanes), "inner" the
-    innermost (the others shift outward); "none" leaves them unfed."""
+    incoming lanes and split, the outermost incoming lane also feeds the extra
+    ones (it fans out to the outer lanes); without split they stay unfed."""
     pairs = list(zip(in_lanes, out_lanes))
-    extra = len(out_lanes) - len(in_lanes)
-    if extra <= 0 or lane_split == "none":
+    if not split or len(out_lanes) <= len(in_lanes):
         return pairs
-    if lane_split == "outer":
-        return pairs + [(in_lanes[-1], lane) for lane in out_lanes[len(in_lanes):]]
-    inner = [(in_lanes[0], lane) for lane in out_lanes[:extra + 1]]
-    return inner + list(zip(in_lanes[1:], out_lanes[extra + 1:]))
+    return pairs + [(in_lanes[-1], lane) for lane in out_lanes[len(in_lanes):]]
 
 
 def continuation_pairs(in_lanes: list[int], out_lanes: list[int]) -> list[tuple[int, int]]:
@@ -334,7 +322,7 @@ def plan_movements(junction_id: int, ends: list[RoadEnd], first_road_id: int,
                 pairs[idx] = lane_pairs(kind, pocket, b.out_lanes)
             else:
                 # No lane split at a ramp node: the acceleration lane is the entry ramp's.
-                pairs[idx] = lane_pairs(kind, through, b.out_lanes, "none" if ramp else params.lane_split)
+                pairs[idx] = lane_pairs(kind, through, b.out_lanes, split=not ramp)
             if kind not in options:
                 options[kind], option_end[kind] = b.out_lanes, idx
 

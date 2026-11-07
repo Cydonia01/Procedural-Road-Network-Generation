@@ -182,18 +182,16 @@ def test_junction_surface_fill(tmp_path):
 
 
 def test_junction_fill_in_the_scene_instead_of_patches(tmp_path):
-    import dataclasses
 
     from shapely.geometry import Polygon
 
     from roadgen.scene.junctions import junction_fill_mesh, read_fills
 
-    with_patches, root, sidecar, b = _build(_cross(), tmp_path)
-    fills = read_fills(with_patches.with_suffix(".roadmap.json"))
+    # The .xodr always has the patch objects; the scene draws the same areas under them.
+    path, root, sidecar, b = _build(_cross(), tmp_path)
+    fills = read_fills(path.with_suffix(".roadmap.json"))
     assert len(fills) == b.fills == len(sidecar["junction_fills"]) > 0
-    path, root, _, b2 = _build(_cross(), tmp_path, dataclasses.replace(HD, junction_patches=False), "nopatch")
-    assert not [o for o in root.iter("object") if o.get("type") == "patch"] and b2.fills == 0
-    assert read_fills(path.with_suffix(".roadmap.json")) == fills  # the areas are listed all the same
+    assert len([o for o in root.iter("object") if o.get("type") == "patch"]) == len(fills)
     assert check_hdmap(path) == []
     mesh = junction_fill_mesh(fills)
     area = sum(Polygon([p[:2] for p in t]).area for t in mesh.tris)

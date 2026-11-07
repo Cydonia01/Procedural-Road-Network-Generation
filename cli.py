@@ -384,9 +384,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     prefix = artifact(args, args.output, default_output(args))
     graph, layers = generate_graph(args)
     hd = hd_params(args)
+    # The scene draws the junction surface no lane covers too (under the .xodr's patch objects).
     fill = (args.ground or args.buildings) and section(args.cfg, "scene")["junction_fill"]
-    if fill:  # the scene draws the junction surface no lane covers; no patch objects (R5)
-        hd = dataclasses.replace(hd, junction_patches=False)
     if hd.enabled:
         graph = annotate_graph(graph, layers, args.cfg)
     graph = fit_graph(graph, args.cfg, hd, args.junction_margin)

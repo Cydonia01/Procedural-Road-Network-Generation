@@ -151,7 +151,8 @@ def test_pipeline_scene_draws_the_junction_fill(tmp_path):
     prefix = tmp_path / "net"
     assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), "--buildings", "-o", str(prefix)]) == 0
     root = etree.parse(str(prefix.with_suffix(".xodr"))).getroot()
-    assert not [o for o in root.iter("object") if o.get("type") == "patch"]  # drawn by the scene instead
+    # The .xodr keeps its patch objects; the scene draws the same surface under them.
+    assert [o for o in root.iter("object") if o.get("type") == "patch"]
     text = (tmp_path / "net_buildings.osgt").read_text()
     assert 'Name "buildings"' in text and 'Name "junction_fill"' in text
 

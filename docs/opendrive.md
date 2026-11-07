@@ -135,8 +135,8 @@ reference line, and left lanes (positive ids) drive against it.
 
 ### Road marks (HD maps)
 
-`marks.py`, with HD maps on (`road_marks` section; `road_marks.enabled:
-false` keeps the plain marks above). The German catalogue (StVO, RMS), all
+`marks.py`, with HD maps on (`road_marks` section; with `--no-hd` the plain
+marks above). The German catalogue (StVO, RMS), all
 white. A lane's mark lies on its outer border, the centre lane's is the
 centre line. Marks change along a lane with the road class of the edge under
 it and near junctions, as several `<roadMark sOffset>` records in one lane
@@ -186,11 +186,8 @@ movement**:
 2. **Standard lane rules:**
    - **straight:** lane to lane, from the centre outward. Where the exit has
      more lanes than the entry, a **lane split** feeds the extra lanes
-     (JunctionArt), set by `lane_split`:
-     - `outer` (default): the outermost incoming lane fans out to them;
-     - `inner`: the innermost lane splits and the others shift outward, so no
-       two connecting roads of one approach cross;
-     - `none`: the extra lanes are left to the turns of other approaches.
+     (JunctionArt): the outermost incoming lane fans out to them. At ramp
+     nodes the extra lanes are left to the merging ramp.
    - **right turns:** rightmost lane into rightmost lane;
    - **left turns:** leftmost lane into leftmost lane.
 3. **No lane may dead-end.** `fill_pair` gives every incoming lane still
@@ -247,9 +244,10 @@ movement**:
   `<object type="patch">` with a closed asphalt outline, on the junction's
   first connecting road, its corners on the junction plane. esmini draws it
   in a flat colour; it is an object, not a lane, for CARLA and OSI. The areas
-  are also listed in the sidecar (`junction_fills`, world coordinates).
-  `hdmap.junction_patches: false` leaves the objects out; the pipeline does
-  so when it writes a scene, which [draws the surface](scene.md#junction-surface).
+  are also listed in the sidecar (`junction_fills`, world coordinates). The
+  objects are always written, so the `.xodr` is the same with or without a
+  scene; a scene [draws the same surface](scene.md#junction-surface) under
+  them.
 
 **U-turns** are created only with `u_turns: true`.
 
@@ -329,8 +327,8 @@ priority: the priority road's movement over a minor road's; between equal
 approaches the oncoming straight or right turn over a left turn (or
 U-turn), and otherwise the movement coming from the right. At lights only
 the permissive left turns get one; the phase plans separate the rest. Each
-pair is a `<junction><priority high low>` record (`priorities: false`
-keeps them in the sidecar only).
+pair is a `<junction><priority high low>` record, and is listed in the
+sidecar too.
 
 **Signs and lines** (`furniture.py`), per approach with incoming lanes:
 

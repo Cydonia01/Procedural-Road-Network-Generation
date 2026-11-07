@@ -61,10 +61,11 @@ covers (corners no turn follows, slivers between turning lanes) are found by
 the builder and listed in the sidecar as `junction_fills`. When the pipeline
 writes a scene (`--ground` or `--buildings`), it draws them as flat triangles
 on the junction plane, `fill_below` (0.02 m) under the lanes, in
-`asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`), and
-the `.xodr` gets no `<object type="patch">` for them: esmini draws such
-outlines in a plain, lighter grey. Without a scene the patches are written
-([OpenDRIVE](opendrive.md)). `junction_fill: false` keeps the patches.
+`asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`).
+`junction_fill: false` leaves them out of the scene. The `.xodr` always
+describes the same areas as `<object type="patch">` ([OpenDRIVE](opendrive.md)),
+which esmini draws on top in a plain, lighter grey; making that look match
+is open.
 
 ## Buildings
 

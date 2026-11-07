@@ -620,8 +620,7 @@ class OpenDriveBuilder:
                 sig.set("country", "OpenDRIVE")
             if sig.get("value") is not None:  # ... and writes 50.0, which misses esmini's de_274-50
                 sig.set("value", str(int(float(sig.get("value")))))
-        if self.hd.control.priorities:
-            self._add_priorities(root)
+        self._add_priorities(root)
         self._add_controllers(root)
         if self.hd.enabled:
             self._fill_junction_surfaces(root)
@@ -690,8 +689,8 @@ class OpenDriveBuilder:
         hole in it larger than FILL_MIN_AREA inside the junction's hull becomes a flat
         <object type="patch"> with a closed asphalt outline, on the junction's first
         connecting road, its corners on the junction plane. The areas are kept in
-        fill_areas (world coordinates) for the sidecar; with junction_patches off (a scene
-        mesh draws them, R5) no patch is written."""
+        fill_areas (world coordinates) for the sidecar, from which the scene draws the
+        same surface (roadgen.scene.junctions)."""
         from shapely.geometry import Point, Polygon
         from shapely.ops import unary_union
 
@@ -756,8 +755,6 @@ class OpenDriveBuilder:
                 self.fill_areas.append((int(jid), [
                     (x, y, float(plane.height(x, y)) if plane is not None else 0.0)
                     for x, y in list(hole.exterior.coords)[:-1]]))
-            if not self.hd.junction_patches:
-                continue
             host = roads[members[0]]
             x0, y0, h0 = RoadEval(host).reference(0.0)
             objects = host.find("objects")

@@ -269,14 +269,11 @@ ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground
 
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]
-  lane_split: outer     # a straight exit with more lanes than its entry: outer | inner | none (which lane feeds them)
   u_turns: false        # U-turn movements at junctions where the road is wide enough
   u_turn_radius: 5.0    # tightest U-turn [m]: in and out lane centres at least 2x this apart
 
 hdmap:  # HD-map content of the built roads (stage B): side lanes, ...; pipeline / build-xodr --hd, --no-hd
-  enabled: true             # off (--no-hd): the builder writes exactly what it wrote before stage B
-  junction_patches: true    # junction surface no lane covers as <object type="patch">; the pipeline
-                            # leaves them out when it writes a scene, which draws that surface instead
+  enabled: true             # off (--no-hd): the plain driving-lane network (plain marks, no signals or objects)
 
 cross_section:  # lanes beside the driving lanes, per profile and road class (roadgen/geometry/cross_section.py)
   profile: urban            # profile of edges without Edge.cross_section: urban | suburban | rural | none
@@ -302,7 +299,6 @@ cross_section:  # lanes beside the driving lanes, per profile and road class (ro
                             # out (esmini loads them slowly: for throughput benchmarks, B9)
 
 road_marks:  # HD road marks, German catalogue (StVO, RMS), all white (roadgen/opendrive/marks.py)
-  enabled: true             # with HD maps on; false keeps the marks of before stage B
   width: [0.12, 0.12, 0.15] # line width, street, avenue, highway [m]
   broken_town: [3.0, 6.0]   # broken line (Z 340) on streets and avenues: line, gap [m]
   broken_highway: [6.0, 12.0]  # ... on highways [m]
@@ -324,7 +320,6 @@ junction_control:  # junction control and right of way, German rules (roadgen/op
   stop_skew_deg: 30.0       # ... or a minor arm is this far off 90 deg [deg]
   stop_share: 0.15          # ... or at this random share of priority junctions (seeded)
   right_before_left: true   # street-only junctions without signs
-  priorities: true          # write <junction><priority> records (false: only the sidecar has them)
   ban_left_highway: true    # right-in / right-out where a minor road meets an at-grade highway with 2+2 lanes or more
   ban_share: 0.05           # one approach loses its left turns at this seeded share of junctions with lights or priority
   zebras: dense_avenues     # zebras at junctions without lights: dense_avenues (avenue arms in the urban profile) | all | none
