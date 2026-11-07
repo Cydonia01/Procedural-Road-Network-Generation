@@ -286,7 +286,7 @@ def test_buildings_stand_on_the_ground_and_not_on_water():
 
 def test_cli_pipeline_drapes_and_writes_the_scene(tmp_path):
     prefix = tmp_path / "city"
-    assert main(["pipeline", "lsystem", "--preset", "grid_organic", "--allow-traps", "--maps",
+    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--allow-traps", "--maps",
                  "--seed", "3", "--ground", "--buildings", "-o", str(prefix)]) == 0
     g = load_json(prefix.with_suffix(".json"))
     assert g.has_elevation and "drape" in g.metadata
@@ -295,7 +295,7 @@ def test_cli_pipeline_drapes_and_writes_the_scene(tmp_path):
     assert 'Name "ground"' in text and 'Name "buildings"' in text
 
     flat = tmp_path / "flat"
-    assert main(["pipeline", "lsystem", "--preset", "grid_organic", "--allow-traps", "--maps",
+    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--allow-traps", "--maps",
                  "--seed", "3", "--flat", "-o", str(flat)]) == 0
     assert not load_json(flat.with_suffix(".json")).has_elevation
 

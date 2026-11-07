@@ -7,8 +7,8 @@ junction trims and [heights](heights.md) as the builder, so nothing covers or
 floats over a road.
 
 ```bash
-python -m cli pipeline lsystem --preset grid --set extent=[1000,320] --buildings --simulate -o city
-python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings --simulate -o hills
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[1000,320] --buildings -o city
+python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings -o hills
 python -m cli simulate out/<hash>/hills.xosc --gui
 python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osgt
 ```

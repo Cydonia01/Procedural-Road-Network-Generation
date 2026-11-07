@@ -21,6 +21,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.plot import lane_polygons
 from roadgen.scene.buildings import BuildingParams, footprints
 from roadgen.scene.ground import GroundParams, ground_heights
+from tests.grids import GRID_CLI
 from tests.test_elevation import GRID, elevation, terrain
 from tests.test_grade_separation import crossing_graph
 
@@ -133,7 +134,7 @@ def test_overpass_spans_the_lower_roads_side_lanes():
 
 def test_buildings_stand_behind_the_sidewalks(tmp_path):
     out = tmp_path / "grid"
-    assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps", "--hd",
+    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps", "--hd",
                  "-o", str(out)]) == 0
     g = load_json(out.with_suffix(".json"))
     root = etree.parse(str(out.with_suffix(".xodr"))).getroot()

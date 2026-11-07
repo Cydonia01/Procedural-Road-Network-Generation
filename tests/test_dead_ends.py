@@ -62,7 +62,7 @@ def test_long_road_stays_for_a_bulb():
     assert len(g.adj[end]) == 1
 
 
-@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("grid_organic", 2), ("skewed_grid", 0)])
+@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("city", 2), ("skewed_grid", 0)])
 def test_presets_have_few_dead_ends_and_no_traps(preset, seed):
     g = LSystemGenerator().generate(LSystemParams.preset(preset), seed)
     m = network_metrics(g)

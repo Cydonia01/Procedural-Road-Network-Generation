@@ -6,22 +6,25 @@ from itertools import combinations
 import pytest
 from shapely.geometry import LineString
 
-from cli import main
+from cli import fit_graph, main
+from roadgen.config import DEFAULTS
 from roadgen.generators.base import build_params
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
+from tests.grids import GRID, GRID_CLI
 
 
 def road_set(g: RoadGraph) -> set:
-    """Roads as unordered coordinate pairs + class (ids and directions ignored)."""
+    """Roads as unordered coordinate pairs (ids, directions and classes ignored)."""
     out = set()
     for e in g.edges.values():
         a, b = g.nodes[e.from_node], g.nodes[e.to_node]
         pa, pb = (round(a.x, 3), round(a.y, 3)), (round(b.x, 3), round(b.y, 3))
-        out.add((min(pa, pb), max(pa, pb), e.road_class))
+        out.add((min(pa, pb), max(pa, pb)))
     return out
 
 
@@ -42,15 +45,15 @@ def lattice(a: int, s: int, dx: float, dy: float, rotation_deg: float = 0.0,
         x, y = i * dx, j * dy
         return round(origin[0] + c * x - sn * y, 3), round(origin[1] + sn * x + c * y, 3)
 
-    out = {(min(pt(i, j), pt(i, j + 1)), max(pt(i, j), pt(i, j + 1)), "avenue")
+    out = {(min(pt(i, j), pt(i, j + 1)), max(pt(i, j), pt(i, j + 1)))
            for i in range(a) for j in range(s - 1)}
-    out |= {(min(pt(i, j), pt(i + 1, j)), max(pt(i, j), pt(i + 1, j)), "street")
+    out |= {(min(pt(i, j), pt(i + 1, j)), max(pt(i, j), pt(i + 1, j)))
             for i in range(a - 1) for j in range(s)}
     return out
 
 
-def test_grid_preset_is_a_10x10_lattice():
-    g = grow(preset="grid", hierarchy="axis")  # axis: classes by grid axis, as lattice() labels them
+def test_grid_is_a_10x10_lattice():
+    g = grow(**GRID)
     assert road_set(g) == lattice(10, 10, 250.0, 80.0)
     assert g.validate() == []
 
@@ -63,7 +66,7 @@ def test_grid_goal_grows_the_lattice_from_any_lattice_start(start):
     sx = round(start[0] * (a - 1)) / (a - 1)
     sy = round(start[1] * (s - 1)) / (s - 1)
     g = grow(extent=((a - 1) * dx, (s - 1) * dy), block_size=(dx, dy), start=(sx, sy),
-             rotation_deg=20.0, origin=(100.0, -50.0), hierarchy="axis")
+             rotation_deg=20.0, origin=(100.0, -50.0))
     assert road_set(g) == lattice(a, s, dx, dy, 20.0, (100.0, -50.0))
 
 
@@ -72,7 +75,7 @@ def test_grid_goal_grows_the_lattice_from_any_lattice_start(start):
 
 @pytest.mark.parametrize("seed", range(5))
 def test_organic_growth_respects_constraints(seed):
-    p = LSystemParams.preset("grid_organic", dead_ends=False)  # bulbs are added after growth
+    p = LSystemParams.preset("city", dead_ends=False)  # bulbs are added after growth
     g = LSystemGenerator().generate(p, seed)
     assert g.validate() == []
     assert len(g.edges) > 50
@@ -106,14 +109,14 @@ def test_organic_growth_respects_constraints(seed):
 
 
 def test_deterministic():
-    p = LSystemParams.preset("grid_organic")
+    p = LSystemParams.preset("city")
     a, b = LSystemGenerator().generate(p, 7), LSystemGenerator().generate(p, 7)
     assert a == b
     assert road_set(a) != road_set(LSystemGenerator().generate(p, 8))
 
 
 def test_max_segments_budget():
-    g = grow(preset="grid", max_segments=25, dead_ends=False)
+    g = grow(**GRID, max_segments=25, dead_ends=False)
     assert len(g.edges) == 25
 
 
@@ -125,7 +128,6 @@ def test_max_segments_budget():
     {"snap_radius": 200.0},
     {"min_angle_deg": 95.0},
     {"major_lanes": (0, 0)},
-    {"hierarchy": "rank"},
     {"arterial_share": 0.6, "collector_share": 0.6},
 ])
 def test_invalid_params(kw):
@@ -143,7 +145,8 @@ def test_unknown_preset():
 
 @pytest.mark.parametrize("seed", range(3))
 def test_organic_network_builds_valid_xodr(tmp_path, seed):
-    g = grow(seed, preset="grid_organic")
+    # As the pipeline does: the HD fit repairs edges too short once side lanes widen the trims.
+    g = fit_graph(grow(seed, preset="city", extent=(1500.0, 900.0)), DEFAULTS, HdMapParams(), 2.0)
     b = OpenDriveBuilder()
     b.build(g)
     xodr = tmp_path / "o.xodr"
@@ -155,22 +158,5 @@ def test_organic_network_builds_valid_xodr(tmp_path, seed):
 def test_acceptance_pipeline_lsystem_grid(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
     monkeypatch.chdir(tmp_path)  # default output goes to ./out
-    assert main(["pipeline", "lsystem", "--preset", "grid"]) == 0
-    assert (tmp_path / "out" / "lsystem_grid_s0.xodr").is_file()
-
-
-def _esmini_available() -> bool:
-    from roadgen.sim.esmini import esmini_binary
-
-    try:
-        esmini_binary("esmini")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _esmini_available(), reason="esmini not found")
-def test_acceptance_runs_in_esmini(tmp_path, monkeypatch):
-    monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
-    assert main(["pipeline", "lsystem", "--preset", "grid", "--simulate", "--sim-vehicles", "20",
-                 "--sim-duration", "10", "-o", str(tmp_path / "g")]) == 0
+    assert main(["pipeline", "lsystem", *GRID_CLI]) == 0
+    assert (tmp_path / "out" / "lsystem_s0.xodr").is_file()

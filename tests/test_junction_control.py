@@ -26,6 +26,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import Movement
 from roadgen.validate.hdmap import check_hdmap, check_hdmap_tree
 from roadgen.validate.topology import check_topology
+from tests.grids import GRID_CLI
 
 P = JunctionControlParams()
 
@@ -403,7 +404,7 @@ def test_annotate_command_and_pipeline(tmp_path):
     from cli import main
 
     out = tmp_path / "city"
-    assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--maps", "--hd", "--allow-traps",
+    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--maps", "--hd", "--allow-traps",
                  "-o", str(out)]) == 0
     graph = json.loads(out.with_suffix(".json").read_text())
     assert "annotate" in graph["metadata"]

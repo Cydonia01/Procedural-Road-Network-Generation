@@ -44,9 +44,9 @@ pytest                                     # is everything installed?
 python -m cli generators                   # generators, presets and parameters
 
 # Generate a small grid, plot it, build the .xodr, validate it,
-# drive every junction movement and run a short simulation
-python -m cli pipeline lsystem --preset grid --set extent=[750,240] --seed 1 \
-    --drive-check --simulate -o first
+# and drive every junction movement
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 \
+    --drive-check -o first
 ```
 
 A passing run ends with `INFO roadgen.cli: run <hash>: out/<hash>`. That

@@ -45,16 +45,10 @@ it), growth follows the paper more closely:
 
 Without maps the result is exactly the plain grid growth.
 
-Curved streets (curve_mode, stage A9; "none" keeps the straight grid
-exactly): with "drift" a street's heading follows a mean-reverting random
-walk around its grid axis (curve_drift_deg per segment, curve_reversion back
-towards the axis), each change limited so that the bend between two blocks
-can still get its design radius; branches leave perpendicular to the
-street. "contour" also pulls the heading towards the terrain's contour
-direction, weighted by the slope (Parish & Mueller's San Francisco rule).
-Afterwards every street between two nodes gets a bow node so that its
-length / chord reaches curve_tortuosity (Aliaga et al.), where the bow
-stays legal. The OpenDRIVE builder turns the resulting bend nodes into
+Curved streets come from the field goal's organic, contour and suburb
+patterns. With curve_tortuosity > 1 every street between two nodes gets a
+bow node so that its length / chord reaches it (Aliaga et al.), where the
+bow stays legal. The OpenDRIVE builder turns the resulting bend nodes into
 smooth curves.
 
 Manhattan-style grids (stage C1): oneway_pattern "alternating" makes
@@ -62,8 +56,7 @@ every second avenue (or street) one-way the other way, all lanes forward,
 like Manhattan's avenues; each grid line keeps its index from where it
 started. boundary "ring" extends every road that reaches the edge of the
 area straight out to a two-way ring road around it, so one-way grids stay
-strongly connected. edge_drop_prob drops street segments at random where
-every travel direction stays possible (roadgen.generators.transforms.drop).
+strongly connected.
 
 Connectivity and cul-de-sacs (stage C4): with detour_ratio k > 0, a
 connector pass after growth joins nearby nodes whose trip over the network
@@ -95,8 +88,7 @@ widens highway stretches by a lane each way (lane adds and drops).
 Road hierarchy (stage R1, roadgen.generators.hierarchy): after growth, edges
 are joined into strokes (continuous roads) ranked by length x betweenness;
 the best become arterials (major_*), then collectors (collector_*), the rest
-local roads (minor_*), with lanes constant along each stroke. hierarchy
-"axis" keeps the rule before stage R: roads along local y major, along x minor.
+local roads (minor_*), with lanes constant along each stroke.
 
 Everything is computed in the area's local frame (lower-left corner at 0,
 x along the grid's first axis) and rotated/translated to world coordinates
@@ -133,7 +125,6 @@ from roadgen.generators.patterns import (
 )
 from roadgen.generators.repair import repair_short_edges
 from roadgen.generators.transforms.culdesac import add_culdesacs
-from roadgen.generators.transforms.drop import drop_edges
 from roadgen.generators.transforms.interchange import (
     STRAIGHT_TOL,
     InterchangeParams,
@@ -160,17 +151,12 @@ log = logging.getLogger(__name__)
 
 GlobalGoal = Literal["grid", "field"]
 GLOBAL_GOALS = ("grid", "field")
-CurveMode = Literal["none", "drift", "contour"]
-CURVE_MODES = ("none", "drift", "contour")
 OnewayPattern = Literal["none", "alternating"]
 ONEWAY_PATTERNS = ("none", "alternating")
 BoundaryMode = Literal["none", "ring"]
 BOUNDARY_MODES = ("none", "ring")
-Hierarchy = Literal["strokes", "axis"]
-HIERARCHIES = ("strokes", "axis")
 HighwayCrossings = Literal["at_grade", "separated"]
 HIGHWAY_CROSSINGS = ("at_grade", "separated")
-SALT_DROP = 0x6472  # random sub-stream of edge_drop_prob, independent of the growth's
 SALT_FIELD = 0x6669  # random sub-stream of the pattern field's noise
 SALT_CONNECT = 0x636f  # random sub-stream of the connector pass
 SALT_CULDESAC = 0x6375  # random sub-stream of the cul-de-sac bulbs
@@ -180,8 +166,6 @@ SALT_LANES = 0x6c61  # random sub-stream of the highway lane changes
 ZONE_MARGIN = 40.0  # [m] a reserved interchange zone reaches this far beyond its ramps
 CONNECT_CANDIDATES = 6  # nearest nodes a connector tries from each node
 UNDER_MIN_ANGLE_DEG = 30.0  # streets pass under highways at least this far from parallel
-CONTOUR_SLOPE = 0.08  # terrain grade at which contour streets follow the contour fully
-CONTOUR_MAX_DEG = 60.0  # contour streets turn at most this far from their grid axis
 GRADIENT_STEP = 10.0  # [m] finite-difference step for the terrain gradient
 Point = tuple[float, float]
 EPS = 1e-9
@@ -210,10 +194,8 @@ class LSystemParams:
     min_segment_length: float = _D["min_segment_length"]  # [m]
     min_angle_deg: float = _D["min_angle_deg"]  # min angle between roads meeting at a node
     max_segments: int = _D["max_segments"]
-    # Road hierarchy (stage R1): "strokes" ranks continuous roads by length x betweenness
-    # into arterials (major_*), collectors (collector_*) and local roads (minor_*);
-    # "axis" is the rule before stage R: roads along local y major, along local x minor.
-    hierarchy: Hierarchy = _D["hierarchy"]
+    # Road hierarchy: continuous roads (strokes) ranked by length x betweenness become
+    # arterials (major_*), collectors (collector_*) and local roads (minor_*).
     major_lanes: tuple[int, int] = _D["major_lanes"]
     minor_lanes: tuple[int, int] = _D["minor_lanes"]
     collector_lanes: tuple[int, int] = _D["collector_lanes"]
@@ -252,17 +234,12 @@ class LSystemParams:
     avoid_vegetation: bool = _D["avoid_vegetation"]  # streets stay out of parks / forest
     prune_factor: float = _D["prune_factor"]  # min share of a street left after pruning
     max_grade: float = _D["max_grade"]  # max rise / run along a road; 0 = no limit
-    # --- curved streets (stage A9); "none" keeps the straight grid exactly -------------
-    curve_mode: CurveMode = _D["curve_mode"]  # none | drift | contour
-    curve_drift_deg: float = _D["curve_drift_deg"]  # std dev of a street's heading change per segment
-    curve_reversion: float = _D["curve_reversion"]  # pull back towards the grid axis per segment, 0-1
     curve_tortuosity: float = _D["curve_tortuosity"]  # target length / chord of a street; 1 = straight
     # --- Manhattan-style grids (stage C1) ------------------------------------------------
     oneway_pattern: tuple[OnewayPattern, OnewayPattern] = _D["oneway_pattern"]  # (avenues, streets)
     boundary: BoundaryMode = _D["boundary"]  # none | ring: two-way ring road around the area
     ring_offset: float = _D["ring_offset"]  # [m] from the edge of the area to the ring
     ring_lanes: tuple[int, int] = _D["ring_lanes"]
-    edge_drop_prob: float = _D["edge_drop_prob"]  # chance to drop each street segment
     # --- pattern fields (stage C2), global_goal "field" ---------------------------------
     pattern_weights: tuple[float, ...] = _D["pattern_weights"]  # grid, radial, organic, contour, suburb
     grid_angle_deg: float = _D["grid_angle_deg"]  # grid pattern's turn from the local axes
@@ -279,6 +256,7 @@ class LSystemParams:
     suburb_branch_prob: float = _D["suburb_branch_prob"]  # branch_prob in suburbs
     suburb_end_prob: float = _D["suburb_end_prob"]  # chance a suburb street ends at a node
     style_blend_width: float = _D["style_blend_width"]  # [m] neighbouring districts blend over this
+    style_map: bool = _D["style_map"]  # read a style map on input maps (else pattern_weights everywhere)
     # --- connectivity and cul-de-sacs (stage C4) -----------------------------------------
     detour_ratio: float = _D["detour_ratio"]  # connect where the network trip > this x straight; 0 = off
     connect_radius: float = _D["connect_radius"]  # [m] how far a connector may reach
@@ -321,8 +299,6 @@ class LSystemParams:
             raise ValueError("snap_radius must be well below the block size")
         if not 0.0 < self.min_angle_deg < 90.0:
             raise ValueError("min_angle_deg must be in (0, 90)")
-        if self.hierarchy not in HIERARCHIES:
-            raise ValueError(f"unknown hierarchy {self.hierarchy!r}; available: {HIERARCHIES}")
         if not 0.0 <= self.arterial_share <= 1.0 or not 0.0 <= self.collector_share <= 1.0 \
                 or self.arterial_share + self.collector_share > 1.0:
             raise ValueError("need arterial_share, collector_share in [0, 1] with sum <= 1")
@@ -347,16 +323,14 @@ class LSystemParams:
         if min(self.max_bridge_length, self.highway_min_density, self.street_min_density,
                self.max_grade) < 0:
             raise ValueError("max_bridge_length, densities and max_grade must be >= 0")
-        if self.curve_mode not in CURVE_MODES:
-            raise ValueError(f"unknown curve_mode {self.curve_mode!r}; available: {CURVE_MODES}")
-        if self.curve_drift_deg < 0 or not 0.0 <= self.curve_reversion <= 1.0 or self.curve_tortuosity < 1.0:
-            raise ValueError("need curve_drift_deg >= 0, curve_reversion in [0, 1], curve_tortuosity >= 1")
+        if self.curve_tortuosity < 1.0:
+            raise ValueError("need curve_tortuosity >= 1")
         if len(self.oneway_pattern) != 2 or any(o not in ONEWAY_PATTERNS for o in self.oneway_pattern):
             raise ValueError(f"oneway_pattern needs two of {ONEWAY_PATTERNS}")
         if self.boundary not in BOUNDARY_MODES:
             raise ValueError(f"unknown boundary {self.boundary!r}; available: {BOUNDARY_MODES}")
-        if self.ring_offset <= 0 or not 0.0 <= self.edge_drop_prob <= 1.0:
-            raise ValueError("need ring_offset > 0 and edge_drop_prob in [0, 1]")
+        if self.ring_offset <= 0:
+            raise ValueError("need ring_offset > 0")
         if len(self.pattern_weights) != len(PATTERNS) or min(self.pattern_weights) < 0 \
                 or sum(self.pattern_weights) <= 0:
             raise ValueError(f"pattern_weights needs {len(PATTERNS)} weights >= 0 ({', '.join(PATTERNS)}), "
@@ -391,9 +365,6 @@ class LSystemParams:
             raise ValueError("need roundabout_prob in [0, 1] and positive roundabout radii and speed")
         if not 0.0 <= self.stagger_prob <= 1.0 or self.stagger_offset <= 0 or not 3 <= self.max_degree <= 8:
             raise ValueError("need stagger_prob in [0, 1], stagger_offset > 0, max_degree in [3, 8]")
-        if self.global_goal == "field" and self.curve_mode != "none":
-            raise ValueError("curve_mode is for the grid goal; the field goal bends streets with "
-                             "organic, contour and suburb patterns")
 
     @classmethod
     def preset(cls, name: str, **overrides: Any) -> "LSystemParams":
@@ -403,14 +374,9 @@ class LSystemParams:
 
 
 PRESETS: dict[str, dict[str, Any]] = {
-    # Exactly a 10 x 10 grid: grown from a corner, branching everywhere.
-    "grid": {
-        "extent": (2250.0, 720.0),
-        "start": (0.0, 0.0),
-        "block_size": (250.0, 80.0),
-        "branch_prob": 1.0,
-    },
-    # Midtown Manhattan: 10 avenues ~250 m apart and 30 streets ~80 m apart, rotated
+    # One preset per street pattern (grid, radial, organic, contour, suburb, skew) plus the
+    # cities for input maps. Any other layout is a parameter set (--set / --params).
+    # Midtown Manhattan (grid): 10 avenues ~250 m apart and 30 streets ~80 m apart, rotated
     # ~29 deg from true north, both alternating one-way (avenues 4 lanes, streets 2)
     # at the 25 mph city limit, with a two-way ring road around the grid.
     "manhattan_like": {
@@ -426,25 +392,14 @@ PRESETS: dict[str, dict[str, Any]] = {
         "oneway_pattern": ("alternating", "alternating"),
         "boundary": "ring",
     },
-    # Organic town: streets drift smoothly away from the grid and bow between junctions.
-    "organic_curved": {
-        "extent": (1500.0, 900.0),
-        "start": (0.5, 0.5),
-        "block_size": (200.0, 120.0),
-        "branch_prob": 0.75,
-        "length_jitter": 0.12,
-        "snap_radius": 20.0,
-        "min_segment_length": 50.0,
-        "min_angle_deg": 50.0,
-        "curve_mode": "drift",
-        "curve_drift_deg": 8.0,
-        "curve_reversion": 0.25,
-        "curve_tortuosity": 1.03,
-    },
-    # Hill town for input maps: streets follow the terrain's contours (San Francisco rule).
+    # Hill town for input maps (contour, field goal): streets follow the terrain's contours
+    # (San Francisco rule) everywhere, not in style-map districts.
     "hill_town": {
+        "global_goal": "field",
+        "style_map": False,
+        "pattern_weights": (0.0, 0.0, 0.0, 1.0, 0.0),
         "extent": (3000.0, 2400.0),
-        "detour_ratio": 2.5,  # connector pass (stage R3)
+        "detour_ratio": 2.5,
         "start": (0.5, 0.5),
         "block_size": (180.0, 100.0),
         "branch_prob": 0.85,
@@ -452,24 +407,9 @@ PRESETS: dict[str, dict[str, Any]] = {
         "snap_radius": 20.0,
         "min_segment_length": 40.0,
         "min_angle_deg": 40.0,
-        "curve_mode": "contour",
-        "curve_drift_deg": 4.0,
-        "curve_reversion": 0.5,
         "curve_tortuosity": 1.02,
     },
-    # Same goal with noise: wobbly headings and lengths, some missing branches.
-    "grid_organic": {
-        "extent": (1500.0, 900.0),
-        "start": (0.5, 0.5),
-        "block_size": (200.0, 100.0),
-        "branch_prob": 0.85,
-        "angle_jitter_deg": 6.0,
-        "length_jitter": 0.12,
-        "snap_radius": 20.0,
-        "min_segment_length": 50.0,
-        "min_angle_deg": 60.0,
-    },
-    # Paris (field goal): a star of avenues and rings around the centre, a grid outside.
+    # Paris (radial, field goal): a star of avenues and rings around the centre, a grid outside.
     "paris": {
         "global_goal": "field",
         "extent": (2000.0, 1600.0),
@@ -516,7 +456,7 @@ PRESETS: dict[str, dict[str, Any]] = {
     # between population centres, noisy grid streets in between.
     "city": {
         "extent": (3000.0, 2400.0),
-        "detour_ratio": 2.5,  # connector pass (stage R3)
+        "detour_ratio": 2.5,
         "start": (0.5, 0.5),
         "block_size": (180.0, 100.0),
         "branch_prob": 0.9,
@@ -544,7 +484,7 @@ PRESETS: dict[str, dict[str, Any]] = {
     # interchanges, with lane adds and drops; streets as in city.
     "highway_corridor": {
         "extent": (3000.0, 2400.0),
-        "detour_ratio": 2.5,  # connector pass (stage R3)
+        "detour_ratio": 2.5,
         "start": (0.5, 0.5),
         "block_size": (180.0, 100.0),
         "branch_prob": 0.9,
@@ -714,7 +654,7 @@ class _Growth:
         self.fixed: set[int] = set()  # edges no later pass may change (crossing avenues)
         # Body half widths while growing [m]: classes come later (hierarchy), so every road
         # but a highway or the ring is assumed a local road with side lanes.
-        street = sum(p.minor_lanes if p.hierarchy == "strokes" else max(p.major_lanes, p.minor_lanes, key=sum))
+        street = sum(p.minor_lanes)
         self.half_width = {STREET_X: street * p.lane_width / 2 + p.side_width,
                            HIGHWAY: sum(p.highway_lanes) * p.lane_width / 2 + HIGHWAY_SIDE,
                            RING: sum(p.ring_lanes) * p.lane_width / 2 + p.side_width}
@@ -815,9 +755,6 @@ class _Growth:
         else:
             base = 0.0 if prop.axis == STREET_X else math.pi / 2
             heading = base + (0.0 if prop.sign > 0 else math.pi)
-            if p.curve_mode != "none":
-                prop.heading = self.curve_deviation(prop, a, heading)
-                heading += prop.heading
             length = p.block_size[prop.axis]
         if p.angle_jitter_deg:
             heading += math.radians(rng.normal(0.0, p.angle_jitter_deg))
@@ -850,23 +787,6 @@ class _Growth:
             heading = prop.heading + max(-limit, min(limit, _wrap(heading - prop.heading)))
         prop.heading = heading
         return heading, length
-
-    def curve_deviation(self, prop: _Proposal, a: Point, axis_heading: float) -> float:
-        """Curved streets: the next segment's deviation [rad] from its grid axis.
-
-        An Ornstein-Uhlenbeck step on the deviation: pulled back by
-        curve_reversion towards a target (0, or for "contour" the terrain's
-        contour direction weighted by its slope), plus curve_drift_deg noise,
-        the change limited so that the bend can still get its design radius.
-        """
-        p = self.p
-        target = 0.0
-        if p.curve_mode == "contour":
-            target = self.maps.contour_deviation(a, axis_heading)
-        new = prop.heading + p.curve_reversion * (target - prop.heading)
-        new += math.radians(self.rng.normal(0.0, p.curve_drift_deg))
-        limit = self.max_turn[prop.axis]
-        return prop.heading + max(-limit, min(limit, new - prop.heading))
 
     def bow_streets(self) -> None:
         """Curved streets: give every street between two nodes a bow node, so that its
@@ -1385,7 +1305,7 @@ class _Growth:
             self.connect_pass()
         if self.p.dead_ends:
             self.dead_end_pass()
-        if (self.p.curve_mode != "none" or self.field is not None) and self.p.curve_tortuosity > 1.0:
+        if self.p.curve_tortuosity > 1.0:
             self.bow_streets()
         if self.p.boundary == "ring":
             self.ring_road()
@@ -1577,20 +1497,6 @@ class _MapView:
             land = self.sample(self.terrain, x, y) != WATER
             grade = grade[land[1:] & land[:-1]]
         return bool(grade.size) and float(grade.max()) > limit
-
-    def contour_deviation(self, a: Point, axis_heading: float) -> float:
-        """Deviation [rad] from axis_heading towards the terrain contour at a, weighted
-        by the slope (0 on flat ground, the full contour from CONTOUR_SLOPE on)."""
-        if self.elevation is None:
-            return 0.0
-        gx, gy = self.gradient(a)
-        slope = math.hypot(gx, gy)
-        if slope < 1e-9:
-            return 0.0
-        contour = math.atan2(gx, -gy)  # perpendicular to the gradient
-        dev = (contour - axis_heading + math.pi / 2) % math.pi - math.pi / 2  # either way along it
-        dev = max(-math.radians(CONTOUR_MAX_DEG), min(math.radians(CONTOUR_MAX_DEG), dev))
-        return dev * min(1.0, slope / CONTOUR_SLOPE)
 
     def gradient(self, a: Point) -> tuple[float, float]:
         """Terrain gradient (dz/dx, dz/dy) at a, by central differences (needs elevation)."""
@@ -1847,8 +1753,9 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
     uses_maps = True
 
     def generate(self, params: LSystemParams, seed: int, maps: Optional[MapSet] = None) -> RoadGraph:
-        if maps is not None and maps.style is not None and params.global_goal != "field":
-            # Only the field goal reads a style map; without it the grid grows as if it weren't there.
+        if maps is not None and maps.style is not None and not self._reads_style(params):
+            # Only the field goal reads a style map (unless style_map is off); without it the
+            # roads grow as if it weren't there.
             maps = MapSet(**{k: v for k, v in maps.layers().items() if k != "style"})
             maps = maps if maps.layers() else None
         if maps is not None:
@@ -1865,9 +1772,6 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
             self._interchanges(graph, growth)
         if params.highway_lane_change_prob:
             self._lane_changes(graph, np.random.default_rng([seed, SALT_LANES]), params.highway_lane_change_prob)
-        if params.edge_drop_prob and drop_edges(graph, params.edge_drop_prob,
-                                                np.random.default_rng([seed, SALT_DROP])):
-            assign_node_kinds(graph)
         if params.stagger_prob and stagger_crossings(graph, params.stagger_prob, params.stagger_offset,
                                                      np.random.default_rng([seed, SALT_STAGGER]),
                                                      params.min_angle_deg):
@@ -1921,10 +1825,14 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
             e.lanes_forward += 1
             e.lanes_backward += 1
 
+    @staticmethod
+    def _reads_style(params: LSystemParams) -> bool:
+        return params.global_goal == "field" and params.style_map
+
     def map_kinds(self, params: LSystemParams) -> tuple[str, ...]:
-        """The style map only matters to the field goal."""
+        """The style map only matters to the field goal (with style_map on)."""
         kinds = ("terrain", "elevation", "population")
-        return (*kinds, "style") if params.global_goal == "field" else kinds
+        return (*kinds, "style") if self._reads_style(params) else kinds
 
     def map_bounds(self, params: LSystemParams) -> Bounds:
         """World bounding box of the (rotated) growth area."""
@@ -1956,15 +1864,14 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
             x, y = g.pos[old]
             graph.add_node(Node(new_id[old], float(p.origin[0] + c * x - s * y),
                                 float(p.origin[1] + s * x + c * y)))
+        # Grid roads get placeholders, two-way unless a one-way pattern says otherwise;
+        # the stroke hierarchy sets their class, lanes and speed.
         roads = {
             HIGHWAY: ("highway", p.highway_lanes, p.highway_speed),
-            AVENUE_Y: ("avenue", p.major_lanes, p.major_speed),
-            STREET_X: ("street", p.minor_lanes, p.minor_speed),
+            AVENUE_Y: ("street", (1, 1), p.minor_speed),
+            STREET_X: ("street", (1, 1), p.minor_speed),
             RING: ("avenue", p.ring_lanes, p.major_speed),
         }
-        strokes = p.hierarchy == "strokes"
-        if strokes:  # placeholders, two-way unless a one-way pattern says otherwise
-            roads[AVENUE_Y] = roads[STREET_X] = ("street", (1, 1), p.minor_speed)
         pattern = {AVENUE_Y: p.oneway_pattern[0], STREET_X: p.oneway_pattern[1]}
         bridges, tunnels, fixed = [], [], []
         for k, (old, (a, b, axis)) in enumerate(sorted(g.edges.items()), 1):
@@ -1983,8 +1890,7 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                 bridges.append(k)
             if old in g.tunnels:
                 tunnels.append(k)
-        if strokes:
-            assign_hierarchy(graph, hierarchy_params(p), seed, fixed)
+        assign_hierarchy(graph, hierarchy_params(p), seed, fixed)
         if maps is not None:
             graph.metadata["bridges"] = bridges  # edge ids of highways crossing water
             if tunnels:

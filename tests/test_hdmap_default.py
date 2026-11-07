@@ -10,6 +10,7 @@ from roadgen.graph.io import load_json
 from roadgen.opendrive import HDMAP_VERSION
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
+from tests.grids import GRID_CLI
 
 FIXTURE = "tests/fixtures/4way_avenue_x_street.json"
 
@@ -32,7 +33,7 @@ def test_sidecar_has_hdmap_version_only_with_hd_maps(tmp_path):
 
 def test_pipeline_default_is_hd_and_no_hd_is_plain(tmp_path):
     on, off = tmp_path / "on", tmp_path / "off"
-    base = ["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps"]
+    base = ["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps"]
     assert main([*base, "--lane-plot", "-o", str(on)]) == 0
     assert main([*base, "--no-hd", "-o", str(off)]) == 0
     assert json.loads(on.with_suffix(".roadmap.json").read_text())["hdmap_version"] == HDMAP_VERSION

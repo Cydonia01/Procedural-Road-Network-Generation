@@ -175,7 +175,6 @@ def test_skewed_grid_has_skewed_junctions():
     {"pattern_weights": (1, -1, 0, 0, 0)},
     {"organic": 1.5},
     {"radial_spokes": 1},
-    {"global_goal": "field", "curve_mode": "drift"},
 ])
 def test_invalid_field_params(kw):
     with pytest.raises(ValueError):

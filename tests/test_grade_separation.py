@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 
 import numpy as np
 import pytest
@@ -24,7 +23,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.clearance import check_clearance
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
-from tests.test_lsystem_maps import GRID, X, Y, elevation, population
+from tests.test_lsystem_maps import X, Y, elevation, population
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 

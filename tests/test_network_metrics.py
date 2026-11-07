@@ -130,7 +130,7 @@ def test_naturalness_counts_on_a_hand_made_graph():
     assert naturalness(g)["body_overlaps"] == 1  # 4 -> 6 runs along edge 1, 3 m apart
 
 
-@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("grid_organic", 2), ("suburb", 1)])
+@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("city", 2), ("suburb", 1)])
 def test_presets_pass_the_naturalness_gates(preset, seed):
     from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 

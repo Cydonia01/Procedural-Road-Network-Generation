@@ -25,6 +25,7 @@ from roadgen.maps.model import (
     load_npz,
 )
 from roadgen.metrics.network import network_metrics
+from tests.grids import GRID as GRID10
 from tests.lsystem_identity import fingerprint
 
 GRID = GridSpec((0.0, 0.0), (3000.0, 2400.0), 20.0)
@@ -118,7 +119,7 @@ def test_blend_weights_sum_to_one_and_blur_borders():
 
 def test_grid_goal_ignores_the_style_map():
     style = zones(shares=(0, 0, 0, 0, 1))
-    p = LSystemParams.preset("grid_organic")
+    p = LSystemParams.preset("city")
     plain = LSystemGenerator().generate(p, 2)
     with_style = LSystemGenerator().generate(p, 2, MapSet(style=style))
     assert fingerprint(plain) == fingerprint(with_style)
@@ -153,7 +154,7 @@ def test_cli_pipeline_builds_style_only_for_the_field_goal(tmp_path, monkeypatch
     assert set(graph.metadata["maps"]) == {"terrain", "elevation", "population", "style"}
     assert load_npz(tmp_path / "mixed_style.npz").kind == "style"
     assert (tmp_path / "mixed_style.png").is_file()
-    assert main(["pipeline", "lsystem", "--preset", "grid_organic", *small, "-o", str(tmp_path / "g")]) == 0
+    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", *small, "-o", str(tmp_path / "g")]) == 0
     assert not (tmp_path / "g_style.npz").exists()
 
 
@@ -168,5 +169,5 @@ def test_mixed_city_is_more_varied_than_a_grid(tmp_path, monkeypatch):
     assert main(["pipeline", "lsystem", "--preset", "mixed_city", "--maps", "--seed", "3",
                  "--allow-traps", "-o", str(tmp_path / "m")]) == 0
     mixed = network_metrics(load_json(tmp_path / "m.json"))
-    grid = network_metrics(LSystemGenerator().generate(LSystemParams.preset("grid"), 0))
+    grid = network_metrics(LSystemGenerator().generate(LSystemParams(**GRID10), 0))
     assert mixed["orientation_entropy"] > grid["orientation_entropy"] + 1.0

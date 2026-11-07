@@ -37,7 +37,7 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE builder -> .xodr -> validators
 ```bash
 docker compose build && docker compose run --rm dev      # or a native install, see below
 pytest
-python -m cli pipeline lsystem --preset grid --set extent=[750,240] --seed 1 --drive-check --simulate -o first
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 --drive-check -o first
 python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings -o hills
 ```
 

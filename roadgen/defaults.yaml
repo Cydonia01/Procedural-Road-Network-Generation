@@ -29,10 +29,9 @@ generators:
     max_segments: 20000
     # Road hierarchy: strokes (continuous roads) ranked by length x betweenness become
     # arterials (avenues, major_*), collectors (avenues, collector_*) and local roads
-    # (streets, minor_*); "axis" is the rule before stage R (local y major, local x minor).
-    hierarchy: strokes         # strokes | axis
-    major_lanes: [2, 2]        # arterials (axis: roads along local y, "avenues")
-    minor_lanes: [1, 1]        # local roads (axis: roads along local x, "streets")
+    # (streets, minor_*).
+    major_lanes: [2, 2]        # arterials
+    minor_lanes: [1, 1]        # local roads
     collector_lanes: [1, 1]    # collectors
     lane_width: 3.5
     major_speed: 13.9          # [m/s] (50 km/h)
@@ -69,16 +68,12 @@ generators:
     avoid_vegetation: true     # streets stay out of parks / forest
     prune_factor: 0.4          # a street hitting water / vegetation keeps >= this share
     max_grade: 0.15            # max rise / run along a road (over 25 m); 0 = no limit
-    curve_mode: none           # curved streets: none | drift | contour (needs elevation)
-    curve_drift_deg: 6.0       # std dev of a street's heading change per segment [deg]
-    curve_reversion: 0.3       # pull back towards the grid axis per segment, 0-1
     curve_tortuosity: 1.0      # target length / chord of a street (bow node); 1 = straight
     # Manhattan-style grids
     oneway_pattern: [none, none]  # (avenues, streets): none | alternating (every second line one-way the other way)
     boundary: none             # none | ring: roads reaching the edge continue to a two-way ring road
     ring_offset: 60.0          # distance from the edge of the area to the ring [m]
     ring_lanes: [2, 2]
-    edge_drop_prob: 0.0        # chance to drop each street segment (traffic stays connected)
     # Pattern fields (global_goal: field): street patterns blended per location
     pattern_weights: [1.0, 0.0, 0.0, 0.0, 0.0]  # grid, radial, organic, contour, suburb (without a style map)
     grid_angle_deg: 0.0        # grid pattern's turn from the local axes [deg]
@@ -95,6 +90,7 @@ generators:
     suburb_branch_prob: 0.6    # branch_prob in suburbs
     suburb_end_prob: 0.25      # chance a suburb street ends at a node (a dead end, later a bulb)
     style_blend_width: 300.0   # patterns of neighbouring districts blend over this width [m] (style map)
+    style_map: true            # field goal on input maps reads the style map; false: pattern_weights everywhere
     # Connectivity and cul-de-sacs
     detour_ratio: 0.0          # connect nodes whose network trip is > this x their distance; 0 = off, else >= 1
     connect_radius: 300.0      # how far a connector may reach [m]

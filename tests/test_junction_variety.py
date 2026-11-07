@@ -10,14 +10,20 @@ import pytest
 
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 from roadgen.generators.transforms.stagger import stagger_crossings
+from roadgen.geometry.planar import Pose
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.metrics.network import network_metrics, offset_t_pairs
 from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.junctions import JunctionParams, RoadEnd, plan_movements, straight_pairs
-from roadgen.geometry.planar import Pose
+from roadgen.opendrive.junctions import (
+    JunctionParams,
+    RoadEnd,
+    plan_movements,
+    straight_pairs,
+)
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
 from roadgen.validate.topology import check_topology
+from tests.grids import GRID
 from tests.test_junctions import _rm_available
 
 
@@ -133,8 +139,8 @@ def test_stagger_keeps_room_between_the_ts():
 
 
 def test_stagger_in_lsystem():
-    p = LSystemParams.preset("grid", stagger_prob=0.5)
+    p = LSystemParams(**GRID, stagger_prob=0.5)
     g = LSystemGenerator().generate(p, 1)
-    plain = LSystemGenerator().generate(LSystemParams.preset("grid"), 1)
+    plain = LSystemGenerator().generate(LSystemParams(**GRID), 1)
     assert network_metrics(g)["offset_t_pairs"] > 10 == network_metrics(plain)["offset_t_pairs"] + 10
     OpenDriveBuilder().build(g)

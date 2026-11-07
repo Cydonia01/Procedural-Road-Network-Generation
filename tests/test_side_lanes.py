@@ -19,6 +19,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.scenario.xosc_builder import ScenarioBuilder
 from roadgen.validate.continuity import RoadEval, _width, check_continuity
 from roadgen.validate.topology import check_topology
+from tests.grids import GRID_CLI
 
 CS = CrossSectionParams()
 HD = HdMapParams(enabled=True)
@@ -243,7 +244,7 @@ def test_scenario_spawns_only_on_driving_lanes(tmp_path):
 
 @pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
 @pytest.mark.parametrize("args", [
-    ["lsystem", "--preset", "grid"],
+    ["lsystem", *GRID_CLI],
     ["junction", "--preset", "roundabout"],
     ["junction", "--preset", "diamond"],
 ], ids=["grid", "roundabout", "diamond"])
@@ -271,7 +272,7 @@ def test_plot_xodr(tmp_path):
 
 def test_pipeline_writes_lane_plot_and_cross_section_flag(tmp_path):
     out = tmp_path / "net"
-    assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--allow-traps", "--hd",
+    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps", "--hd",
                  "--cross-section", "rural", "--lane-plot", "-o", str(out)]) == 0
     assert (tmp_path / "net_hd.png").exists()
     root = etree.parse(str(out.with_suffix(".xodr"))).getroot()

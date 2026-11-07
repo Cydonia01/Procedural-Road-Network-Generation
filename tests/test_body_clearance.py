@@ -12,6 +12,7 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.clearance import check_body_overlaps
+from tests.grids import GRID
 from tests.test_grade_separation import crossing_graph, separate
 
 PLAIN = HdMapParams(enabled=False)
@@ -57,7 +58,7 @@ def _bodies_apart(g: RoadGraph, half: float) -> bool:
     return True
 
 
-@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("grid_organic", 3), ("suburb", 2)])
+@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("city", 3), ("suburb", 2)])
 def test_grown_roads_keep_their_bodies_apart(preset, seed):
     # Cul-de-sac bulbs and roundabouts are added after growth, with their own checks.
     p = LSystemParams.preset(preset, dead_ends=False, suburb_culdesac_prob=0.0, roundabout_prob=0.0)
@@ -67,8 +68,8 @@ def test_grown_roads_keep_their_bodies_apart(preset, seed):
 
 
 def test_body_check_off_keeps_old_growth():
-    on = LSystemGenerator().generate(LSystemParams.preset("grid"), 0)
-    off = LSystemGenerator().generate(LSystemParams.preset("grid", body_check=False), 0)
+    on = LSystemGenerator().generate(LSystemParams(**GRID), 0)
+    off = LSystemGenerator().generate(LSystemParams(**GRID, body_check=False), 0)
     assert len(on.edges) == len(off.edges)  # a plain lattice is far from any limit
 
 
