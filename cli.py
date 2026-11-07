@@ -783,33 +783,6 @@ def cmd_scenario(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_simulate(args: argparse.Namespace) -> int:
-    """Run an .xosc in esmini (headless, or in a window with --gui) and report its log."""
-    from roadgen.sim.runner import run_esmini
-
-    extra = ["--camera_mode", args.camera] if args.gui and args.camera else []
-    try:
-        result = run_esmini(
-            args.input,
-            headless=not args.gui,
-            timestep=args.timestep,
-            extra_args=extra,
-            out_dir=getattr(args, "run_dir", None),  # default: next to the .xosc
-            window=args.cfg["esmini"]["window"],
-        )
-    except FileNotFoundError as e:
-        log.error("%s", e)
-        return 1
-    for w in result.warnings:
-        log.warning("esmini: %s", w)
-    for e in result.errors:
-        log.error("esmini: %s", e)
-    log.info("%d vehicles, %.1f s simulated, %d errors, %d warnings (+%d missing-asset warnings "
-             "ignored); log: %s", result.n_vehicles, result.sim_time, len(result.errors),
-             len(result.warnings), result.asset_warnings, result.log_path)
-    return 0 if result.ok else 1
-
-
 def add_config_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config", dest="config_file", metavar="FILE",
@@ -1046,18 +1019,6 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                    help="switch the traffic lights of the sidecar's signal plans (default %(default)s)")
     p.add_argument("--scenegraph", help="3D model to show with the roads, e.g. <prefix>_buildings.osgt")
     p.set_defaults(func=cmd_scenario)
-
-    p = sub.add_parser("simulate", help="run an .xosc in esmini (to look at it with --gui) and report its log")
-    p.add_argument("input", help=".xosc file")
-    p.add_argument("--gui", action="store_true", help="show the esmini window")
-    p.add_argument(
-        "--camera", default=esmini["camera"],
-        help="camera mode with --gui (orbit, fixed, flex, flex-orbit, top, driver; "
-             "default %(default)s)",
-    )
-    p.add_argument("--timestep", type=float, default=esmini["timestep"],
-                   help="fixed timestep [s] (default %(default)s)")
-    p.set_defaults(func=cmd_simulate)
 
     p = sub.add_parser("view", help="open an .xodr in esmini's odrviewer")
     p.add_argument("input", help=".xodr file")

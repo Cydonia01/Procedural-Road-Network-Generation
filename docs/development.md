@@ -96,7 +96,7 @@ prompts and decisions.
 | 1 | Single road → OpenDRIVE → esmini | `opendrive/builder.py`, `lanes.py`, `validate/` |
 | 2 | Junctions | `opendrive/junctions.py`, `geometry/junction_space.py`, `sim/drive_check.py` |
 | 3–4 | Manhattan grid generator (later folded into lsystem): one-way, multi-lane, ring road, connectivity | `validate/connectivity.py` |
-| 5 | Agent scenarios | `scenario/`, `sim/runner.py` |
+| 5 | Agent scenarios | `scenario/` |
 | 7 | Pluggable generators and 3D | `generators/base.py`, `lsystem.py`, `scene/` |
 | 8–9 | Input maps and map-driven growth: highways, bridges, terrain, density and grade constraints | `maps/`, `lsystem.py` |
 | Stage A | Geometry accuracy: fitted curves, design speeds, banking, junction planes, clothoid turns, repair, curved growth | `geometry/`, `metrics/`, `maps/align.py`, `generators/repair.py`, `validate/dynamics.py` |
@@ -105,23 +105,19 @@ prompts and decisions.
 | Stage B | HD-map completeness, on by default (`--no-hd` gives the plain network): cross-sections with side lanes, curb returns and corner roads, German road marks, junction control and right of way, signs and stop lines, traffic lights with fixed-time plans (also in OpenSCENARIO), crosswalks, speed and curve signs, lane use and arrows, turn pockets, banned turns, the HD repair (bare road ends), the `annotate` step | `geometry/cross_section.py`, `opendrive/marks.py`, `control.py`, `furniture.py`, `lights.py`, `hdmap.py`, `plot.py`, `maps/annotate.py`, `validate/hdmap.py`, `metrics/hdmap.py` |
 | Stage R | Refinement for natural networks: road hierarchy from strokes, width-aware growth and body-overlap check, dead-end pass, ground that stays under the roads, junction surface drawn in the scene, naturalness metrics | `generators/hierarchy.py`, `lsystem.py`, `validate/clearance.py`, `scene/ground.py`, `scene/junctions.py`, `metrics/network.py` |
 
-Phase 6 (a scalability benchmark) was removed: the project trains
-autonomous cars, and `simulate` reports what a single run costs
-([plan](../plans/2026-10-27-slim-benchmark.md)).
+Phase 6 (a scalability benchmark) was removed
+([plan](../plans/2026-10-27-slim-benchmark.md)), and the `simulate` command
+and its esmini runner went in the polish stage
+([plan](../plans/2026-11-08-polish-drops.md)): the generated `.xodr` is the
+product, and `view` is the presentation.
 
 ## Known issues and open ideas
 
-- **`test_monitor_memory_cap_and_peak` fails on Linux.** `run_monitored`
-  also sets `RLIMIT_AS` there, so the test's 300 MB allocation fails at once
-  with `MemoryError`. The child exits with code 1 and is never reported as
-  `killed == "memory"`. On macOS, where no kernel limit is set, the test
-  passes. Either the runner should treat this exit as a memory kill, or the
-  test should accept it on Linux.
 - **The schema check needs the ASAM XSD,** which can't be redistributed.
-- **Old hashes.** Hashes quoted in plans before 2026-10-25 are old
-  `runs/history.json` hashes, and `out/migration.json` maps them to run
-  folders. Results quoted for runs before stage A were measured on the old
-  (version 1) geometry.
+- **Old hashes.** Hashes quoted in plans before 2026-10-25 come from the old
+  run history (`runs/history.json`, removed; it is in git history). Results
+  quoted for runs before stage A were measured on the old (version 1)
+  geometry.
 - **Drape has no grade limit.** lsystem keeps grades under `max_grade` while
   growing, but networks grown without maps (or with `max_grade: 0`) can get
   steep roads on hilly maps.

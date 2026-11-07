@@ -67,16 +67,13 @@ are explained in the
 
 ## Viewing results
 
-`view` opens a network in esmini's `odrviewer` with random cars, and
-`simulate --gui` shows a scenario (written by `scenario`) running:
+`view` opens a network in esmini's `odrviewer` with random cars:
 
 ```bash
 python -m cli view out/<hash>/first.xodr
-python -m cli scenario out/<hash>/first.xodr --vehicles 50 -o first.xosc
-python -m cli simulate out/<hash2>/first.xosc --gui
 ```
 
-Both need a display. The Docker `dev` service has none: `odrviewer` exits
+It needs a display. The Docker `dev` service has none: `odrviewer` exits
 immediately without an error. Use the GUI service for your OS instead (setup
 in [Docker](docker.md)):
 

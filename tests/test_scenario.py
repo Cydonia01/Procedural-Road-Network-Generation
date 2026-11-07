@@ -10,7 +10,6 @@ from cli import main
 from roadgen.graph.io import save_json
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.scenario.xosc_builder import END_MARGIN, ScenarioBuilder, ScenarioParams
-from roadgen.sim.runner import parse_log
 from tests.grids import small_grid
 
 
@@ -128,52 +127,3 @@ def test_cli_scenario_missing_sidecar(tmp_path):
     (tmp_path / "lonely.xodr").write_text("<OpenDRIVE/>")
     assert main(["scenario", str(tmp_path / "lonely.xodr"), "--vehicles", "1",
                  "-o", str(tmp_path / "x.xosc")]) == 1
-
-
-# --- runner -----------------------------------------------------------------------------
-
-
-def test_parse_log():
-    text = "\n".join([
-        "esmini GIT REV: v3.9.0",
-        "[] [info] Loaded scenario.xosc",
-        "[] [warn] 3D model car_red.osgb not located, using specified file path",
-        "[] [warn] Something odd about the road",
-        "[3.500] [error] Entity car1 left the road",
-        "[120.050] [info] Closing",
-    ])
-    sim_time, errors, warnings, assets = parse_log(text)
-    assert sim_time == pytest.approx(120.05)
-    assert errors == ["[3.500] [error] Entity car1 left the road"]
-    assert warnings == ["[] [warn] Something odd about the road"]
-    assert assets == 1
-
-
-def _esmini_available() -> bool:
-    from roadgen.sim.esmini import esmini_binary
-
-    try:
-        esmini_binary("esmini")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _esmini_available(), reason="esmini not found ($ESMINI_HOME unset)")
-def test_tiny_scenario_runs_in_esmini(tmp_path, monkeypatch):
-    from roadgen.sim.runner import run_esmini
-
-    g = small_grid(2, 2)
-    b = OpenDriveBuilder()
-    b.build(g)
-    b.write(tmp_path / "net" / "tiny.xodr")
-    xosc = ScenarioBuilder.from_files(tmp_path / "net" / "tiny.xodr").write(
-        ScenarioParams(5, seed=1, sim_duration=10.0), tmp_path / "scen" / "tiny.xosc"
-    )
-    monkeypatch.chdir(tmp_path)  # the .xodr path inside the .xosc must not depend on cwd
-    result = run_esmini(xosc, timeout=120)
-    assert result.returncode == 0, result.errors
-    assert result.ok, result.errors
-    assert result.n_vehicles == 5
-    assert result.sim_time == pytest.approx(10.0, abs=0.2)
-    assert result.log_path.is_file()

@@ -389,9 +389,7 @@ buildings:
   y_up: true                # .obj only: y-up instead of OpenDRIVE's z-up
 
 esmini:
-  timestep: 0.05                # fixed timestep [s]
   window: [60, 60, 1280, 800]   # x y width height of GUI windows
-  camera: top                   # camera mode for `simulate --gui`
   view_density: 1.0             # cars per 100 m in `view`
 
 history:  # every successful CLI run in <dir>/<hash>/ with its outputs (`history`, `replay`, `run`)

@@ -123,33 +123,6 @@ def test_scenario_references_scenegraph(tmp_path):
     assert root.find("RoadNetwork/LogicFile").get("filepath") == "../net/g.xodr"
 
 
-def _esmini_available() -> bool:
-    from roadgen.sim.esmini import esmini_binary
-
-    try:
-        esmini_binary("esmini")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _esmini_available(), reason="esmini not found")
-def test_runner_keeps_roads_visible_with_scenegraph(tmp_path):
-    from roadgen.sim.runner import run_esmini
-
-    g = grid(2, 2)
-    b = OpenDriveBuilder()
-    b.build(g)
-    b.write(tmp_path / "g.xodr")
-    export_buildings(g, tmp_path / "g_buildings.osgt")
-    xosc = ScenarioBuilder.from_files(tmp_path / "g.xodr").write(
-        ScenarioParams(2, sim_duration=1.0), tmp_path / "g.xosc", scenegraph=tmp_path / "g_buildings.osgt"
-    )
-    result = run_esmini(xosc, timeout=60)
-    assert result.ok, result.errors
-    assert "--enforce_generate_model" in result.command
-
-
 def test_pipeline_scene_draws_the_junction_fill(tmp_path):
     from cli import main
     from tests.grids import grid_cli

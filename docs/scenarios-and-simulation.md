@@ -59,35 +59,16 @@ The storyboard stops when simulation time exceeds `--duration`. The output is
 deterministic for a seed, and the header date is fixed. `--scenegraph`
 attaches a [3D scene](scene.md).
 
-## Running esmini
+## Looking at a scenario
 
-The scenario is for looking at a network with traffic; the generated `.xodr`
-is the product. `roadgen/sim/runner.py` runs esmini on it; esmini is located
-by `roadgen/sim/esmini.py` through `ESMINI_HOME`.
+The generated `.xodr` is the product; presentation uses [`view`](cli-reference.md#view),
+whose `odrviewer` drives its own random cars. Nothing in roadgen runs an
+`.xosc`. To watch one, for example to see the lights switch, run esmini on
+it directly (esmini is located through `ESMINI_HOME`):
 
 ```bash
-python -m cli simulate out/<hash>/grid10x10.xosc --gui --camera orbit   # in a window
-python -m cli simulate out/<hash>/grid10x10.xosc                        # headless: log only
+$ESMINI_HOME/bin/esmini --osc out/<hash>/grid10x10.xosc --window 60 60 1280 800
 ```
 
-`run_esmini()` builds the command line:
-
-- `--headless`, or `--window 60 60 1280 800` with `--gui`;
-- `--fixed_timestep` (0.05 s);
-- `--logfile_path`;
-- `--enforce_generate_model` when the scenario has a SceneGraphFile, since
-  esmini would otherwise not draw the roads.
-
-The log (`<stem>.log`) and esmini's console output (`.stdout`) go into the
-run's folder. `simulate` reports the vehicles, the simulated time and the
-errors and warnings from the log.
-
-### Result (`SimResult`)
-
-| Field | Meaning |
-|-------|---------|
-| `sim_time` | Last simulated timestamp [s] |
-| `n_vehicles`, `returncode` | As named |
-| `errors`, `warnings` | Parsed from the esmini log; a run over the time limit is an error |
-| `asset_warnings` | Missing 3D model or texture messages: counted but ignored, since they only affect rendering |
-| `ok` | Return code 0 and no errors |
+Add `--enforce_generate_model` when the scenario has a SceneGraphFile, since
+esmini would otherwise not draw the roads.

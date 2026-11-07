@@ -29,7 +29,6 @@ check or simulation failed.
 | **Scene and simulation** | |
 | [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps |
 | [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
-| [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize it |
 | [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
 | **Runs** | |
 | [`history`, `replay`, `run`](#run-folders-history-replay-run) | List, rerun or define recorded runs |
@@ -291,22 +290,6 @@ python -m cli scenario NETWORK.xodr --vehicles N [options] [-o OUT.xosc]   # def
 | `--graph FILE` | `<input>.json` if present | RoadGraph for consistency checks |
 | `--lights`, `--no-lights` | `scenario.lights` (on) | Switch the network's [traffic lights](scenarios-and-simulation.md#traffic-lights) |
 | `--scenegraph FILE` | – | 3D scene `.osgt` shown with the roads |
-
-## simulate
-
-```bash
-python -m cli simulate SCENARIO.xosc [options]
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--gui` | off | Show the esmini window (needs a display) |
-| `--camera MODE` | `top` | With `--gui`: `orbit`, `fixed`, `flex`, `flex-orbit`, `top`, `driver` |
-| `--timestep S` | 0.05 | Fixed timestep [s] |
-
-For looking at a network with traffic ([running esmini](scenarios-and-simulation.md#running-esmini)).
-It logs the vehicles, the simulated time, and esmini's errors and warnings.
-The `.log` goes into the run's folder (next to the `.xosc` with `--no-history`).
 
 ## view
 

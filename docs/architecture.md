@@ -35,7 +35,6 @@ flowchart LR
 | Validate | `RoadGraph` / `.xodr` → errors | `roadgen/validate/` | [Validation](validation.md) |
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
 | Scenario | `.xodr` + sidecar → `.xosc` | `roadgen/scenario/` | [Scenarios](scenarios-and-simulation.md) |
-| Simulate (presentation) | `.xosc` → esmini run, `SimResult` (errors from the log) | `roadgen/sim/runner.py` | [Scenarios](scenarios-and-simulation.md#running-esmini) |
 | Scene | `RoadGraph` + maps → ground, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
 `python -m cli pipeline` runs the stages in this order. Every stage also has
@@ -175,7 +174,6 @@ roadgen/
     xosc_builder.py        vehicle spawning, routes, .xosc writing
   sim/
     esmini.py              locating esmini binaries and libraries
-    runner.py              running esmini on a scenario (headless or in a window), reading its log
     drive_check.py         driving every movement and lane with esmini's RoadManager
     screenshot.py          still images rendered by esmini (view --screenshot), headless via xvfb-run
   scene/
@@ -207,5 +205,4 @@ per successful command
 | `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
 | `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh plus buildings |
 | `net.xosc` | `scenario` | OpenSCENARIO traffic scenario |
-| `net.log`, `.stdout` | `simulate` | esmini log and console output |
 | `run.yaml` | every recorded command | The command and every parameter that differs from the defaults |

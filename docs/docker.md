@@ -14,9 +14,9 @@ docker compose run --rm gui python -m cli view out/<hash>/net.xodr
 
 | Service | Use for | Platforms |
 |---------|---------|-----------|
-| `dev` | Tests, pipeline, `simulate`, `drive-check`: anything without a window | Linux, macOS, Windows |
-| `gui` | `view`, `simulate --gui` on a Linux desktop (X11 or XWayland), GPU accelerated | Linux |
-| `gui-mac` | `view`, `simulate --gui` via XQuartz, software rendered | macOS |
+| `dev` | Tests, pipeline, `drive-check`, `view --screenshot`: anything without a window | Linux, macOS, Windows |
+| `gui` | `view` on a Linux desktop (X11 or XWayland), GPU accelerated | Linux |
+| `gui-mac` | `view` via XQuartz, software rendered | macOS |
 
 ## How it works
 
@@ -93,8 +93,7 @@ workaround:
 2. esmini renders there with llvmpipe through [VirtualGL](https://virtualgl.org).
 3. VirtualGL copies each frame to the XQuartz window.
 
-esmini needs an explicit `--window` size for this, which `view` and
-`simulate --gui` pass. For heavy interactive use, a
+esmini needs an explicit `--window` size for this, which `view` passes. For heavy interactive use, a
 [native install](getting-started.md#native) with `esmini-bin_macOS.zip` is
 smoother.
 
