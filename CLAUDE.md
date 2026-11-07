@@ -10,8 +10,6 @@ live in the Copilot instructions and apply here too:
 - The host has no Python dependencies; run everything in the dev container:
   `docker compose run --rm -T dev python -m pytest -q`
   (`-T` for non-interactive use). Same for `python -m cli ...` and `ruff check`.
-- `tests/test_runner.py::test_monitor_memory_cap_and_peak` is known to fail in
-  this environment; it is not caused by code changes.
 - Generated files go under `out/` (git-ignored).
 - Every successful CLI run gets a folder `out/<hash>/` with its outputs
   (`-o` only names them) and `run.yaml`: the command plus only the args and
@@ -39,8 +37,9 @@ live in the Copilot instructions and apply here too:
   are on by default (`hdmap.enabled`); `--no-hd` gives the plain
   driving-lane network. Tests that build networks without the pipeline
   pass `HdMapParams(enabled=False)` where they assume driving lanes only.
-- The generated `.xodr` is the product; esmini and everything after the
-  `.xodr` (scene, buildings, scenario, view) are for presentation only.
+- The generated `.xodr` is the product; everything after it (scene,
+  buildings, scenario, `view`) is for presentation only, and `view` is how
+  networks are presented. There is no `simulate` command any more.
 - lsystem is the only city generator (the `manhattan` generator was removed
   in stage C): grids, pattern fields (`patterns.py`) and graph transforms
   (`roadgen/generators/transforms/`).

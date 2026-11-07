@@ -25,6 +25,12 @@ still reachable by a flag after better ones replaced them. Item numbers
 
 > Let's clarify some information on your mind. We are now in dev/polish-stage branch. When I said you do at least 3 items at once, I meant 3-4 items in one response. Not all items in one prompt. However, this is not a problem. Commit them by grouping the item implementations to this branch. Also, update polish-todo.md file by putting Done to the right of an item. I want to use it as a checklist. Do these first. Then we discuss what is remained in stage 1. also, move copilot-prompts.md into plans folder and rename it properly
 
+**2026-11-08, prompt 3**
+
+> I see. Then, implement remaining D items and updates copilot and claude instructions accordingly. Do not continue with the F items now. Besides that, we can remove simulate completely. Because we do the presentation with the view only. So, seeing a car driving in view is enough for us. Also, let me tell you another to do to note down. The roads in the image do not have lane dashes. This happened after fixing one lange -> two lane -> one lane change.
+
+(With a screenshot of an esmini view: two-lane roads with edge lines only.)
+
 ## Decisions
 
 | # | Question | Decision | By |
@@ -44,6 +50,9 @@ still reachable by a flag after better ones replaced them. Item numbers
 | 13 | `--allow-traps` on the examples (D17) | **Not done.** `hill_town` and `city` still report a few traffic traps (dead ends at water and at the area's edge), on HEAD too, so without the flag those examples fail. It becomes a fix item: the dead-end pass or the trap check must handle them first. | Claude |
 | 14 | `replay` (D16) | **Kept.** `replay HASH` (and its shortcut `python -m cli HASH`) and `run FILE` take different inputs; neither replaced the other. | Claude |
 | 15 | `copilot_prompts.md` (D20) | Moved to `plans/2026-10-08-copilot-phase-prompts.md` (the date it was added) with a short history note at the top; references updated. | user |
+| 16 | `simulate` (prompt 3) | Removed completely: the command, `roadgen/sim/runner.py`, the `esmini.timestep` / `esmini.camera` defaults and their tests. Presentation is `view` only (odrviewer drives its own cars). `scenario` stays for now; whether it goes too is D22. | user |
+| 17 | D18, D19 (prompt 3) | `metrics --sweep --jobs` defaults to 0 = one per CPU (the sweep never drew plots). `runs/history.json` (the pre-2026-10-25 run history; `out/migration.json` was already gone) is deleted; it stays in git history. | Claude |
+| 18 | Instructions (prompt 3) | `.github/copilot-instructions.md`: the aim is the generated `.xodr`, not simulation or training; pipeline drawn with presentation after the `.xodr`; module map without `drop.py` and `runner.py`; a rule against keeping replaced implementations behind flags. CLAUDE.md: the known-failing-test note goes (the test is gone), `view` is the presentation. | Claude |
 
 ## Groups
 

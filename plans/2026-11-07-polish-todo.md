@@ -76,7 +76,8 @@ kept, blob path removed), D14 (monitoring and `pipeline --simulate` removed;
 `simulate` kept for presentation), D15, D21 (unused scripts deleted).
 Kept: D4 (user), D16 (two entry points, not legacy). D20: moved to
 `plans/2026-10-08-copilot-phase-prompts.md` (user).
-Moved to fixes: D17 (F20). Open: D7 (nothing to do), D18, D19.
+Moved to fixes: D17 (F20). D18 and D19 done 2026-11-08, and `simulate`
+was removed completely (D14). New: D22 (`scenario`, decision needed).
 F1 and F2 (the two failing tests) went with D8 and D14.
 
 Each item below was replaced by a better one, but the old path is still
@@ -110,18 +111,19 @@ reachable by a flag or parameter. Keeping it costs code paths, tests
 
 | # | What | Cost of keeping | Proposal | Pri | Status |
 |---|---|---|---|---|---|
-| D14 | `simulate` command, `pipeline --simulate`, the runner's memory/CPU monitor (`sim/runner.py`) | The known failing test `test_monitor_memory_cap_and_peak`, esmini runs in tests, the `pipeline` section `sim_*`. | **Decision needed.** Option a: remove `simulate`, the monitor and their tests; keep `scenario` (an `.xosc` with cars, to look at the network). Option b: keep it frozen and fix the test (F2). | P1 (decide) | Done |
+| D14 | `simulate` command, `pipeline --simulate`, the runner's memory/CPU monitor (`sim/runner.py`) | The known failing test `test_monitor_memory_cap_and_peak`, esmini runs in tests, the `pipeline` section `sim_*`. | **Decision needed.** Option a: remove `simulate`, the monitor and their tests; keep `scenario` (an `.xosc` with cars, to look at the network). Option b: keep it frozen and fix the test (F2). | P1 (decide) | Done (simulate removed) |
 | D15 | `scenario` extras: `spawn_mode: explicit_routes`, light storyboard events, `TrafficSignalController` in the `.xosc` | Parametrised tests per mode; the light events only matter when something drives. | With D14a: keep `random_lanes` only. Lights stay in the `.xodr` either way. | P3 | Done |
 | D16 | `replay HASH`, `run run.yaml`, `python -m cli HASH`: three ways to rerun | Three code paths and docs for one job. | Keep `run` and the bare `HASH` shortcut; fold `replay` into them. | P3 | Kept (two entry points) |
 | D17 | `--allow-traps` on every example (`runs/examples.sh:46`) | Hides the dead ends R3 was meant to remove (R3 says the examples run without it). | Remove from the examples. Keep the flag for experiments. | P2 | Moved to F20 |
-| D18 | `metrics --sweep` default `--jobs 1`, plots on | Sweeps are slow (also P6). | `--jobs` = CPU count, no plots in sweeps. | P3 |  |
+| D18 | `metrics --sweep` default `--jobs 1`, plots on | Sweeps are slow (also P6). | `--jobs` = CPU count, no plots in sweeps. | P3 | Done |
 
 ### 1d. Repository leftovers
 
 | # | What | Proposal | Pri | Status |
 |---|---|---|---|---|
-| D19 | `out/migration.json` and pre-2026-10-25 hashes quoted in plans | Keep the plans as history; delete the migration map once no old hash is needed. | P3 |  |
+| D19 | `out/migration.json` and pre-2026-10-25 hashes quoted in plans | Keep the plans as history; delete the migration map once no old hash is needed. | P3 | Done |
 | D20 | `copilot_prompts.md` (Phase 1–10 prompts, OSM-era wording) | Move into `plans/` as history, or delete. It still describes the axis rule as current. | P3 | Done |
+| D22 | `scenario` command and `roadgen/scenario/` (NEW, after `simulate` was removed) | Nothing in roadgen runs an `.xosc` any more; `view` presents with odrviewer's own cars. The scenario builder (random cars, the light plans as storyboard events) only serves people who run esmini by hand. **Decision needed:** keep, or remove with its tests and docs. | P2 | |
 | D21 | `plans/scripts/*` one-off scripts that import removed parameters (after D1–D13) | Keep (traceability), but mark them as "ran on commit X" so nobody expects them to run on HEAD. | P3 | Done |
 
 ---
@@ -134,6 +136,7 @@ reachable by a flag or parameter. Keeping it costs code paths, tests
 | F18 | **Naturalness gate fails on `suburb` seed 1** (NEW) | `test_network_metrics.py`: dead-end share 3.28 % > 3 %. Either the dead-end pass misses suburb streets that are not meant as cul-de-sacs, or the gate must exclude intended cul-de-sacs. | Q, R3 | P1 |  |
 | F19 | **Field-goal grid no longer keeps one angle** (NEW) | `test_style.py::test_district_angles_turn_the_grid`: headings mod 90° are {19.6, 49.6, 79.6} instead of {19.6}. Some edges now run 30° off the district's grid, probably dead-end extensions or connectors (R3) at free angles. Decide whether those may leave the grid angle, then fix the code or the test. | R3 | P1 |  |
 | F20 | Map examples still report traffic traps (NEW, from D17) | `hill_town` and `city` seed 1 / 7 report a few dead-end traps (water, area edge) on HEAD too, so `runs/examples.sh` still needs `--allow-traps`. Make the dead-end pass handle them, or count intended ones as allowed, then drop the flag from the examples. | R3, D17 | P2 |  |
+| F21 | **No lane dashes on many two-lane roads** (NEW, user screenshot 2026-11-08) | Two-way roads with one lane each way show only edge lines, no broken centre line. It appeared after the stage R hierarchy fixed the 1 → 2 → 1 lane jumps. Likely cause (not yet checked): `road_marks.no_street_centre` (urban, suburban) gives `street`-class roads no centre line by design (German residential practice), and the hierarchy turned many former avenues into local `street` roads. Check which class and profile the roads in the screenshot have, then decide whether local roads with traffic should get a centre line (e.g. only collectors and up keep it, or drop the rule). | B4, R1, user | P1 | |
 | F1 | `test_hdmap_identity.py` fails (manhattan_like, organic_town, city_maps) | Already broken on 3ae2780, before stage R; only `grid` matches the B0 hashes. Resolved by D8 (drop the byte-identity test). Without D8: bisect between B0 and 3ae2780. | R | P1 | Done (with D8) |
 | F2 | `test_monitor_memory_cap_and_peak` fails on Linux | `RLIMIT_AS` makes the child exit 1 with `MemoryError` instead of being reported as a memory kill. Goes away with D14a; otherwise a one-line fix in the runner or the test. | A–R | P1 | Done (with D14) |
 | F3 | Roundabout spurs: `mixed_city` fails on 10 of 200 seeds with `--no-hd` | A 13–24 m spur between a roundabout entry and a tight bend is shorter than its two trims (9 + 9 m). It builds with HD only because the HD fit straightens the bend. Stage R changed the roundabout fit (R-12) and never reran the sweep, so first rerun it, then fix the transform (spur length or bend). | B9 | P1 |  |
@@ -248,6 +251,7 @@ Expected after T1–T5: the full suite at about 100–140 s, the fast run
 | H4 | Write the report (TXT "raporu yaz"): what each stage did, the naturalness numbers, the timing table (P0), before/after screenshots (V2). | P1 (end of stage) |  |
 | H5 | esmini issue draft (`2026-10-31-esmini-issue-draft.md`): file it or close it. With simulation out of scope it matters only for viewing time. | P3 |  |
 | H6 | ruff warnings: most conflict with the `Optional[...]` style; configure ruff to ignore those rules (UP007, B008) so the real ones stand out. | P3 |  |
+| H8 | Instructions: the aim (the `.xodr` is the product; no simulation or training), the pipeline and the module map in `.github/copilot-instructions.md`; `simulate` gone and the known-failing test note removed in CLAUDE.md. | P1 | Done |
 | H7 | Schema check: always skipped without the ASAM XSD. Either document that as accepted, or try the ASAM Quality Checker (PDF §F). | P3 |  |
 
 ---

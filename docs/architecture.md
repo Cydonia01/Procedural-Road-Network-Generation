@@ -133,7 +133,7 @@ roadgen/
     hierarchy.py           road hierarchy: strokes ranked by length x betweenness -> lanes
     junction.py            one junction or interchange per seed
     repair.py              fixes edges too short for their junctions
-    transforms/            graph → graph passes: drop, culdesac, stagger, roundabout, interchange
+    transforms/            graph → graph passes: culdesac, stagger, roundabout, interchange
   geometry/                neutral road shape (no OpenDRIVE imports)
     planar.py              poses, straight segments, Hermite paramPoly3
     junction_space.py      junction trims: where roads stop at a node; curb returns

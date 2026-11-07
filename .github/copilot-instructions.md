@@ -1,14 +1,21 @@
 # Project: Procedural Road Network Generation for esmini
 
-We are building a Python pipeline that procedurally generates road networks,
-converts them to ASAM OpenDRIVE (.xodr), generates OpenSCENARIO (.xosc) traffic
-scenarios, and runs them in the esmini simulator to train and test autonomous
-driving. We do NOT use OpenStreetMap; all networks are generated.
+We are building a Python pipeline that procedurally generates road networks
+and converts them to ASAM OpenDRIVE (.xodr). The aim is the road network: the
+generated .xodr (with its HD-map content) is the product. Traffic simulation
+and training self-driving cars are not aims of this project. We do NOT use
+OpenStreetMap; all networks are generated.
 
 Pipeline:
-  Input maps (terrain, elevation, population) -> Generator (optional input)
-  Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validator
-                                                       -> Scenario Builder -> .xosc -> esmini (headless) -> metrics
+  Input maps (terrain, elevation, population, style) -> Generator (optional input)
+  Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators, drive-check, metrics
+                                                       -> presentation: scene (ground, buildings),
+                                                          esmini `view` (odrviewer with its own cars),
+                                                          optional .xosc (scenario builder)
+
+Everything after the .xodr is for presentation only. When a fix would trade the
+.xodr's correctness for looks, the .xodr wins. Scalability (bigger cities) is
+not a current goal: 4000 x 4000 m networks already work.
 
 Architecture rules:
 - Generators only output a RoadGraph. They never touch OpenDRIVE.
@@ -20,7 +27,8 @@ Tech stack:
 - numpy, shapely, networkx, matplotlib, lxml, pytest.
 - `scenariogeneration` package (xodr + xosc modules) for writing OpenDRIVE/OpenSCENARIO XML.
   Wrap it behind our own builder classes so it can be replaced later.
-- esmini binaries (esmini, odrviewer) are external tools; their path comes from
+- esmini binaries (odrviewer, esmini) and its RoadManager library are external
+  tools, used to view networks and to drive-check them; their path comes from
   env var ESMINI_HOME or a config file. Never hard-code paths.
 
 Repo layout:
@@ -29,7 +37,7 @@ Repo layout:
     maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py,
                   image.py, plot.py, align.py, drape.py, annotate.py
     generators/   base.py, lsystem.py, patterns.py, hierarchy.py, junction.py, repair.py,
-                  transforms/ (drop, culdesac, stagger, roundabout, interchange)
+                  transforms/ (culdesac, stagger, roundabout, interchange)
     geometry/     planar.py, junction_space.py, design.py, primitives.py, clothoid.py, chains.py,
                   alignment.py, profiles.py, vertical.py, grade_separation.py, cross_section.py
     opendrive/    builder.py, lanes.py, junctions.py, marks.py, control.py, furniture.py, lights.py,
@@ -38,7 +46,7 @@ Repo layout:
                   schema.py
     metrics/      geometry.py, network.py, hdmap.py, sweep.py
     scenario/     xosc_builder.py
-    sim/          esmini.py, runner.py, drive_check.py, screenshot.py
+    sim/          esmini.py, drive_check.py, screenshot.py
     scene/        ground.py, buildings.py, parcels.py, junctions.py, osgt.py
     config.py, history.py, defaults.yaml
   cli.py
@@ -58,3 +66,5 @@ Coding rules:
 - Write pytest tests for every new module.
 - Log with the `logging` module, not print.
 - Don't implement features from later phases unless asked.
+- Don't keep a replaced implementation behind a flag: when a better one
+  replaces it, remove the old path, its parameters and its tests.
