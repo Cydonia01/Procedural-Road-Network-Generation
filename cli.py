@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import logging
+import os
 import re
 import statistics
 import subprocess
@@ -735,7 +736,8 @@ def cmd_metrics(args: argparse.Namespace) -> int:
         seeds = range(args.first_seed, args.first_seed + args.sweep)
         with timed("build sweep"):
             hd = HdMapParams.from_config(args.cfg, enabled=True) if hd_on else None
-            results = build_sweep(args.generator, args.preset, seeds, args.cfg, hd, args.jobs)
+            jobs = args.jobs or os.cpu_count() or 1
+            results = build_sweep(args.generator, args.preset, seeds, args.cfg, hd, jobs)
         failed = [r for r in results if not r.ok]
         log.info("build sweep (%s, preset %s%s): %d of %d networks failed to build",
                  args.generator, args.preset, ", HD maps" if hd_on else "", len(failed), len(results))
@@ -1097,7 +1099,8 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                    help="also generate N networks (seeds --first-seed.. , maps as pipeline --maps) "
                         "and count how many the builder rejects")
     p.add_argument("--first-seed", type=int, default=0, help="first sweep seed (default %(default)s)")
-    p.add_argument("--jobs", type=int, default=1, help="sweep networks built in parallel (default %(default)s)")
+    p.add_argument("--jobs", type=int, default=0,
+                   help="sweep networks built in parallel; 0 = one per CPU (default %(default)s)")
     p.add_argument("--generator", default="lsystem", choices=generator_names(),
                    help="sweep generator (default %(default)s)")
     p.add_argument("--preset", default="city", help="sweep generator preset (default %(default)s)")

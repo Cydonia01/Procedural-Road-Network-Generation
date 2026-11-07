@@ -244,7 +244,7 @@ See [Validation → Drive-check](validation.md#drive-check).
 
 ```bash
 python -m cli metrics A.xodr [B.xodr ...] [--hd | --no-hd] [--graph A.json ...] [--json OUT.json]
-python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd | --no-hd] [--jobs 1]
+python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd | --no-hd] [--jobs N]
 ```
 
 - Geometry metrics of each `.xodr`.
@@ -257,7 +257,7 @@ python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset
 - `--sweep N` generates N networks, as `pipeline --maps` would, and counts the
   ones the builder rejects. With HD maps they are built after `annotate` and
   the cross-section fit, as in `pipeline`; with `--no-hd` as in `pipeline --no-hd`. `--jobs N`
-  builds N at a time.
+  builds N at a time (default 0: one per CPU).
 
 The report is informational: the command succeeds whatever the numbers are.
 Thresholds are in `defaults.yaml` under `metrics` and `network_metrics`. The
