@@ -68,8 +68,7 @@ reference line, and left lanes (positive ids) drive against it.
   run the whole road, 0 m wide where they are absent, and keep their own
   width changes (curb extensions, tapers) inside a section as several
   `<width>` records, so they add no sections. Driving lanes keep one width
-  record per section, which the drive-check and the scenario's lane slots
-  rely on.
+  record per section, which the drive-check relies on.
   - Lanes are linked by **role** across section boundaries: the same kind and
     position in the [lane layout](geometry.md#along-road-profiles). A side lane
     outside a driving lane that ends keeps its links while its id shifts
@@ -94,7 +93,7 @@ reference line, and left lanes (positive ids) drive against it.
   (MUTCD shift taper) to end 5 m before every junction. The median lane runs
   the whole road, 0 m wide where there is no median, so the driving lanes
   keep their ids (−2, −3, … and 2, 3, …) along the road. Anything that
-  follows a lane by id (esmini's drive-check, the scenario's routes) thus
+  follows a lane by id (esmini's drive-check, odrviewer's cars) thus
   stays on the same lane. Junction connections start from the driving lanes.
 - **Left-turn pockets** (HD maps on, `turn_lanes` section;
   [details](#lane-use-pockets-and-banned-turns-hd-maps)): an innermost lane
@@ -103,7 +102,7 @@ reference line, and left lanes (positive ids) drive against it.
   lane width over the last 25 / 40 / 60 m (`pocket_length`, street / avenue
   / highway). Like the median, its position runs the whole road: type
   `none` and 0 m wide elsewhere, so the driving lanes keep their ids.
-- Only **driving** lanes get movements, scenario spawn slots and routes;
+- Only **driving** lanes get movements;
   esmini's own traffic (odrviewer) also keeps to driving-type lanes.
 - **Corner roads** (`junctions.py::corner_roads`). Where two neighbouring arms
   of a junction both have side lanes at the junction, a connecting road with
@@ -126,7 +125,7 @@ reference line, and left lanes (positive ids) drive against it.
     movement drives the turn. They are not movements: drive-check, scenarios
     and esmini's traffic never use them.
   - **esmini loads them slowly:** on `city` they are 5 % of the lane length
-    but 27 s of its 57 s load (`plans/scripts/b9_osi_points.py`).
+    but 27 s of its 57 s load ([stage B plan](../plans/2026-10-29-stage-b-implementation.md)).
     `cross_section.corner_roads: false` (`--no-corner-roads`) leaves them
     out for throughput benchmarks.
 - **Road marks** (without HD maps). A solid centre line, broken lines between
@@ -135,8 +134,8 @@ reference line, and left lanes (positive ids) drive against it.
 
 ### Road marks (HD maps)
 
-`marks.py`, with HD maps on (`road_marks` section; `road_marks.enabled:
-false` keeps the plain marks above). The German catalogue (StVO, RMS), all
+`marks.py`, with HD maps on (`road_marks` section; with `--no-hd` the plain
+marks above). The German catalogue (StVO, RMS), all
 white. A lane's mark lies on its outer border, the centre lane's is the
 centre line. Marks change along a lane with the road class of the edge under
 it and near junctions, as several `<roadMark sOffset>` records in one lane
@@ -186,11 +185,8 @@ movement**:
 2. **Standard lane rules:**
    - **straight:** lane to lane, from the centre outward. Where the exit has
      more lanes than the entry, a **lane split** feeds the extra lanes
-     (JunctionArt), set by `lane_split`:
-     - `outer` (default): the outermost incoming lane fans out to them;
-     - `inner`: the innermost lane splits and the others shift outward, so no
-       two connecting roads of one approach cross;
-     - `none`: the extra lanes are left to the turns of other approaches.
+     (JunctionArt): the outermost incoming lane fans out to them. At ramp
+     nodes the extra lanes are left to the merging ramp.
    - **right turns:** rightmost lane into rightmost lane;
    - **left turns:** leftmost lane into leftmost lane.
 3. **No lane may dead-end.** `fill_pair` gives every incoming lane still
@@ -247,9 +243,10 @@ movement**:
   `<object type="patch">` with a closed asphalt outline, on the junction's
   first connecting road, its corners on the junction plane. esmini draws it
   in a flat colour; it is an object, not a lane, for CARLA and OSI. The areas
-  are also listed in the sidecar (`junction_fills`, world coordinates).
-  `hdmap.junction_patches: false` leaves the objects out; the pipeline does
-  so when it writes a scene, which [draws the surface](scene.md#junction-surface).
+  are also listed in the sidecar (`junction_fills`, world coordinates). The
+  objects are always written, so the `.xodr` is the same with or without a
+  scene; a scene [draws the same surface](scene.md#junction-surface) under
+  them.
 
 **U-turns** are created only with `u_turns: true`.
 
@@ -329,8 +326,8 @@ priority: the priority road's movement over a minor road's; between equal
 approaches the oncoming straight or right turn over a left turn (or
 U-turn), and otherwise the movement coming from the right. At lights only
 the permissive left turns get one; the phase plans separate the rest. Each
-pair is a `<junction><priority high low>` record (`priorities: false`
-keeps them in the sidecar only).
+pair is a `<junction><priority high low>` record, and is listed in the
+sidecar too.
 
 **Signs and lines** (`furniture.py`), per approach with incoming lanes:
 
@@ -432,15 +429,12 @@ plan:
 In the `.xodr`: a top-level `<controller>` per junction with lights, with a
 `<control signalId>` per light (between the roads and the junctions), and a
 `<junction><controller>` naming it. The plans themselves go to the sidecar
-(`signal_plans`); [`scenario`](scenarios-and-simulation.md#traffic-lights)
-turns them into OpenSCENARIO.
+(`signal_plans`): cycle, offset and phases with every light's state.
 
 ## The `.roadmap.json` sidecar
 
 Written next to every `.xodr`. Later stages depend on it:
 
-- the scenario builder uses it to tell normal roads from connecting roads and
-  to plan routes;
 - drive-check uses it to know what to drive.
 
 Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,

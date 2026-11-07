@@ -26,6 +26,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import Movement
 from roadgen.validate.hdmap import check_hdmap, check_hdmap_tree
 from roadgen.validate.topology import check_topology
+from tests.grids import GRID_CLI
 
 P = JunctionControlParams()
 
@@ -351,13 +352,6 @@ def test_roundabout_entries_yield_with_sign_215(tmp_path):
     assert (float(marking.get("lineLength")), float(marking.get("spaceLength"))) == (0.5, 0.25)
 
 
-def test_priorities_off_keeps_them_in_the_sidecar_only(tmp_path):
-    hd = dataclasses.replace(HD, control=dataclasses.replace(HD.control, priorities=False))
-    _, root, sidecar = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, hd)
-    assert not root.findall("junction/priority")
-    assert any(c["yields_to"] for c in sidecar["movement_control"].values())
-
-
 def test_validator_catches_broken_furniture(tmp_path):
     path, _, sidecar = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path)
 
@@ -403,7 +397,7 @@ def test_annotate_command_and_pipeline(tmp_path):
     from cli import main
 
     out = tmp_path / "city"
-    assert main(["--no-history", "pipeline", "lsystem", "--preset", "grid", "--maps", "--hd", "--allow-traps",
+    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--maps", "--hd", "--allow-traps",
                  "-o", str(out)]) == 0
     graph = json.loads(out.with_suffix(".json").read_text())
     assert "annotate" in graph["metadata"]

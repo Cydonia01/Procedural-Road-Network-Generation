@@ -7,8 +7,6 @@ from lxml import etree
 from shapely.geometry import LineString
 
 from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
 from roadgen.scene.buildings import (
     BuildingParams,
     blocks,
@@ -52,32 +50,38 @@ def test_dead_end_inside_a_block_is_kept_clear():
 
 
 def test_heights_and_determinism():
-    g, p = grid(), BuildingParams(seed=5, min_height=20, max_height=30, parcels=False)  # one per block
+    g, p = grid(), BuildingParams(seed=5, min_height=20, max_height=30)
     tris, normals, n = building_mesh(g, p)
-    assert n == 12 and len(tris) == len(normals)
+    assert n > 12 and len(tris) == len(normals)  # more buildings than the 12 blocks
     roofs = {round(t[0][2], 6) for t, nrm in zip(tris, normals) if nrm == (0.0, 0.0, 1.0)}
-    assert len(roofs) == n and all(20 <= h <= 30 for h in roofs)
+    assert all(20 <= h <= 30 for h in roofs)
     assert building_mesh(g, p) == (tris, normals, n)
-    assert building_mesh(g, BuildingParams(seed=6, parcels=False))[0] != tris
+    assert building_mesh(g, BuildingParams(seed=6))[0] != tris
 
 
 def test_walls_face_outward():
-    g = grid(2, 2)
-    tris, normals, _ = building_mesh(g, BuildingParams(corner_radius=0, parcels=False))
-    (poly,) = footprints(g, BuildingParams(corner_radius=0))
-    cx, cy = poly.centroid.x, poly.centroid.y
+    import numpy as np
+    from shapely.geometry import Point
+    from shapely.ops import unary_union
+
+    from roadgen.scene.buildings import building_footprints
+
+    g, p = grid(2, 2), BuildingParams(corner_radius=0)
+    tris, normals, _ = building_mesh(g, p)
+    solid = unary_union(building_footprints(g, p, np.random.default_rng(p.seed))[0])
     for tri, (nx, ny, nz) in zip(tris, normals):
         if nz == 0.0:
-            mx = sum(p[0] for p in tri) / 3 - cx
-            my = sum(p[1] for p in tri) / 3 - cy
-            assert mx * nx + my * ny > 0
+            (x0, y0, _), (x1, y1, _) = tri[0], tri[1]
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2  # a base edge's midpoint
+            assert not solid.contains(Point(mx + 0.05 * nx, my + 0.05 * ny))
+            assert solid.buffer(1e-6).contains(Point(mx - 0.05 * nx, my - 0.05 * ny))
 
 
 def test_osgt_structure(tmp_path):
     path = tmp_path / "b.osgt"
-    n = export_buildings(grid(), path, BuildingParams(parcels=False))
+    n = export_buildings(grid(), path, BuildingParams())
     text = path.read_text()
-    assert n == 12
+    assert n > 12
     assert text.startswith("#Ascii Scene \n#Version 161 \n#Generator roadgen 0.1 ")
     count = int(re.search(r"Count (\d+)", text).group(1))
     sizes = [int(x) for x in re.findall(r"vector (\d+) \{", text)]
@@ -102,48 +106,6 @@ def test_unsupported_format(tmp_path):
         export_buildings(grid(2, 2), tmp_path / "b.fbx")
 
 
-def test_scenario_references_scenegraph(tmp_path):
-    g = grid(3, 3)
-    b = OpenDriveBuilder()
-    b.build(g)
-    b.write(tmp_path / "net" / "g.xodr")
-    export_buildings(g, tmp_path / "net" / "g_buildings.osgt")
-    xosc = ScenarioBuilder.from_files(tmp_path / "net" / "g.xodr").write(
-        ScenarioParams(3, sim_duration=2.0), tmp_path / "scen" / "g.xosc",
-        scenegraph=tmp_path / "net" / "g_buildings.osgt",
-    )
-    root = etree.parse(str(xosc)).getroot()
-    assert root.find("RoadNetwork/SceneGraphFile").get("filepath") == "../net/g_buildings.osgt"
-    assert root.find("RoadNetwork/LogicFile").get("filepath") == "../net/g.xodr"
-
-
-def _esmini_available() -> bool:
-    from roadgen.sim.esmini import esmini_binary
-
-    try:
-        esmini_binary("esmini")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _esmini_available(), reason="esmini not found")
-def test_runner_keeps_roads_visible_with_scenegraph(tmp_path):
-    from roadgen.sim.runner import run_esmini
-
-    g = grid(2, 2)
-    b = OpenDriveBuilder()
-    b.build(g)
-    b.write(tmp_path / "g.xodr")
-    export_buildings(g, tmp_path / "g_buildings.osgt")
-    xosc = ScenarioBuilder.from_files(tmp_path / "g.xodr").write(
-        ScenarioParams(2, sim_duration=1.0), tmp_path / "g.xosc", scenegraph=tmp_path / "g_buildings.osgt"
-    )
-    result = run_esmini(xosc, record=False, csv=False, timeout=60)
-    assert result.ok, result.errors
-    assert "--enforce_generate_model" in result.command
-
-
 def test_pipeline_scene_draws_the_junction_fill(tmp_path):
     from cli import main
     from tests.grids import grid_cli
@@ -151,7 +113,8 @@ def test_pipeline_scene_draws_the_junction_fill(tmp_path):
     prefix = tmp_path / "net"
     assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), "--buildings", "-o", str(prefix)]) == 0
     root = etree.parse(str(prefix.with_suffix(".xodr"))).getroot()
-    assert not [o for o in root.iter("object") if o.get("type") == "patch"]  # drawn by the scene instead
+    # The .xodr keeps its patch objects; the scene draws the same surface under them.
+    assert [o for o in root.iter("object") if o.get("type") == "patch"]
     text = (tmp_path / "net_buildings.osgt").read_text()
     assert 'Name "buildings"' in text and 'Name "junction_fill"' in text
 
@@ -179,7 +142,7 @@ def test_parcels_split_a_block_with_street_frontage():
 
 def test_one_building_per_parcel_not_per_block():
     g = grid()
-    blocks_only = building_mesh(g, BuildingParams(parcels=False))[2]
+    blocks_only = len(footprints(g, BuildingParams()))
     tris, normals, n = building_mesh(g, BuildingParams())
     assert n > 3 * blocks_only and len(tris) == len(normals)
     assert building_mesh(g, BuildingParams()) == (tris, normals, n)  # deterministic

@@ -71,7 +71,7 @@ Performance figures are from `plans/baselines/2026-10-31-stage-b-b9-perf.json`.
 
 ### 1, 2: lanes jump from 4 to 2, ground over the road
 
-**Where the decision came from.** The Phase 3–4 prompts (`copilot_prompts.md:199-243`) set:
+**Where the decision came from.** The Phase 3–4 prompts (`copilot_prompts.md:199-243`, now [`2026-10-08-copilot-phase-prompts.md`](2026-10-08-copilot-phase-prompts.md), Prompts 4–5) set:
 
 - avenues `(2, 2)` and streets `(1, 1)`;
 - later, 4-lane one-way avenues and 2-lane one-way streets.

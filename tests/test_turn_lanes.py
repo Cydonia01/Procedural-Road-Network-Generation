@@ -20,7 +20,6 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import lane_use
-from roadgen.scenario.xosc_builder import ScenarioBuilder, ScenarioParams
 from roadgen.validate.continuity import RoadEval, _width, check_continuity
 from roadgen.validate.hdmap import check_hdmap
 from roadgen.validate.topology import check_topology
@@ -147,7 +146,7 @@ def test_right_in_right_out_on_a_wide_highway(tmp_path):
     assert {(s.get("type"), s.get("subtype")) for s in signs} >= {("209", "20")}
 
 
-def test_seeded_bans_keep_every_road_reachable_and_routes_avoid_them(tmp_path):
+def test_seeded_bans_keep_every_road_reachable_and_no_movement_takes_them(tmp_path):
     hd = dataclasses.replace(HD, control=dataclasses.replace(HD.control, ban_share=1.0, ban_left_highway=False))
     g = load_json("tests/fixtures/4way_avenue_x_street.json")
     path, root, sidecar, _ = _build(g, tmp_path, hd)
@@ -158,15 +157,10 @@ def test_seeded_bans_keep_every_road_reachable_and_routes_avoid_them(tmp_path):
     assert check_hdmap(path) == []
     banned = {(tuple(b["from"]), tuple(b["to"])) for b in sidecar["banned"]}
     assert banned and {b["reason"] for b in sidecar["banned"]} == {"seeded"}
-    xosc = tmp_path / "routes.xosc"
-    builder = ScenarioBuilder.from_files(path)
-    builder.write(ScenarioParams(20, seed=3, spawn_mode="explicit_routes"), xosc)
-    for plan in builder.plans:  # every step of every route is a movement that exists
-        for (r0, l0), (r1, l1) in zip(plan.route, plan.route[1:]):
-            if r0 == r1:
-                continue
-            fc, tc = ("end" if l0 < 0 else "start"), ("start" if l1 < 0 else "end")
-            assert ((r0, fc), (r1, tc)) not in banned
+    for m in sidecar["movements"]:  # no junction movement takes a banned turn
+        fc = "end" if m["from_lane"] < 0 else "start"
+        tc = "start" if m["to_lane"] < 0 else "end"
+        assert ((m["from_road"], fc), (m["to_road"], tc)) not in banned
 
 
 def test_junction_surface_fill(tmp_path):
@@ -182,18 +176,16 @@ def test_junction_surface_fill(tmp_path):
 
 
 def test_junction_fill_in_the_scene_instead_of_patches(tmp_path):
-    import dataclasses
 
     from shapely.geometry import Polygon
 
     from roadgen.scene.junctions import junction_fill_mesh, read_fills
 
-    with_patches, root, sidecar, b = _build(_cross(), tmp_path)
-    fills = read_fills(with_patches.with_suffix(".roadmap.json"))
+    # The .xodr always has the patch objects; the scene draws the same areas under them.
+    path, root, sidecar, b = _build(_cross(), tmp_path)
+    fills = read_fills(path.with_suffix(".roadmap.json"))
     assert len(fills) == b.fills == len(sidecar["junction_fills"]) > 0
-    path, root, _, b2 = _build(_cross(), tmp_path, dataclasses.replace(HD, junction_patches=False), "nopatch")
-    assert not [o for o in root.iter("object") if o.get("type") == "patch"] and b2.fills == 0
-    assert read_fills(path.with_suffix(".roadmap.json")) == fills  # the areas are listed all the same
+    assert len([o for o in root.iter("object") if o.get("type") == "patch"]) == len(fills)
     assert check_hdmap(path) == []
     mesh = junction_fill_mesh(fills)
     area = sum(Polygon([p[:2] for p in t]).area for t in mesh.tris)

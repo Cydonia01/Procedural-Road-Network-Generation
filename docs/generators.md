@@ -168,7 +168,6 @@ for the random generator it gets. lsystem gives each its own sub-stream.
 
 | Module | Function | Used by |
 |--------|----------|---------|
-| `drop.py` | `drop_edges`: drop segments, keeping every travel direction possible | [lsystem grids](lsystem.md#grids) |
 | `culdesac.py` | `add_culdesacs`: turn-around bulbs at dead ends | [lsystem](lsystem.md#connectivity-and-cul-de-sacs), `junction` |
 | `stagger.py` | `stagger_crossings`: 4-way crossings into offset T pairs | [lsystem](lsystem.md#junction-variety) |
 | `roundabout.py` | `add_roundabouts`: junctions into one-way rings | [lsystem](lsystem.md#roundabouts), `junction` |

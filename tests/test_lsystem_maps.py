@@ -261,12 +261,12 @@ def test_new_params_are_validated():
 def test_cli_pipeline_grows_lsystem_on_its_maps(tmp_path):
     prefix = tmp_path / "city"
     # --no-hd: the network as grown (annotate and the HD fit would set profiles and repair)
-    assert main(["pipeline", "lsystem", "--preset", "grid_organic", "--allow-traps", "--maps", "--no-hd",
+    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--allow-traps", "--maps", "--no-hd",
                  "--seed", "3", "-o", str(prefix)]) == 0
     graph = load_json(prefix.with_suffix(".json"))
     assert "bridges" in graph.metadata
     assert set(graph.metadata["maps"]) == {"terrain", "elevation", "population"}
-    params = LSystemParams.preset("grid_organic")
+    params = LSystemParams.preset("city", extent=(1500.0, 900.0))
     for kind in ("terrain", "elevation", "population"):
         layer = load_npz(tmp_path / f"city_{kind}.npz")
         assert layer.grid.covers(LSystemGenerator().map_bounds(params))
@@ -274,7 +274,7 @@ def test_cli_pipeline_grows_lsystem_on_its_maps(tmp_path):
     out = tmp_path / "again.json"
     files = [f"--map-file={k}={tmp_path / f'city_{k}.npz'}"
              for k in ("terrain", "elevation", "population")]
-    assert main(["generate", "lsystem", "--preset", "grid_organic", "--seed", "3", *files, "--no-hd",
+    assert main(["generate", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--seed", "3", *files, "--no-hd",
                  "-o", str(out)]) == 0
     again = load_json(out)
     assert again.edges == graph.edges

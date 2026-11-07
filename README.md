@@ -1,16 +1,16 @@
 # Procedural-Road-Network-Generation
 
-**roadgen** is a Python pipeline that procedurally generates road networks as
-training and test environments for autonomous driving. It writes them as
-ASAM OpenDRIVE (`.xodr`), fills them with traffic as OpenSCENARIO (`.xosc`),
-and runs them in [esmini](https://github.com/esmini/esmini). All networks are
-generated; OpenStreetMap is not used.
+**roadgen** is a Python pipeline that procedurally generates road networks
+and writes them as ASAM OpenDRIVE (`.xodr`) with HD-map content, checked by
+validators and by driving them with [esmini](https://github.com/esmini/esmini)'s
+RoadManager, and viewable in esmini. All networks are generated;
+OpenStreetMap is not used.
 
 ```
 Input maps (terrain, elevation, population, style; procedural or from images)
    |
-Generator -> RoadGraph (JSON) -> OpenDRIVE builder -> .xodr -> validators
-                                                    -> scenario builder -> .xosc -> esmini
+Generator -> RoadGraph (JSON) -> OpenDRIVE builder -> .xodr -> validators, drive-check
+                                                    -> esmini view (with ground and buildings)
 ```
 
 ## What it can generate
@@ -29,15 +29,14 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE builder -> .xodr -> validators
   speed (AASHTO), banking, lane tapers, sloped junctions. These are checked by
   validators and by driving every lane and junction movement with esmini's
   RoadManager.
-- **Traffic and 3D:** scenarios with hundreds to thousands of vehicles, and
-  optional ground and buildings for the esmini view.
+- **3D view:** optional ground and buildings for the esmini view.
 
 ## Quick start
 
 ```bash
 docker compose build && docker compose run --rm dev      # or a native install, see below
 pytest
-python -m cli pipeline lsystem --preset grid --set extent=[750,240] --seed 1 --drive-check --simulate -o first
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 --drive-check -o first
 python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings -o hills
 ```
 

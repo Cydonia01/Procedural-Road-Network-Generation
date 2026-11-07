@@ -7,9 +7,8 @@ junction trims and [heights](heights.md) as the builder, so nothing covers or
 floats over a road.
 
 ```bash
-python -m cli pipeline lsystem --preset grid --set extent=[1000,320] --buildings --simulate -o city
-python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings --simulate -o hills
-python -m cli simulate out/<hash>/hills.xosc --gui
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[1000,320] --buildings -o city
+python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings -o hills
 python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osgt
 ```
 
@@ -20,7 +19,7 @@ python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osg
 | `ground` command | `scene.osgt` | The same, from map files and a draped graph ([CLI](cli-reference.md#ground)) |
 
 esmini takes a single SceneGraphFile, so ground and buildings share one
-file. `pipeline --simulate` attaches it to the scenario.
+file. `view --scenegraph` shows it with the roads.
 
 ## Ground
 
@@ -61,10 +60,11 @@ covers (corners no turn follows, slivers between turning lanes) are found by
 the builder and listed in the sidecar as `junction_fills`. When the pipeline
 writes a scene (`--ground` or `--buildings`), it draws them as flat triangles
 on the junction plane, `fill_below` (0.02 m) under the lanes, in
-`asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`), and
-the `.xodr` gets no `<object type="patch">` for them: esmini draws such
-outlines in a plain, lighter grey. Without a scene the patches are written
-([OpenDRIVE](opendrive.md)). `junction_fill: false` keeps the patches.
+`asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`).
+`junction_fill: false` leaves them out of the scene. The `.xodr` always
+describes the same areas as `<object type="patch">` ([OpenDRIVE](opendrive.md)),
+which esmini draws on top in a plain, lighter grey; making that look match
+is open.
 
 ## Buildings
 
@@ -106,7 +106,6 @@ outlines in a plain, lighter grey. Without a scene the patches are written
 
 - **`.osgt`** (OpenSceneGraph ASCII, z-up; `osgt.py`): what esmini loads.
   - esmini's bundled OSG can't read `.obj`.
-  - esmini loads scene graphs only when it has a window (`simulate --gui`,
-    `view`).
+  - esmini loads scene graphs only when it has a window (`view`).
 - **`.obj` + `.mtl`** (y-up by default, `buildings.y_up`): for Blender,
   MeshLab and similar tools.

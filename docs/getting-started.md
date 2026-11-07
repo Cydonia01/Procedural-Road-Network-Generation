@@ -44,9 +44,9 @@ pytest                                     # is everything installed?
 python -m cli generators                   # generators, presets and parameters
 
 # Generate a small grid, plot it, build the .xodr, validate it,
-# drive every junction movement and run a short simulation
-python -m cli pipeline lsystem --preset grid --set extent=[750,240] --seed 1 \
-    --drive-check --simulate -o first
+# and drive every junction movement
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 \
+    --drive-check -o first
 ```
 
 A passing run ends with `INFO roadgen.cli: run <hash>: out/<hash>`. That
@@ -58,7 +58,6 @@ folder holds:
 | `first.png` | Top-down plot of the graph |
 | `first.xodr` | OpenDRIVE road network |
 | `first.roadmap.json` | Graph id → OpenDRIVE id mapping, every junction movement |
-| `first.xosc` | Traffic scenario (from `--simulate`) |
 | `run.yaml` | The command and its non-default parameters, enough to rerun it |
 
 Every output file is listed in
@@ -68,15 +67,13 @@ are explained in the
 
 ## Viewing results
 
-`view` opens a network in esmini's `odrviewer` with random cars, and
-`simulate --gui` shows a scenario running:
+`view` opens a network in esmini's `odrviewer` with random cars:
 
 ```bash
 python -m cli view out/<hash>/first.xodr
-python -m cli simulate out/<hash>/first.xosc --gui
 ```
 
-Both need a display. The Docker `dev` service has none: `odrviewer` exits
+It needs a display. The Docker `dev` service has none: `odrviewer` exits
 immediately without an error. Use the GUI service for your OS instead (setup
 in [Docker](docker.md)):
 

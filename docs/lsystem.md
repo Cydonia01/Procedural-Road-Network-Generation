@@ -13,7 +13,7 @@ The generator interface and how parameters are set are described in
 [RoadGraph](road-graph.md).
 
 ```bash
-python -m cli pipeline lsystem --preset grid
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[2250,720]
 python -m cli pipeline lsystem --preset manhattan_like --seed 1
 python -m cli pipeline lsystem --preset paris --allow-traps
 python -m cli pipeline lsystem --preset mixed_city --maps --allow-traps
@@ -22,20 +22,30 @@ python -m cli pipeline lsystem --preset highway_corridor --maps --allow-traps
 
 ## Presets
 
-| Preset | Goal | What it grows |
-|--------|------|---------------|
-| `grid` | grid | An exact 10 × 10 lattice from a corner (tests check the lattice coordinates) |
-| `manhattan_like` | grid | Midtown: 10 avenues 250 m apart and 30 streets 80 m apart, both alternating one-way (arterials 4 lanes, others 2), rotated 29°, 11.2 m/s (25 mph), a ring road |
-| `grid_organic` | grid | Noisy headings and lengths, 15 % of branches skipped: irregular blocks, likely dead ends |
-| `organic_curved` | grid | `drift` streets that wander from the grid and bow between junctions |
-| `city` | grid | 3000 × 2400 m noisy grid, `min_angle_deg` 40 so streets can leave curved highways. For `--maps` |
-| `hill_town` | grid | `city` with `contour` streets that follow slopes. For `--maps` |
-| `highway_corridor` | grid | `city` with straight freeways, diamond interchanges every 1000 m, lane adds and drops. For `--maps` |
-| `paris` | field | A six-spoke star with rings, a grid outside, up to 7 roads at a node |
-| `organic_town` | field | Organic 0.8, staggered crossings, some roundabouts |
-| `skewed_grid` | field | Streets meet avenues at 60–90°, in patches |
-| `suburb` | field | Suburb pattern only, 30 km/h streets, bulbs at 90 % of dead ends, some roundabouts |
-| `mixed_city` | field | Districts of every pattern from a style map, connectors, staggers, roundabouts. For `--maps` |
+One preset per street pattern, plus the cities for input maps. A preset is
+only a named set of parameters: any other layout is the same parameters set
+with `--set` or a `--params` file ([Generators](generators.md)).
+
+| Preset | Pattern | Goal | What it grows |
+|--------|---------|------|---------------|
+| `manhattan_like` | grid | grid | Midtown: 10 avenues 250 m apart and 30 streets 80 m apart, both alternating one-way (arterials 4 lanes, others 2), rotated 29°, 11.2 m/s (25 mph), a ring road |
+| `paris` | radial | field | A six-spoke star with rings, a grid outside, up to 7 roads at a node |
+| `organic_town` | organic | field | Organic 0.8, staggered crossings, some roundabouts |
+| `hill_town` | contour | field | Contour streets that follow the slopes everywhere (no style map), slightly bowed. For `--maps` |
+| `suburb` | suburb | field | Suburb pattern only, 30 km/h streets, bulbs at 90 % of dead ends, some roundabouts |
+| `skewed_grid` | skew | field | Streets meet avenues at 60–90°, in patches |
+| `city` | noisy grid | grid | 3000 × 2400 m noisy grid, `min_angle_deg` 40 so streets can leave curved highways. For `--maps` |
+| `highway_corridor` | noisy grid | grid | `city` with straight freeways, diamond interchanges every 1000 m, lane adds and drops. For `--maps` |
+| `mixed_city` | all | field | Districts of every pattern from a style map, connectors, staggers, roundabouts. For `--maps` |
+
+Layouts without a preset of their own:
+
+| Layout | Parameters |
+|--------|------------|
+| Exact 10 × 10 lattice from a corner | `--set start=[0,0] --set extent=[2250,720]` (default 250 × 80 m blocks) |
+| Plain grid of `n_x` × `n_y` lines | `--set start=[0,0] --set extent=[W,H]` with `grid_extent(n_x, n_y, block_size)` |
+| Noisy grid without maps | `--preset city` (without `--maps`) |
+| Curved streets | `--preset organic_town`, or any preset with `--set curve_tortuosity=1.05` |
 
 Networks with dead ends report traffic traps. The [dead-end
 pass](#dead-ends-and-road-bodies) removes most; pass `--allow-traps` for the
@@ -114,16 +124,11 @@ only at junctions with three or more roads. Arterials and collectors are
 One-way edges (`oneway_pattern`) keep their direction with all lanes forward,
 and asymmetric lane tuples are oriented along the stroke.
 
-`hierarchy: axis` is the rule before stage R, kept to replay older runs and
-for the `--no-hd` identity guard: roads along local y get `major_*`, along
-local x `minor_*`.
-
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `hierarchy` | `strokes` | `strokes` or `axis` |
-| `major_lanes`, `major_speed` | (2, 2), 13.9 | Arterials (axis: roads along local y) [m/s] |
+| `major_lanes`, `major_speed` | (2, 2), 13.9 | Arterials [m/s] |
 | `collector_lanes`, `collector_speed` | (1, 1), 12.5 | Collectors [m/s] |
-| `minor_lanes`, `minor_speed` | (1, 1), 11.1 | Local roads (axis: roads along local x) [m/s] |
+| `minor_lanes`, `minor_speed` | (1, 1), 11.1 | Local roads [m/s] |
 | `stroke_max_deflection_deg` | 35 | Arms of one road at a junction turn less than this [deg] |
 | `arterial_share`, `collector_share` | 0.15, 0.25 | Shares of the road length |
 | `betweenness_samples` | 200 | Sampled source nodes; 0 = exact |
@@ -135,7 +140,6 @@ local x `minor_*`.
 | `oneway_pattern` | (none, none) | (avenues, streets): `none` or `alternating` |
 | `boundary` | `none` | `ring`: a two-way ring road around the area |
 | `ring_offset`, `ring_lanes` | 60, (2, 2) | Ring distance outside the area [m], and its lanes |
-| `edge_drop_prob` | 0 | Chance to drop each street segment |
 
 - **Grid lines.** Each proposal carries the index of its grid line.
   Continuations keep it, and a branch takes the index of the line through its
@@ -152,41 +156,26 @@ local x `minor_*`.
     extension.
 
   The ring ignores input maps.
-- **Edge drop** (`transforms/drop.py`). Street segments are dropped at
-  random, but only if every travel direction they carried remains possible
-  another way. Connectivity, and strong connectivity on one-way grids, is
-  preserved.
 - **Sizes as counts.** `grid_extent(n_x, n_y, block_size)` gives the extent
   of a grid of `n_x` avenues and `n_y` streets grown from `start: [0, 0]`.
 
 ```bash
-python -m cli pipeline lsystem --preset grid --set extent=[1500,560] \
-    --set rotation_deg=15 --set angle_jitter_deg=2 --set edge_drop_prob=0.2 --set boundary=ring
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[1500,560] \
+    --set rotation_deg=15 --set angle_jitter_deg=2 --set boundary=ring
 ```
 
-## Curved streets (grid goal)
+## Bowed streets
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `curve_mode` | `none` | `drift` or `contour` (needs an elevation map) |
-| `curve_drift_deg`, `curve_reversion` | 6, 0.3 | Heading noise per segment (std, deg) and pull back to the grid axis (0–1) |
 | `curve_tortuosity` | 1.0 | Target length / chord of a street; 1 = straight |
 
-- **`drift`.** A street's deviation from its grid axis follows a
-  mean-reverting random walk (Ornstein–Uhlenbeck). Each segment adds
-  `curve_drift_deg` of noise and is pulled back by `curve_reversion`.
-  - The change per segment is limited so the bend between two blocks can
-    still get its design radius.
-  - A continuation keeps the deviation. Branches leave perpendicular, so
-    blocks stay roughly rectangular.
-- **`contour`.** The same walk, pulled towards the terrain's contour
-  direction (the elevation gradient). The pull is weighted by slope: full
-  from 8 %, and at most 60° off the axis. This is Parish & Müller's San
-  Francisco rule.
-- **Tortuosity** (Aliaga et al.). With `curve_tortuosity` > 1, each street
-  between two nodes gets a **bow node** placed sideways at its middle, so that
-  length / chord reaches the target. The bow must cross no road, keep
-  `snap_radius` from other nodes and stay on legal ground.
+With `curve_tortuosity` > 1 (Aliaga et al.), each street between two nodes
+gets a **bow node** placed sideways at its middle, so that length / chord
+reaches the target. The bow must cross no road, keep `snap_radius` from
+other nodes and stay on legal ground. It works with both goals. Streets that
+follow the terrain or wander organically come from the field goal's
+`contour`, `organic` and `suburb` patterns ([below](#pattern-fields-global_goal-field)).
 
 The builder turns these bend nodes into smooth curves
 ([Road geometry](geometry.md#fitted-roads)).
@@ -215,7 +204,8 @@ sum without wrap-around artefacts.
   `radial_radius` around `radial_center`; or
 - on input maps, a [style map](maps.md#style-zones-street-patterns-per-district),
   where neighbouring districts blend over `style_blend_width`, each grid at
-  its district's angle.
+  its district's angle. With `style_map: false` the pipeline builds no style
+  map and `pattern_weights` hold everywhere (`hill_town`: contour only).
 
 **How it grows:**
 
@@ -234,9 +224,8 @@ sum without wrap-around artefacts.
   to the organic pattern. Headings within (1 − `organic`) · `snap_deg` of the
   plain field snap to it (TownSim's snap knob). So 0 keeps exact grids, and 1
   is fully organic.
-- `curve_tortuosity` still bows streets, but `curve_mode` must stay `none`.
-  Without a style map, the field needs only `start` and `extent`, so it works
-  without maps.
+- Without a style map, the field needs only `start` and `extent`, so it
+  works without maps.
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
@@ -248,6 +237,7 @@ sum without wrap-around artefacts.
 | `snap_deg` | 15 | Snap window at `organic` 0 [deg] |
 | `suburb_block_size`, `suburb_branch_prob`, `suburb_end_prob` | (120, 60), 0.6, 0.25 | Suburb pattern's block size, branching, and chance a street ends at a node |
 | `style_blend_width` | 300 | District blend width [m] |
+| `style_map` | true | On input maps, read the style map; false: `pattern_weights` everywhere |
 
 ## Dead ends and road bodies
 

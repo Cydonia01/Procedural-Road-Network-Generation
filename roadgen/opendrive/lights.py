@@ -161,31 +161,3 @@ def signal_plan(junction_id: int, node_id: int, approaches: list[Approach], lane
     rng = np.random.default_rng([seed, SALT, node_id])
     offset = float(np.floor(rng.random() * cycle))
     return SignalPlan(junction_id, cycle, offset, tuple(groups), tuple(phases))
-
-
-def state_changes(plan: SignalPlan, duration: float) -> list[tuple[float, dict[str, str]]]:
-    """(time [s], {signal id: state}) wherever lights change within [0, duration], the
-    first at 0 with every light; the cycle starts at -offset."""
-    starts, t = [], 0.0
-    for p in plan.phases:
-        starts.append(t)
-        t += p["duration"]
-    # the phase in force at time 0
-    pos = plan.offset % plan.cycle
-    k0 = max(i for i, s in enumerate(starts) if s <= pos + 1e-9)
-    out = [(0.0, dict(plan.phases[k0]["states"]))]
-    current = dict(plan.phases[k0]["states"])
-    cycle_start = -pos
-    k = k0
-    while True:
-        k += 1
-        if k == len(plan.phases):
-            k = 0
-            cycle_start += plan.cycle
-        at = round(cycle_start + starts[k], 3)
-        if at > duration:
-            return out
-        changed = {s: st for s, st in plan.phases[k]["states"].items() if current[s] != st}
-        current.update(changed)
-        if changed:
-            out.append((at, changed))

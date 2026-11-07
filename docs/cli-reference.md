@@ -28,8 +28,6 @@ check or simulation failed.
 | [`metrics`](#metrics) | Geometry and network metrics, build-failure sweep |
 | **Scene and simulation** | |
 | [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps |
-| [`scenario`](#scenario) | `.xodr` → `.xosc` with many vehicles |
-| [`simulate`](#simulate) | Run an `.xosc` in esmini and summarize it |
 | [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
 | **Runs** | |
 | [`history`, `replay`, `run`](#run-folders-history-replay-run) | List, rerun or define recorded runs |
@@ -56,7 +54,7 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
 `maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
-`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scenario`, `buildings`, `esmini`, `pipeline`.
+`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scene`, `ground`, `buildings`, `esmini`.
 
 Parameters are layered. Each layer overrides the one before it:
 
@@ -79,8 +77,8 @@ maps:
   grid: {cell_size: 5.0}
   terrain:
     noise: {water_fraction: 0.25}
-scenario:
-  speed_range: [5.0, 10.0]
+buildings:
+  max_height: 40.0
 ```
 
 A `--params` file holds a generator's (or map generator's) fields directly,
@@ -174,8 +172,6 @@ each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 | `--ground` | Also write `PREFIX_scene.osgt`: ground plus buildings. Needs an elevation map |
 | `--drive-check` | Also run [drive-check](#drive-check), if there are no errors so far |
 | `--lane-plot` | With HD maps, also draw the built lanes to `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr); about 5 s on a city) |
-| `--simulate` | Also write `PREFIX.xosc` and run it headless, if there are no errors so far |
-| `--sim-vehicles N`, `--sim-duration S` | For `--simulate` (default 50 vehicles, 30 s; 600 s timeout) |
 
 ## map
 
@@ -246,7 +242,7 @@ See [Validation → Drive-check](validation.md#drive-check).
 
 ```bash
 python -m cli metrics A.xodr [B.xodr ...] [--hd | --no-hd] [--graph A.json ...] [--json OUT.json]
-python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd | --no-hd] [--jobs 1]
+python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset city] [--hd | --no-hd] [--jobs N]
 ```
 
 - Geometry metrics of each `.xodr`.
@@ -259,7 +255,7 @@ python -m cli metrics --sweep N [--first-seed 0] [--generator lsystem] [--preset
 - `--sweep N` generates N networks, as `pipeline --maps` would, and counts the
   ones the builder rejects. With HD maps they are built after `annotate` and
   the cross-section fit, as in `pipeline`; with `--no-hd` as in `pipeline --no-hd`. `--jobs N`
-  builds N at a time.
+  builds N at a time (default 0: one per CPU).
 
 The report is informational: the command succeeds whatever the numbers are.
 Thresholds are in `defaults.yaml` under `metrics` and `network_metrics`. The
@@ -276,41 +272,6 @@ python -m cli ground [OUT.osgt] --map-file elevation=E.npz [--map-file terrain=T
 A ground mesh from the maps. `--graph` (a draped network) levels it under the
 roads, and `--buildings` adds that network's buildings. `--junction-margin`
 must match the `.xodr`. Parameters go in `ground:`. See [3D scene](scene.md).
-
-## scenario
-
-```bash
-python -m cli scenario NETWORK.xodr --vehicles N [options] [-o OUT.xosc]   # default: <input>.xosc
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--vehicles N` | required | Number of vehicles |
-| `--seed N` | 0 | |
-| `--duration S` | 60 | Simulated time [s] |
-| `--mode` | `random_lanes` | or `explicit_routes` ([spawn modes](scenarios-and-simulation.md#spawn-modes)) |
-| `--speed-min`, `--speed-max` | 8.0, 13.9 | Target speed range [m/s] |
-| `--min-gap M` | 10 | Minimum gap between vehicles in a lane [m] |
-| `--graph FILE` | `<input>.json` if present | RoadGraph for consistency checks |
-| `--lights`, `--no-lights` | `scenario.lights` (on) | Switch the network's [traffic lights](scenarios-and-simulation.md#traffic-lights) |
-| `--scenegraph FILE` | – | 3D scene `.osgt` shown with the roads |
-
-## simulate
-
-```bash
-python -m cli simulate SCENARIO.xosc [options]
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--gui` | off | Show the esmini window (needs a display) |
-| `--camera MODE` | `top` | With `--gui`: `orbit`, `fixed`, `flex`, `flex-orbit`, `top`, `driver` |
-| `--timestep S` | 0.05 | Fixed timestep [s] |
-| `--no-record`, `--no-csv` | – | Skip the `.dat` recording / the `.csv` log |
-
-It logs the vehicles, simulated and wall time, real-time factor, load time,
-peak memory, and esmini errors and warnings. The `.log`, `.dat` and `.csv` go
-into the run's folder (next to the `.xosc` with `--no-history`).
 
 ## view
 

@@ -9,7 +9,7 @@
 # < command-line flags and --set. All of it ends up in one run config: the
 # config part of out/<hash>/run.yaml, which holds only what differs from here.
 
-seed: 0  # random seed for generate, pipeline, scenario and buildings
+seed: 0  # random seed for generate, pipeline and buildings
 
 generators:
   lsystem:
@@ -29,10 +29,9 @@ generators:
     max_segments: 20000
     # Road hierarchy: strokes (continuous roads) ranked by length x betweenness become
     # arterials (avenues, major_*), collectors (avenues, collector_*) and local roads
-    # (streets, minor_*); "axis" is the rule before stage R (local y major, local x minor).
-    hierarchy: strokes         # strokes | axis
-    major_lanes: [2, 2]        # arterials (axis: roads along local y, "avenues")
-    minor_lanes: [1, 1]        # local roads (axis: roads along local x, "streets")
+    # (streets, minor_*).
+    major_lanes: [2, 2]        # arterials
+    minor_lanes: [1, 1]        # local roads
     collector_lanes: [1, 1]    # collectors
     lane_width: 3.5
     major_speed: 13.9          # [m/s] (50 km/h)
@@ -69,16 +68,12 @@ generators:
     avoid_vegetation: true     # streets stay out of parks / forest
     prune_factor: 0.4          # a street hitting water / vegetation keeps >= this share
     max_grade: 0.15            # max rise / run along a road (over 25 m); 0 = no limit
-    curve_mode: none           # curved streets: none | drift | contour (needs elevation)
-    curve_drift_deg: 6.0       # std dev of a street's heading change per segment [deg]
-    curve_reversion: 0.3       # pull back towards the grid axis per segment, 0-1
     curve_tortuosity: 1.0      # target length / chord of a street (bow node); 1 = straight
     # Manhattan-style grids
     oneway_pattern: [none, none]  # (avenues, streets): none | alternating (every second line one-way the other way)
     boundary: none             # none | ring: roads reaching the edge continue to a two-way ring road
     ring_offset: 60.0          # distance from the edge of the area to the ring [m]
     ring_lanes: [2, 2]
-    edge_drop_prob: 0.0        # chance to drop each street segment (traffic stays connected)
     # Pattern fields (global_goal: field): street patterns blended per location
     pattern_weights: [1.0, 0.0, 0.0, 0.0, 0.0]  # grid, radial, organic, contour, suburb (without a style map)
     grid_angle_deg: 0.0        # grid pattern's turn from the local axes [deg]
@@ -95,6 +90,7 @@ generators:
     suburb_branch_prob: 0.6    # branch_prob in suburbs
     suburb_end_prob: 0.25      # chance a suburb street ends at a node (a dead end, later a bulb)
     style_blend_width: 300.0   # patterns of neighbouring districts blend over this width [m] (style map)
+    style_map: true            # field goal on input maps reads the style map; false: pattern_weights everywhere
     # Connectivity and cul-de-sacs
     detour_ratio: 0.0          # connect nodes whose network trip is > this x their distance; 0 = off, else >= 1
     connect_radius: 300.0      # how far a connector may reach [m]
@@ -273,14 +269,11 @@ ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground
 
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]
-  lane_split: outer     # a straight exit with more lanes than its entry: outer | inner | none (which lane feeds them)
   u_turns: false        # U-turn movements at junctions where the road is wide enough
   u_turn_radius: 5.0    # tightest U-turn [m]: in and out lane centres at least 2x this apart
 
 hdmap:  # HD-map content of the built roads (stage B): side lanes, ...; pipeline / build-xodr --hd, --no-hd
-  enabled: true             # off (--no-hd): the builder writes exactly what it wrote before stage B
-  junction_patches: true    # junction surface no lane covers as <object type="patch">; the pipeline
-                            # leaves them out when it writes a scene, which draws that surface instead
+  enabled: true             # off (--no-hd): the plain driving-lane network (plain marks, no signals or objects)
 
 cross_section:  # lanes beside the driving lanes, per profile and road class (roadgen/geometry/cross_section.py)
   profile: urban            # profile of edges without Edge.cross_section: urban | suburban | rural | none
@@ -306,7 +299,6 @@ cross_section:  # lanes beside the driving lanes, per profile and road class (ro
                             # out (esmini loads them slowly: for throughput benchmarks, B9)
 
 road_marks:  # HD road marks, German catalogue (StVO, RMS), all white (roadgen/opendrive/marks.py)
-  enabled: true             # with HD maps on; false keeps the marks of before stage B
   width: [0.12, 0.12, 0.15] # line width, street, avenue, highway [m]
   broken_town: [3.0, 6.0]   # broken line (Z 340) on streets and avenues: line, gap [m]
   broken_highway: [6.0, 12.0]  # ... on highways [m]
@@ -328,7 +320,6 @@ junction_control:  # junction control and right of way, German rules (roadgen/op
   stop_skew_deg: 30.0       # ... or a minor arm is this far off 90 deg [deg]
   stop_share: 0.15          # ... or at this random share of priority junctions (seeded)
   right_before_left: true   # street-only junctions without signs
-  priorities: true          # write <junction><priority> records (false: only the sidecar has them)
   ban_left_highway: true    # right-in / right-out where a minor road meets an at-grade highway with 2+2 lanes or more
   ban_share: 0.05           # one approach loses its left turns at this seeded share of junctions with lights or priority
   zebras: dense_avenues     # zebras at junctions without lights: dense_avenues (avenue arms in the urban profile) | all | none
@@ -378,20 +369,12 @@ network_metrics:  # `metrics --graph`: layout and junction variety of a RoadGrap
   offset_t_distance: 50.0   # two T junctions this close with stems on opposite sides form an offset T [m]
   straight_tortuosity: 1.01 # roads with length / chord below this count as straight
 
-scenario:
-  sim_duration: 60.0        # simulated time [s]
-  spawn_mode: random_lanes  # random_lanes | explicit_routes
-  speed_range: [8.0, 13.9]  # [m/s]
-  min_spawn_gap: 10.0       # min spawn gap in a lane [m]
-  lights: true              # switch the network's traffic lights (sidecar signal_plans); scenario --no-lights
-
 buildings:
   setback: 3.0              # sidewalk between road edge and building [m]
   corner_radius: 6.0        # rounding of convex footprint corners [m]
   min_height: 12.0          # [m]
   max_height: 60.0          # [m]
   min_area: 150.0           # smaller footprints are dropped [m^2]
-  parcels: true             # split blocks into parcels, one building each (false: one per block)
   frontage: [15.0, 40.0]    # parcel width along the street, min and max [m]
   depth: [20.0, 40.0]       # parcel depth, min and max [m]
   inset: 1.5                # building inset from its parcel's edges (front and side setbacks) [m]
@@ -400,15 +383,9 @@ buildings:
   y_up: true                # .obj only: y-up instead of OpenDRIVE's z-up
 
 esmini:
-  timestep: 0.05                # fixed timestep [s]
   window: [60, 60, 1280, 800]   # x y width height of GUI windows
-  camera: top                   # camera mode for `simulate --gui`
   view_density: 1.0             # cars per 100 m in `view`
 
 history:  # every successful CLI run in <dir>/<hash>/ with its outputs (`history`, `replay`, `run`)
   dir: out                  # $ROADGEN_HISTORY overrides; "off" disables (outputs go where -o says)
 
-pipeline:
-  sim_vehicles: 50      # --simulate: number of vehicles
-  sim_duration: 30.0    # --simulate: simulated time [s]
-  sim_timeout: 600.0    # --simulate: wall-clock limit for esmini [s]

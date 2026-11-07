@@ -59,7 +59,6 @@ class JunctionControlParams:
     stop_skew_deg: float = _D["stop_skew_deg"]  # ... or a minor arm is this far off 90 deg [deg]
     stop_share: float = _D["stop_share"]  # ... or at this random share of priority junctions
     right_before_left: bool = _D["right_before_left"]  # street-only junctions without signs
-    priorities: bool = _D["priorities"]  # write <priority> records (else only the sidecar has them)
     zebras: str = _D["zebras"]  # zebras without lights: dense_avenues | all | none (crossings at lights always)
     ban_left_highway: bool = _D["ban_left_highway"]  # right-in / right-out where a minor road meets a 2+2 highway
     ban_share: float = _D["ban_share"]  # left turns banned from one approach at this seeded share of junctions

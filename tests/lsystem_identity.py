@@ -8,8 +8,9 @@ so grows with each new one. On input maps it leaves out the heights too (node
 z and radius_cap, edge profile and bridges, and the height steps' metadata):
 align and drape follow the builder's fitted roads, which geometry fixes may
 change, while the network the generator grows must not. The expected values
-were recorded with the code before stage C (41b8363) and re-recorded once in
-stage R1, when the road hierarchy from strokes replaced the axis rule.
+were recorded before stage C (41b8363), re-recorded in stage R1 (the road
+hierarchy from strokes) and once more when the polish stage removed old
+presets and moved hill_town to the contour pattern (2026-11-08).
 """
 
 from __future__ import annotations
@@ -27,9 +28,8 @@ EXPECTED = Path(__file__).parent / "data" / "lsystem_identity.json"
 # (name, preset or None for the defaults, seed, with input maps)
 CASES = [
     ("default", None, 0, False),
-    ("grid", "grid", 0, False),
-    ("organic_curved", "organic_curved", 1, False),
-    ("grid_organic", "grid_organic", 2, False),
+    ("manhattan_like", "manhattan_like", 0, False),
+    ("organic_town", "organic_town", 1, False),
     ("city_maps", "city", 1, True),
     ("hill_town_maps", "hill_town", 1, True),
 ]

@@ -73,13 +73,13 @@ def test_cli_generators_lists_everything(capsys):
     assert main(["generators"]) == 0
     out = capsys.readouterr().out
     assert "lsystem:" in out
-    assert "grid_organic" in out and "manhattan_like" in out
+    assert "organic_town" in out and "manhattan_like" in out
     assert "snap_radius = 15.0" in out
 
 
 def test_cli_generate_lsystem_with_yaml_and_set(tmp_path):
     cfg = tmp_path / "ls.yaml"
-    cfg.write_text("preset: grid\nparams:\n  extent: [500, 160]\n")
+    cfg.write_text("extent: [500, 160]\nstart: [0, 0]\n")
     out = tmp_path / "g.json"
     assert main(["generate", "lsystem", "--params", str(cfg), "--set", "block_size=[250, 80]",
                  "--set", "rotation_deg=15", "--seed", "3", "-o", str(out)]) == 0

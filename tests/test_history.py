@@ -10,7 +10,7 @@ import yaml
 from cli import main, run_argv
 from roadgen.history import ENV_VAR, RUN_FILE, RunStore
 
-GEN = ["generate", "lsystem", "--preset", "grid", "--set", "extent=[500,80]"]  # 3 x 2 grid
+GEN = ["generate", "lsystem", "--preset", "manhattan_like", "--set", "extent=[500,80]"]  # 3 x 2 grid
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def test_run_folder_holds_outputs_and_only_non_default_parameters(store):
     data = run_file(store, h)
     assert data["command"] == ["generate", "lsystem"]
     assert data["args"] == {"output": "grid.json"}  # --seed 0 is the default
-    assert data["config"] == {"generators": {"lsystem": {"preset": "grid", "extent": [500, 80],
+    assert data["config"] == {"generators": {"lsystem": {"preset": "manhattan_like", "extent": [500, 80],
                                                          "angle_jitter_deg": 2}}}
     assert data["cli"].startswith("python -m cli generate lsystem")
 
@@ -41,7 +41,7 @@ def test_same_inputs_spelled_differently_share_a_hash(store, tmp_path):
     cfg = tmp_path / "cfg.yaml"
     cfg.write_text("generators:\n  lsystem:\n    extent: [500, 80]\n")
     for argv in (["-v", "--note", "same", *GEN, "--seed", "0"],
-                 [*GEN[:2], "--set", "extent=[500, 80]", "--preset", "grid"],
+                 [*GEN[:2], "--set", "extent=[500, 80]", "--preset", "manhattan_like"],
                  [*GEN, "--set", "lane_width=3.5", "--set", "block_size=[250, 80]"],
                  ["--config", str(cfg), *GEN[:4]]):
         assert run_argv(argv)[1] == h

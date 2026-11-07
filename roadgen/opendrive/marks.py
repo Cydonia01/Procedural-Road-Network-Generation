@@ -20,7 +20,7 @@ records in one lane section (sOffset).
   (a bike lane's line on its driving side is this edge line).
 - Side lanes have no marks of their own. No `curb` mark on curb lanes:
   esmini's OSI ground truth turns it into a solid white line, not a curb
-  boundary (B4, plans/scripts/b4_osi_curb.py); the curb lane and its
+  boundary (B4, plans/2026-10-29-stage-b-implementation.md); the curb lane and its
   <height> describe the curb.
 
 Connecting roads have no marks (junction interiors are unmarked).
@@ -49,7 +49,6 @@ Spec = tuple  # a mark: ("broken", width, line, gap) | ("solid", width) | ("soli
 
 @dataclass(frozen=True)
 class RoadMarkParams:
-    enabled: bool = _D["enabled"]  # with HD maps on: these marks; off: the marks of before stage B
     width: tuple[float, float, float] = _D["width"]  # line width, street, avenue, highway [m]
     broken_town: tuple[float, float] = _D["broken_town"]  # broken line on streets and avenues: line, gap [m]
     broken_highway: tuple[float, float] = _D["broken_highway"]  # ... on highways [m]

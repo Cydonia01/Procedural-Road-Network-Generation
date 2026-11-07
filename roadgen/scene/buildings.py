@@ -1,13 +1,13 @@
-"""Simple 3D buildings: one extruded box per parcel (or per city block).
+"""Simple 3D buildings: one extruded box per parcel.
 
 Blocks are the bounded faces of the planar road graph (shapely
 ``polygonize``), drawn along the fitted roads (roadgen.geometry.alignment)
 so that buildings follow the curves the OpenDRIVE builder builds. A block's footprint is the face minus every road widened by
 its half-width plus a setback, so dead-end roads inside a block stay clear
 too; convex corners are rounded so buildings keep clear of the turning
-paths inside junctions. With parcels on (stage R6, roadgen.scene.parcels) each
-block area is split into parcels with one inset building each, as tall as the
-population under it; otherwise each block area is extruded to a random height.
+paths inside junctions. Each block area is split into parcels
+(roadgen.scene.parcels) with one inset building each, as tall as the
+population under it.
 
 Given an elevation map, a building stands on the ground: its base is
 FOUNDATION below the lowest ground under it, and its height is added to the
@@ -17,7 +17,7 @@ Formats:
 - .osgt (OpenSceneGraph ASCII, z-up): loads in esmini as SceneGraphFile in
   an .xosc. esmini's bundled OSG has no .obj reader. With a SceneGraphFile
   esmini needs ``--enforce_generate_model`` to still draw the roads, which
-  roadgen's runner adds automatically. esmini only loads it with a window.
+  the `view` command adds. esmini only loads it with a window.
 - .obj (+ .mtl, y-up by default): for other tools (Blender, MeshLab, ...).
 """
 
@@ -64,8 +64,7 @@ class BuildingParams:
     max_height: float = _D["max_height"]  # [m]
     min_area: float = _D["min_area"]  # smaller footprints are dropped [m^2]
     color: tuple[float, float, float] = _D["color"]
-    # Parcels (stage R6): one building per parcel instead of one per block.
-    parcels: bool = _D["parcels"]
+    # Parcels: one building per parcel.
     frontage: tuple[float, float] = _D["frontage"]  # parcel width along the street, min and max [m]
     depth: tuple[float, float] = _D["depth"]  # parcel depth, min and max [m]
     inset: float = _D["inset"]  # building inset from its parcel's edges (front and side setbacks) [m]
@@ -226,9 +225,9 @@ def building_mesh(
 ) -> tuple[list[tuple[Vec3, Vec3, Vec3]], list[Vec3], int]:
     """(triangles, one normal per triangle, number of buildings), z-up world coordinates.
 
-    Triangles are counter-clockwise seen from outside the building. With parcels on,
-    each block area is split into parcels with one building each (roadgen.scene.parcels),
-    as tall as the population map says; otherwise one building per block area.
+    Triangles are counter-clockwise seen from outside the building. Each block area is
+    split into parcels with one building each (roadgen.scene.parcels), as tall as the
+    population map says.
     """
     rng = np.random.default_rng(params.seed)
     polys, heights = building_footprints(graph, params, rng, terrain, cross_section, population)
@@ -277,8 +276,6 @@ def building_footprints(graph: RoadGraph, params: BuildingParams, rng: np.random
     )
 
     areas = footprints(graph, params, cross_section)
-    if not params.parcels:
-        return areas, list(rng.uniform(params.min_height, params.max_height, size=len(areas)))
     polys, heights = [], []
     for area in areas:
         for parcel in with_frontage(split_parcels(area, rng, params.frontage, params.depth), area,

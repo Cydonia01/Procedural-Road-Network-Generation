@@ -97,7 +97,7 @@ def _two_road_changes(g: RoadGraph) -> int:
     return changes
 
 
-@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("grid_organic", 2)])
+@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("city", 2)])
 def test_no_lane_change_at_two_road_nodes(preset, seed):
     g = LSystemGenerator().generate(LSystemParams.preset(preset), seed)
     assert _two_road_changes(g) == 0
@@ -123,13 +123,6 @@ def test_alternating_lines_stay_one_way_under_strokes():
             assert (b.y > a.y) == (round(a.x / SPACING[0]) % 2 == 0)
         else:
             assert (b.x > a.x) == (round(a.y / SPACING[1]) % 2 == 0)
-
-
-def test_axis_rule_is_still_available():
-    g = small_grid(3, 3, hierarchy="axis")
-    for e in g.edges.values():
-        vertical = abs(g.nodes[e.to_node].x - g.nodes[e.from_node].x) < 1e-6
-        assert e.road_class == ("avenue" if vertical else "street")
 
 
 def test_deterministic():

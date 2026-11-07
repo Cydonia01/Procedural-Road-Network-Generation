@@ -202,14 +202,6 @@ def test_validator_catches_unordered_mark_offsets(tmp_path):
     assert any("not ascending" in e for e in check_hdmap_tree(tree))
 
 
-def test_marks_off_keep_the_plain_marks(tmp_path):
-    hd = dataclasses.replace(HD, marks=dataclasses.replace(MARKS, enabled=False))
-    _, root = _build(_t_street(), tmp_path, hd)
-    marks = list(_road(root, "edge_1").iter("roadMark"))
-    assert {m.get("color") for m in marks} == {"standard"}
-    assert {m.get("type") for m in marks} == {"solid"}  # 1+1: centre and edge lines; none on curbs
-
-
 @pytest.mark.parametrize("kw", [{"width": (0.12, 0.0, 0.15)}, {"broken_town": (3.0,)},
                                 {"no_change_length": (20.0, -1.0, 50.0)}, {"solid_centre_lanes": 0},
                                 {"no_street_centre": ("town",)}])

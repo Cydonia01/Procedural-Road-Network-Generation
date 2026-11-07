@@ -10,8 +10,6 @@ live in the Copilot instructions and apply here too:
 - The host has no Python dependencies; run everything in the dev container:
   `docker compose run --rm -T dev python -m pytest -q`
   (`-T` for non-interactive use). Same for `python -m cli ...` and `ruff check`.
-- `tests/test_runner.py::test_monitor_memory_cap_and_peak` is known to fail in
-  this environment; it is not caused by code changes.
 - Generated files go under `out/` (git-ignored).
 - Every successful CLI run gets a folder `out/<hash>/` with its outputs
   (`-o` only names them) and `run.yaml`: the command plus only the args and
@@ -31,15 +29,17 @@ live in the Copilot instructions and apply here too:
   them (`uses_maps`, `map_bounds`, `map_kinds`, `generate(..., maps=MapSet)`);
   the CLI builds them before generating. New lsystem features must default
   to off: `tests/test_lsystem_identity.py` checks the existing presets
-  against fingerprints, recorded before stage C and re-recorded once for the
-  stage R road hierarchy (`hierarchy: strokes`; `axis` is the old rule).
-- HD maps (stage B: side lanes, marks, signs, lights, junction control,
-  turn lanes) are on by default (`hdmap.enabled`); `--no-hd` gives the plain
-  driving-lane network, which `tests/test_hdmap_identity.py` keeps
-  byte-identical to the output before stage B (on graphs built with
-  `hierarchy=axis`). Tests that build networks
-  without the pipeline pass `HdMapParams(enabled=False)` where they assume
-  driving lanes only.
+  against fingerprints; re-record them (`python -m tests.lsystem_identity`)
+  only for an intended change, and say so in the plan.
+- Presets: one per street pattern plus the map cities; other layouts are
+  parameter sets, not new presets.
+- HD maps (side lanes, marks, signs, lights, junction control, turn lanes)
+  are on by default (`hdmap.enabled`); `--no-hd` gives the plain
+  driving-lane network. Tests that build networks without the pipeline
+  pass `HdMapParams(enabled=False)` where they assume driving lanes only.
+- The generated `.xodr` is the product; everything after it (scene,
+  buildings, `view`) is for presentation only, and `view` is how networks
+  are presented. There are no `simulate` or `scenario` commands any more.
 - lsystem is the only city generator (the `manhattan` generator was removed
   in stage C): grids, pattern fields (`patterns.py`) and graph transforms
   (`roadgen/generators/transforms/`).
@@ -66,7 +66,9 @@ live in the Copilot instructions and apply here too:
 - When implementation deviates from a plan, update the plan file in the
   same change and note why.
 - Small helper scripts used to produce numbers quoted in a plan go in
-  `plans/scripts/`.
+  `plans/scripts/` while they are still used; the timestamped plan files
+  are the record (quote the numbers there), so scripts nothing uses any
+  more are deleted.
 
 ## Conventions beyond the Copilot file
 

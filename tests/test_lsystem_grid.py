@@ -1,5 +1,5 @@
 """Manhattan-style lsystem grids (stage C1): alternating one-way lines, ring road,
-dropped streets, the manhattan_like preset; traffic connectivity and lanes at
+the manhattan_like preset; traffic connectivity and lanes at
 mixed one-way junctions."""
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.validate.connectivity import check_traffic_connectivity
-from tests.grids import SPACING, grid_cli, node_at, small_grid
+from tests.grids import GRID, SPACING, grid_cli, node_at, small_grid
 
 
 def edge_between(g: RoadGraph, a: tuple[float, float], b: tuple[float, float]) -> Edge:
@@ -23,50 +23,53 @@ def edge_between(g: RoadGraph, a: tuple[float, float], b: tuple[float, float]) -
     return next(e for e in g.edges.values() if {e.from_node, e.to_node} == ids)
 
 
+def vertical(g: RoadGraph, e: Edge) -> bool:
+    """A grid road along local y (an avenue line of the one-way pattern)."""
+    return abs(g.nodes[e.to_node].x - g.nodes[e.from_node].x) < 1e-6
+
+
 # --- one-way patterns -------------------------------------------------------------
 
 
 def test_alternating_streets():
-    g = small_grid(3, 4, oneway_pattern=("none", "alternating"), hierarchy="axis")
+    g = small_grid(3, 4, oneway_pattern=("none", "alternating"))
     dx, dy = SPACING
     for j in range(4):
         e = edge_between(g, (0, j * dy), (dx, j * dy))
-        assert (e.lanes_forward, e.lanes_backward) == (2, 0)  # all lanes forward
+        assert e.lanes_backward == 0 and e.lanes_forward >= 1  # all lanes forward
         eastbound = g.nodes[e.to_node].x > g.nodes[e.from_node].x
         assert eastbound == (j % 2 == 0)
-    avenues = [e for e in g.edges.values() if e.road_class == "avenue"]
-    assert all((e.lanes_forward, e.lanes_backward) == (2, 2) for e in avenues)
+    assert all(e.lanes_backward > 0 for e in g.edges.values() if vertical(g, e))
 
 
 def test_alternating_avenues_whole_lines():
-    g = small_grid(4, 3, oneway_pattern=("alternating", "none"), hierarchy="axis")
+    g = small_grid(4, 3, oneway_pattern=("alternating", "none"))
     for e in g.edges.values():
-        if e.road_class != "avenue":
+        if not vertical(g, e):
             continue
         a, b = g.nodes[e.from_node], g.nodes[e.to_node]
-        assert (e.lanes_forward, e.lanes_backward) == (4, 0)
+        assert e.lanes_backward == 0
         assert (b.y > a.y) == (round(a.x / SPACING[0]) % 2 == 0)  # whole line one way
 
 
 def test_lines_count_from_the_seed_point():
     # Grown from the middle: lines are numbered from the seed's, so its own line runs +y.
-    p = LSystemParams.preset("grid", start=(4 / 9, 0.5), oneway_pattern=("alternating", "none"),
-                            hierarchy="axis")
+    p = LSystemParams(**{**GRID, "start": (4 / 9, 0.5)}, oneway_pattern=("alternating", "none"))
     from roadgen.generators.lsystem import LSystemGenerator
 
     g = LSystemGenerator().generate(p, 0)
     for e in g.edges.values():
-        if e.road_class == "avenue":
+        if vertical(g, e):
             a, b = g.nodes[e.from_node], g.nodes[e.to_node]
             assert (b.y > a.y) == ((round(a.x / 250.0) - 4) % 2 == 0)
     assert check_traffic_connectivity(g)  # no ring: the edges are traps
 
 
 def test_one_way_lanes_without_pattern():
-    g = small_grid(3, 3, major_lanes=(4, 0), hierarchy="axis")
-    for e in g.edges.values():
-        if e.road_class == "avenue":
-            assert (e.lanes_forward, e.lanes_backward) == (4, 0)
+    # Arterials keep major_lanes (4, 0): one-way, all four lanes in one direction.
+    g = small_grid(3, 3, major_lanes=(4, 0))
+    arterials = [e for e in g.edges.values() if e.lanes_forward + e.lanes_backward == 4]
+    assert arterials and all(min(e.lanes_forward, e.lanes_backward) == 0 for e in arterials)
 
 
 @pytest.mark.parametrize("kw", [
@@ -75,7 +78,6 @@ def test_one_way_lanes_without_pattern():
     {"boundary": "wrap"},
     {"ring_offset": 0.0},
     {"ring_lanes": (0, 0)},
-    {"edge_drop_prob": 1.5},
 ])
 def test_invalid_params(kw):
     with pytest.raises(ValueError):
@@ -110,25 +112,6 @@ def test_manhattan_like_is_strongly_connected():
     assert g.validate() == []
 
 
-@pytest.mark.parametrize("seed", range(4))
-def test_dropped_streets_stay_strongly_connected(seed):
-    g = small_grid(5, 12, seed, preset="manhattan_like", edge_drop_prob=0.5)
-    streets = sum(e.road_class == "street" for e in g.edges.values())
-    assert streets < 4 * 12 + 2 * 12  # grid streets + their extensions to the ring
-    assert check_traffic_connectivity(g) == []
-
-
-def test_edge_drop_leaves_growth_unchanged():
-    # Dropping draws from its own random stream: the edges that stay are the same roads.
-    full, dropped = small_grid(5, 8, 3), small_grid(5, 8, 3, edge_drop_prob=0.3)
-
-    def roads(g):
-        return {tuple(sorted((round(g.nodes[n].x, 6), round(g.nodes[n].y, 6))
-                             for n in (e.from_node, e.to_node))) for e in g.edges.values()}
-
-    assert roads(dropped) < roads(full)
-
-
 # --- ring road ----------------------------------------------------------------------
 
 
@@ -156,7 +139,7 @@ def test_ring_road():
 
 
 def test_ring_extensions_follow_road_direction():
-    g = small_grid(3, 4, preset="manhattan_like", rotation_deg=0.0, hierarchy="axis")
+    g = small_grid(3, 4, preset="manhattan_like", rotation_deg=0.0)
     grid = {node_at(g, i * 250.0, j * 80.0) for i in range(3) for j in range(4)}
     seen = 0
     for e in g.edges.values():
@@ -165,7 +148,7 @@ def test_ring_extensions_follow_road_direction():
         seen += 1
         a, b = g.nodes[e.from_node], g.nodes[e.to_node]
         inner = a if e.from_node in grid else b
-        if e.road_class == "avenue":  # avenue i is northbound iff i is even
+        if abs(b.x - a.x) < 1e-6:  # avenue i (along y) is northbound iff i is even
             assert (b.y > a.y) == (round(inner.x / 250.0) % 2 == 0)
         else:
             assert (b.x > a.x) == (round(inner.y / 80.0) % 2 == 0)
