@@ -13,7 +13,7 @@ from roadgen.geometry.vertical import junction_planes
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.validate.continuity import RoadEval, check_continuity, check_curvature
-from roadgen.validate.dynamics import check_dynamics
+from roadgen.validate.dynamics import check_dynamics, check_resultant_grade
 
 V = 13.9
 
@@ -110,3 +110,24 @@ def test_esmini_drives_banked_lanes_on_our_centre_line(tmp_path):
     lanes = drive_lanes(path)
     assert lanes and all(r.ok for r in lanes), [r.describe() for r in lanes]
     assert all(r.ok for r in drive_movements(path))
+
+
+def test_banking_leaves_room_for_the_grade():
+    p = DesignParams(max_resultant_grade=0.10)
+    assert design.banking_on_grade(0.04, 0.0, p) == 0.04
+    assert design.banking_on_grade(0.06, 0.08, p) == pytest.approx(0.06)  # sqrt(0.01 - 0.0064)
+    assert design.banking_on_grade(0.04, 0.095, p) == pytest.approx(math.sqrt(0.01 - 0.095 ** 2))
+    assert design.banking_on_grade(0.04, 0.12, p) == 0.0  # the grade alone is too steep
+
+
+@pytest.mark.parametrize("rise, banked", [(28.0, True), (48.0, False)])
+def test_curve_on_a_grade_is_banked_less(tmp_path, rise, banked):
+    # The L climbs rise per 400 m; its smooth profile is steepest in the corner
+    # (about 9.5 % and 16 %).
+    _, path, road = build(l_shape((0.0, rise, 2 * rise)), tmp_path)
+    assert check_resultant_grade(path) == []
+    banks = [abs(math.tan(road.superelevation(float(s)))) for s in range(int(road.length))]
+    if banked:
+        assert 0.0 < max(banks) < 0.04  # less than the street's e_max
+    else:
+        assert max(banks) < 1e-6

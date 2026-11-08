@@ -56,6 +56,7 @@ class DesignParams:
     spiral_min_shift: float = _D["spiral_min_shift"]  # lateral shift of the curve by its spirals [m]
     spiral_max_shift: float = _D["spiral_max_shift"]
     banking: bool = _D["banking"]  # bank curves (superelevation); off = flat roads
+    max_resultant_grade: float = _D["max_resultant_grade"]  # sqrt(grade^2 + e^2) cap where banked
     bank_ramp_length: float = _D["bank_ramp_length"]  # road end to junction cross slope [m]
     junction_max_grade: float = _D["junction_max_grade"]  # steepest junction plane; 0 = flat
     max_merge_deflection_deg: float = _D["max_merge_deflection_deg"]  # sharper bends stay junctions [deg]
@@ -68,6 +69,8 @@ class DesignParams:
             raise ValueError("e_max values must be non-negative")
         if self.a_lat_max <= 0 or self.jerk_rate <= 0:
             raise ValueError("need a_lat_max > 0 and jerk_rate > 0")
+        if self.max_resultant_grade <= 0:
+            raise ValueError("max_resultant_grade must be > 0")
         if not 0 < self.spiral_min_shift <= self.spiral_max_shift:
             raise ValueError("need 0 < spiral_min_shift <= spiral_max_shift")
         if not 0 < self.max_merge_deflection_deg < 180:
@@ -93,6 +96,13 @@ def f_max(v: float) -> float:
 def side_friction(v: float, e: float, p: DesignParams = DesignParams()) -> float:
     """Usable side friction at v [m/s] on superelevation e, within the comfort cap."""
     return max(0.0, min(f_max(v), p.a_lat_max / G - e))
+
+
+def banking_on_grade(e: float, grade: float, p: DesignParams = DesignParams()) -> float:
+    """Superelevation e reduced so that the resultant slope sqrt(grade^2 + e^2) stays
+    within max_resultant_grade; 0 where the grade alone reaches it."""
+    room = p.max_resultant_grade ** 2 - grade * grade
+    return 0.0 if room <= 0 else min(e, math.sqrt(room))
 
 
 def e_max(road_class: str, p: DesignParams = DesignParams()) -> float:

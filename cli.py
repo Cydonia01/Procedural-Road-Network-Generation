@@ -38,7 +38,7 @@ from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.clearance import check_body_overlaps, check_clearance
 from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity, check_curvature
-from roadgen.validate.dynamics import check_dynamics
+from roadgen.validate.dynamics import check_dynamics, check_resultant_grade
 from roadgen.validate.hdmap import check_hdmap
 from roadgen.validate.schema import validate_schema
 from roadgen.validate.topology import check_topology
@@ -150,6 +150,7 @@ def build_and_validate(
         errors += curvature_errors
         a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
         errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
+        errors += check_resultant_grade(xodr_path, section(cfg or DEFAULTS, "design")["max_resultant_grade"])
         errors += check_clearance(xodr_path, section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
         if hd.enabled:
             errors += check_hdmap(xodr_path)

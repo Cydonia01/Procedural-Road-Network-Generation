@@ -255,6 +255,8 @@ drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/
   smoothing: 80.0          # roads follow the terrain averaged over this length [m]
   bridge_clearance: 2.0    # min bridge deck height above the water surface [m]
   tunnel_cover: 5.0        # a road this far below the terrain is in a tunnel [m] (edges in metadata.tunnels)
+  max_grade: 0.15          # warn about draped roads steeper than this (rise / run, over grade_length); 0 = no warning
+  grade_length: 25.0       # ... measured over this distance [m]
 
 scene:  # what the scene file (.osgt) draws besides ground and buildings (roadgen/scene/junctions.py)
   junction_fill: true       # junction surface no lane covers, in asphalt (the .xodr then has no patch objects)
@@ -347,6 +349,7 @@ design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AAS
   spiral_min_shift: 0.2     # spirals shift the curve inward by at least this (AASHTO) [m]
   spiral_max_shift: 1.0     # ... and at most this [m]
   banking: true             # bank curves with superelevation (AASHTO method 5)
+  max_resultant_grade: 0.10 # banking + grade: sqrt(grade^2 + e^2) at most this (RAL/RAA Schraegneigung); steeper grades get no banking
   bank_ramp_length: 30.0    # a road end reaches its junction plane's cross slope over this [m]
   junction_max_grade: 0.04  # steepest sloped junction plane; 0 = flat junctions
   max_merge_deflection_deg: 135.0  # a two-road node turning more than this stays a junction [deg]

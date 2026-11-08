@@ -52,6 +52,8 @@ builder, drape and scene all honour it.
 | `smoothing` | 80 | Terrain averaging length [m]; 0 follows every bump |
 | `bridge_clearance` | 2 | Lowest deck height above water [m] |
 | `tunnel_cover` | 5 | A road this far under the terrain is in a tunnel [m] |
+| `max_grade` | 0.15 | Warn about draped roads steeper than this (rise / run); 0 = no warning |
+| `grade_length` | 25 | ... measured over this distance [m] |
 
 **Nodes.** Every node gets the elevation averaged over a disc `smoothing`
 wide, taken at the node or, for a bend, at the fitted corner's midpoint. At
@@ -62,8 +64,12 @@ under the fitted road. The height is the elevation averaged along the road
 over `smoothing`, since a road is graded and not draped over every bump. It
 is then shifted linearly to meet its nodes' heights exactly.
 
-The drape does not enforce a grade limit; it logs the steepest grade.
-lsystem keeps its own roads under `max_grade` while growing.
+The drape does not change heights to enforce a grade limit: the node
+heights fix the junctions, and lsystem keeps its own roads under its
+`max_grade` while growing on an elevation map. A network grown without one
+(no maps, or `max_grade: 0`) and draped afterwards can come out steeper, so
+the drape warns with the number of roads steeper than `drape.max_grade` over
+`grade_length` and the worst one. Bridges and tunnels are left out.
 
 ### Bridges
 
@@ -136,6 +142,10 @@ The crossings are listed in `metadata["overpasses"]`, and the
     arc. `e` comes from the [design rules](geometry.md#design-speed-rules)
     using the innermost lane radius, so a design-radius corner gets exactly
     `e_max`.
+  - **On a grade** the corner banks only as far as the resultant slope
+    √(grade² + e²) stays within `design.max_resultant_grade` (10 %, the
+    German RAL/RAA "Schrägneigung"), at the corner's steepest grade. A corner
+    on a grade at or above that limit is not banked.
   - **Runoff.** A smoothstep runoff along the corner's spirals keeps the roll
     rate 0 where curves start and end.
   - **Junction approach.** Over `bank_ramp_length` (30 m) before a sloped

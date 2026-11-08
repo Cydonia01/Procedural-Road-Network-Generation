@@ -135,6 +135,7 @@ reachable by a flag or parameter. Keeping it costs code paths, tests
 group 1 done: F17, F18, F19, and F21 (kept as is). Group 2 done: F20, F5,
 F7 (not reproduced), F3 and F4. Group 3 done: F6 (explained), F8, F14, and
 F22 (running highways go on to the edge; no example needs `--allow-traps`).
+Group 4 done: F9 (closed), F12, F13; F11 measured, open for a decision.
 
 | # | Issue | Detail | Source | Pri | Status |
 |---|---|---|---|---|---|
@@ -152,11 +153,11 @@ F22 (running highways go on to the edge; no example needs `--allow-traps`).
 | F6 | "No connecting lane" warnings in esmini (3–4 per run since B4) | Possibly a missing lane link in our junctions, which would be a network bug. Trace them to road and lane ids with the drive-check. | B4 | P2 | Closed (esmini driver at lane drops; none seen now) |
 | F7 | Roads of the new hierarchy look untextured in esmini | From TXT; not reproduced. Check: (a) esmini cannot find `resources/models` when started by `view` (the runner counts "Texture file not located" as ignored `asset_warnings`); (b) a lane type or width the stroke classes produce that esmini draws without material; (c) compare one road before and after R1 with `view --screenshot`. | TXT | P1 | Not reproduced (textures load; looks as esmini's samples) |
 | F8 | Class changes along straight lines at 3+-road junctions | city 11, mixed_city 5, hill_town 10 after R1, mostly highway ↔ street. R-4 accepted them, but they are the "unnatural joins" of the screenshots (TXT). Options: let a highway continue as an arterial stroke, or end highways at a junction only where the classes are compatible. | R1, TXT | P2 | Done (highway continuations arterial) |
-| F9 | `city` seed 7 had no street × street junctions | So right-before-left never appears there. The strokes hierarchy has probably fixed it; re-measure, and close or fix. | B5 | P3 |  |
+| F9 | `city` seed 7 had no street × street junctions | So right-before-left never appears there. The strokes hierarchy has probably fixed it; re-measure, and close or fix. | B5 | P3 | Closed (67 right-before-left junctions now) |
 | F10 | Sidewalks end abruptly at "bare road ends" | B9 drops the side lanes at junction ends that are too short with them (city 3, mixed_city 21 of 200 seeds). Better: taper the side lanes over `side_taper` before the end instead of cutting them. | B9 | P3 |  |
-| F11 | Advisory speeds on grid corners | Tight grid corners get a lower advisory speed instead of a larger radius; only curved presets avoid it. Re-measure after R1–R3 (fewer jumps, different classes). | A | P3 |  |
-| F12 | `align` does not check the cross slope under a curve | Banking on a grade can exceed the design limit unseen. Add the check to `align` or `validate/dynamics.py`. | A | P3 |  |
-| F13 | Drape has no grade limit | Networks grown without maps (or with `max_grade: 0`) get steep roads when draped. Cap the grade in `drape`, or warn in validation. | dev docs | P3 |  |
+| F11 | Advisory speeds on grid corners | Tight grid corners get a lower advisory speed instead of a larger radius; only curved presets avoid it. Re-measure after R1–R3 (fewer jumps, different classes). | A | P3 | Measured; open (highway corners, needs a decision) |
+| F12 | `align` does not check the cross slope under a curve | Banking on a grade can exceed the design limit unseen. Add the check to `align` or `validate/dynamics.py`. | A | P3 | Done (resultant-slope cap and check) |
+| F13 | Drape has no grade limit | Networks grown without maps (or with `max_grade: 0`) get steep roads when draped. Cap the grade in `drape`, or warn in validation. | dev docs | P3 | Done (drape warning) |
 | F14 | Ground poke-through is logged only | It is not part of `naturalness` or any test gate. Add it to the Q metrics so R4 cannot regress. | R (Q) | P2 | Done (test gate on a full pipeline) |
 | F15 | Probe overlaps on grade-separated crossings | highway_corridor's 12 "overlaps" are bridges; the probe does not read heights. Make the probe and metric height-aware, so the number means something. | R2 | P3 |  |
 | F16 | Map order limits | Terrain cannot see elevation, so forests don't prefer steep ground. Style `zones` ignores water and parks. Both are documented limits; fix only if they show in the look. | dev docs | P3 |  |

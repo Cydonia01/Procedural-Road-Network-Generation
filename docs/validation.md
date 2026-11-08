@@ -14,7 +14,7 @@ reports an error.
 | [Topology](#topology) | `.xodr` | always | `validate/topology.py` |
 | [Continuity](#continuity) | `.xodr` | always | `validate/continuity.py` |
 | [Curvature continuity](#curvature-continuity) | `.xodr` | always (`paramPoly3` jumps are warnings) | `validate/continuity.py` |
-| [Lateral acceleration](#lateral-acceleration) | `.xodr` | always | `validate/dynamics.py` |
+| [Lateral acceleration](#lateral-acceleration), resultant slope | `.xodr` | always | `validate/dynamics.py` |
 | [Clearance](#clearance) | `.xodr` | always | `validate/clearance.py` |
 | [HD-map content](#hd-map-content) | `.xodr` | with HD maps on | `validate/hdmap.py` |
 | [XSD schema](#xsd-schema) | `.xodr` | only with `OPENDRIVE_XSD` or `--xsd` | `validate/schema.py` |
@@ -119,6 +119,12 @@ acceleration `v²·|κ|`. The peak is checked:
 
 - at the ends of every line, arc and spiral, where curvature is extreme;
 - every 0.5 m along `paramPoly3` pieces.
+
+`check_resultant_grade`: where a normal road is banked, the resultant slope
+√(grade² + e²) may not exceed `design.max_resultant_grade` (10 %), or the
+grade alone where that is steeper. It is sampled every 1 m, leaving out the
+`bank_ramp_length` next to junction ends, where the cross slope blends into
+the junction plane's (at most `junction_max_grade`).
 
 ### Clearance
 

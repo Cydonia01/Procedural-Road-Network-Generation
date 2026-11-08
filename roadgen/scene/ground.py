@@ -154,7 +154,7 @@ def _level_chain(graph: RoadGraph, ca: ChainAlignment, planes, design: DesignPar
     h = smp.hdg[jj]
     t = np.clip(-(px[k] - smp.x[jj]) * np.sin(h) + (py[k] - smp.y[jj]) * np.cos(h), -width, width)
     elevation = chain_elevation(graph, ca, planes)
-    sup = chain_superelevation(graph, ca, planes, design)
+    sup = chain_superelevation(graph, ca, planes, design, elevation)
     def surface(ds: float) -> np.ndarray:
         sj = np.clip(s + ds, 0.0, ca.alignment.length)
         zj = evaluate_many(elevation, sj)
@@ -266,8 +266,9 @@ def surface_samples(graph: RoadGraph, na, planes, design: DesignParams,
         s, h = smp.s[keep], smp.hdg[keep]
         width = min(half_width(graph.edges[e]) if cross_section is None
                     else outer_half_width(graph.edges[e], cross_section, e in loops) for e in ca.chain.edge_ids)
-        zc = evaluate_many(chain_elevation(graph, ca, planes), s)
-        sup = chain_superelevation(graph, ca, planes, design)
+        elevation = chain_elevation(graph, ca, planes)
+        zc = evaluate_many(elevation, s)
+        sup = chain_superelevation(graph, ca, planes, design, elevation)
         bank = np.sin(evaluate_many(sup, s)) if sup else np.zeros(len(s))
         for t in np.linspace(-width, width, 5):
             px.append(smp.x[keep] - t * np.sin(h))

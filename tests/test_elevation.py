@@ -122,6 +122,19 @@ def test_drape_follows_a_ramp_and_leaves_the_input_alone():
     assert drape(g, SLOPE) == out  # deterministic
 
 
+def test_drape_warns_about_steep_roads(caplog):
+    g = network()
+    caplog.set_level(logging.WARNING, logger="roadgen.maps.drape")
+    drape(g, SLOPE)  # 5 %
+    assert not caplog.records
+    drape(g, elevation(0.2 * X))  # 20 %
+    (rec,) = caplog.records
+    assert "steeper than 15 %" in rec.getMessage()
+    caplog.clear()
+    drape(g, elevation(0.2 * X), params=DrapeParams(max_grade=0.0))  # no limit, no warning
+    assert not caplog.records
+
+
 def test_drape_bridges_water_straight_and_clear():
     p = DrapeParams()
     out = drape(network(), VALLEY, terrain(RIVER), p)

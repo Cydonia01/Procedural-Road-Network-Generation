@@ -300,9 +300,13 @@ All ten examples pass `pipeline --drive-check` without `--allow-traps`:
 | diamond, cloverleaf | 40/40, 48/48 | 3 → 3 |
 
 The networks with maps are bigger, because their highways reach the edge.
-The times include the drive-check. The two runs differ in machine load
-(manhattan_like and paris did not change and still took twice as long),
-so they are not a benchmark.
+The group 3 times above came from a run under machine load. Measured again
+on an idle machine (2026-11-09): manhattan_like takes 61–63 s, as in group 2
+(its network did not change). city 7 takes 100 s against 77 s in group 2,
+from 606 → 694 roads and 2779 → 3421 movements. Of the 100 s, 66 s is the
+drive-check, and esmini's RoadManager load grew faster than the network
+(14.6 → 26.7 s; the esmini load-time issue, 2026-10-31 draft). Speed-ups
+are P2–P6 in the polish list.
 
 ### Decisions (group 3)
 
@@ -313,3 +317,93 @@ so they are not a benchmark.
 | 11 | Naturalness: highway → avenue at a two-road node is not a change. | Claude: the gate targets lane jumps and class flips inside a road; a freeway ending into an arterial with the same lanes is neither. |
 | 12 | F14 gate is a test on a full pipeline run, not a pipeline error. | Claude: the ground is presentation; the .xodr does not depend on it. |
 | 13 | F6 closed as explained (esmini driver at lane drops). | Claude |
+
+## Group 4: F9, F11, F12, F13 (P3)
+
+**2026-11-09, prompt 4**
+
+> why pipeline times doubled? are we going to optimize it in later stages. Explain it then continue to implement p3 fixes.
+
+Timing answer: see "Examples after group 3" (load during that run; the real
+increase is city 7, +30 % from a bigger network, mostly esmini's
+RoadManager load). P2–P6 in the polish list cover speed-ups.
+
+### F9: no street × street junctions in city 7
+
+Re-measured (pipeline with HD): city 7 now has 67 street-only junctions of
+378, all controlled `right_before_left` (signal 171, priority 140, none 64).
+The stroke hierarchy fixed it. Closed.
+
+### F11: advisory speeds on corners (open, needs a decision)
+
+Corners with an advisory speed (sidecar `corners`):
+
+| | corners | advisory | median drop | max drop |
+|---|---|---|---|---|
+| city 7, 40–50 km/h roads | 128 | 74 | 10–12.5 km/h | 30 |
+| city 7, highways (80 km/h) | 26 | 18 | 27.5 km/h | 50 |
+| organic_town 1 | 53 | 32 | 5–10 km/h | 30 |
+| manhattan_like 1 | 4 | 4 | 10 km/h | 10 |
+
+Town roads get ordinary curve warnings. Highways do not get their design
+radius. Of 14 advisory highway corners in city 7:
+
+- 7 have a short edge next to them (42–57 m, a crossing street split the
+  highway near the bend), and the junction trims eat the corner's room;
+- 4 are clean 150 m + 150 m bends of 25°, which still get only 167–220 m
+  (the spirals an 80 km/h curve needs take part of the 75 m tangent);
+- 3 are sharp bends of 75–109°.
+
+**Tried and reverted:** capping highway detours at the turn a 150 m segment
+can fit at 80 km/h (33° instead of 60°). It left 11 of 14 advisories, cut the
+city's highway share from 24 % to 17 %, and gave highway_corridor a trap
+again.
+
+Options (not done):
+- (a) longer highway segments (`highway_length` 150 → 300 m);
+- (b) keep street crossings away from highway bends in growth;
+- (c) accept the advisories as curve-warning signs.
+
+All of them change growth in every map city.
+
+### F12: banking on a grade
+
+New `design.max_resultant_grade` (0.10, the German RAL/RAA cap on the
+resultant slope, "Schrägneigung"). `chain_superelevation` now takes the
+road's elevation records. A corner banks at most `sqrt(0.10² − g²)` at its
+steepest grade g, and not at all where g ≥ 10 %. The builder and both ground
+functions (`scene/ground.py`) pass the elevation, so the scene stays on the
+.xodr's surface.
+
+New check `check_resultant_grade` (`validate/dynamics.py`, run by
+`pipeline` and `build-xodr`). It leaves out the `bank_ramp_length` next to
+junction ends: there the cross slope blends into the junction plane's (at
+most 4 % at the junction), and on steep roads the resultant reaches 11–13 %
+inside that 30 m ramp. Continuity requires the ramp.
+
+| | violations, old code | new code |
+|---|---|---|
+| city 7 (corners only) | 25 | 0 |
+| all samples incl. ramps: city 7 / hill_town 1 / mixed_city 1 | 177 / 83 / 141 | 0 corners; ramps left out |
+
+Tests: `test_banking_leaves_room_for_the_grade`,
+`test_curve_on_a_grade_is_banked_less` (9.5 % grade: banked below e_max;
+16 %: not banked).
+
+### F13: drape has no grade limit
+
+Capping heights in drape would conflict with the node heights that fix the
+junctions. The drape now warns instead: `drape.max_grade` (0.15, as growth;
+0 = off) over `drape.grade_length` (25 m). It reports how many roads are
+steeper and the worst one, leaving bridges and tunnels out. lsystem on an
+elevation map already keeps its roads under its own `max_grade` while
+growing, so the warning is for networks grown without one and draped later.
+Test: `test_drape_warns_about_steep_roads`.
+
+### Decisions (group 4)
+
+| # | Decision | By |
+|---|---|---|
+| 14 | F12: resultant-slope cap 10 % (RAL/RAA), applied to corner banking; junction-plane ramps are left out of the check. | Claude |
+| 15 | F13: warn, do not change heights. | Claude: node heights fix the junctions; a cap would need re-grading whole chains. |
+| 16 | F11: left open for the user (growth change in every map city). | Claude |
