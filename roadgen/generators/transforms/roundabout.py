@@ -18,7 +18,8 @@ the new pieces are checked with), none of its bends may become a junction
 because its inner lane would turn tighter than design.min_lane_radius;
 otherwise the radius is tried RADIUS_GROWTH larger once. Nothing changes
 unless the whole roundabout fits: every road keeps
-MIN_ROAD_LENGTH after the entry and its far end's trims, every ring arc
+MIN_ROAD_LENGTH after the entry and its far end's trims (a far end that only
+bends is fitted with its next road, so a short spur into a tight bend fails), every ring arc
 keeps it between its two entries' trims, and the ring (widened by its lanes
 and a clearance) touches no other road and passes an allowed callback (map
 legality, the generator's area). Roundabouts are listed in
@@ -146,6 +147,18 @@ def _plan_at(graph: RoadGraph, node_id: int, radius_street: float, radius_avenue
                        and x.id in ring_edges)
         if radius * gaps[i] - entry_trims[i][out_edge] - entry_trims[nxt][in_edge] < MIN_ROAD_LENGTH:
             return None
+    # An arm whose far end only bends runs on with that bend's next road, so the
+    # alignment fits the corner too: a spur too short for it fails here.
+    for _, e, far in arms:
+        if graph.degree(far) != 2:
+            continue
+        (nxt,) = [x for x in graph.incident_edges(far) if x.id != e.id]
+        beyond = nxt.to_node if nxt.from_node == far else nxt.from_node
+        if nxt.id in local.edges or beyond in local.nodes:
+            continue
+        b = graph.nodes[beyond]
+        local.add_node(Node(beyond, b.x, b.y))
+        local.add_edge(nxt)
     # Smooth: no ring bend may stay a junction in the builder's alignment.
     try:
         na = network_alignment(local, junction_margin=margin)

@@ -34,7 +34,11 @@ The check builds a **traversal graph**:
 Reported as errors:
 
 - **Traps:** traffic arriving on an edge has no way out (dead ends, one-way
-  sinks), so vehicles would get stuck.
+  sinks), so vehicles would get stuck. A dead end listed in the graph's
+  `metadata.exits` is no trap: the road leaves the generated area there (a
+  freeway running on), and traffic may come back at any exit. lsystem lists
+  the dead ends whose road would leave its area within one block length;
+  the `junction` generator lists its leg ends.
 - **Unreachable roads:** traffic leaving on an edge that nothing feeds.
 - **Not strongly connected:** the node-level lane-direction graph has several
   strongly connected components. Nodes outside the main one are listed.
@@ -45,9 +49,10 @@ stranded.
 
 **Fixes:**
 
+- lsystem's `dead_ends` (on by default) extends, trims, bulbs, or else cuts
+  the dead ends that are not exits;
 - `--set boundary=ring` for one-way grids;
-- `--set culdesac_prob=1` for turn-around bulbs at dead ends, where they fit;
-- `--allow-traps` when dead ends are intended.
+- `--allow-traps` when dead ends are intended (e.g. `--set dead_ends=false`).
 
 ### Topology
 

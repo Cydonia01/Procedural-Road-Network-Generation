@@ -12,12 +12,13 @@ from roadgen.generators.transforms.culdesac import (
     LOOP_NODES,
     add_culdesacs,
     bulb_points,
+    cut_dead_ends,
 )
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.metrics.network import arm_headings, network_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.connectivity import check_traffic_connectivity
+from roadgen.validate.connectivity import check_traffic_connectivity, exits
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
 
@@ -132,7 +133,7 @@ def test_culdesac_prob_in_lsystem():
     assert m1["features"]["culdesacs"] > 0
     assert m1["counts"]["dead_ends"] == m0["counts"]["dead_ends"] - m1["features"]["culdesacs"]
     traps = [e for e in check_traffic_connectivity(bulbed) if "trap" in e]
-    assert len(traps) == m1["counts"]["dead_ends"]
+    assert len(traps) == m1["counts"]["dead_ends"] - len(exits(bulbed))  # roads leaving the area are no traps
 
 
 def test_suburb_preset_has_culdesacs_and_builds():
@@ -147,3 +148,60 @@ def test_suburb_preset_has_culdesacs_and_builds():
 def test_invalid_params(kw):
     with pytest.raises(ValueError):
         LSystemParams(**kw)
+
+
+def cross(leg_class: str = "street") -> RoadGraph:
+    """Four legs from node 1: three end at exits (2, 3, 4), the fourth runs 1 - 5 - 6
+    and ends at 6 with no exit."""
+    g = RoadGraph(metadata={"exits": [2, 3, 4]})
+    for n, (x, y) in {1: (0, 0), 2: (200, 0), 3: (0, 200), 4: (-200, 0), 5: (0, -100), 6: (0, -200)}.items():
+        g.add_node(Node(n, x, y))
+    for eid, (a, b) in enumerate([(1, 2), (1, 3), (1, 4)], 1):
+        g.add_edge(Edge(eid, a, b, "avenue", 1, 1))
+    g.add_edge(Edge(4, 1, 5, leg_class, 1, 1))
+    g.add_edge(Edge(5, 5, 6, leg_class, 1, 1))
+    return g
+
+
+def test_cut_dead_end_goes_back_to_its_junction():
+    g = cross()
+    assert cut_dead_ends(g, keep=g.metadata["exits"]) == 1
+    assert set(g.nodes) == {1, 2, 3, 4} and set(g.edges) == {1, 2, 3}
+    assert not check_traffic_connectivity(g)
+
+
+def test_cut_keeps_other_classes():
+    g = cross(leg_class="highway")
+    assert cut_dead_ends(g, keep=g.metadata["exits"]) == 0
+
+
+def test_cut_steps_the_bigger_road_down_at_a_two_road_node():
+    # T: avenue 2 - 1 - 4 and a street 1 - 3 - 7 to an exit. Cutting the avenue's end 4
+    # leaves 1 with an avenue and a street: the avenue becomes a street up to its next
+    # junction (slower and narrower, so its curves stay within its speed).
+    g = cross()
+    del g.edges[4], g.edges[5], g.nodes[5], g.nodes[6]
+    g.edges[2] = Edge(2, 1, 3, "street", 1, 1, speed_limit=8.3)
+    g.add_node(Node(7, 0, 400))
+    g.add_edge(Edge(6, 3, 7, "street", 1, 1, speed_limit=8.3))
+    g.metadata["exits"] = [2, 7]
+    assert cut_dead_ends(g, ("street", "avenue"), keep=g.metadata["exits"]) == 1  # 1 - 4
+    assert g.edges[1].road_class == "street" and g.edges[1].speed_limit == 8.3
+    assert not check_traffic_connectivity(g)
+
+
+def test_cut_leaves_a_one_way_ramp_alone():
+    g = cross()
+    del g.edges[4], g.edges[5], g.nodes[5], g.nodes[6]
+    g.edges[2] = Edge(2, 1, 3, "avenue", 1, 0)  # one-way out of 1
+    g.metadata["exits"] = [2, 3]
+    assert cut_dead_ends(g, ("street", "avenue"), keep=g.metadata["exits"]) == 0
+
+
+def test_exits_are_no_traps():
+    g = street((0, 0), (100, 0), (200, 0))
+    assert len([e for e in check_traffic_connectivity(g) if "trap" in e]) == 2
+    g.metadata["exits"] = [1]
+    assert len([e for e in check_traffic_connectivity(g) if "trap" in e]) == 1
+    g.metadata["exits"] = [1, 3]
+    assert not check_traffic_connectivity(g)  # in at one end, out at the other, back via the world

@@ -72,8 +72,9 @@ checked with the neutral junction-space code, not OpenDRIVE.
 - **Redraws.** Otherwise it is drawn again on the next sub-stream, so the
   result still depends only on the seed. `metadata.attempts` counts the
   draws, at most 4 over 200 seeds.
-- **No traps.** Bulbs at the leg ends remove the dead ends, so scenarios have
-  no traps, except behind one-way legs.
+- **No traps.** A lone junction stands for one in a bigger network, so its
+  leg ends are exits (`metadata.exits`), not traps. With `culdesacs`, bulbs
+  turn traffic round at the leg ends instead.
 
 Presets:
 

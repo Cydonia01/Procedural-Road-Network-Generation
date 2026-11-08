@@ -16,7 +16,7 @@ maps enter the pipeline in is described in
 python -m cli maps                                               # generators, presets, parameters
 python -m cli map terrain noise --preset coastal --seed 3 -o coast
 python -m cli map elevation fbm --preset hilly --on terrain=out/<hash>/coast.npz -o coast_elev
-python -m cli pipeline lsystem --preset city --maps --allow-traps     # all maps, then the network on them
+python -m cli pipeline lsystem --preset city --maps     # all maps, then the network on them
 ```
 
 ## Map kinds
@@ -255,7 +255,7 @@ first:
 
 ```bash
 gdal_translate -of PNG -ot UInt16 -scale srtm_tile.tif heightmap.png
-python -m cli pipeline lsystem --preset city --maps --allow-traps --elevation image \
+python -m cli pipeline lsystem --preset city --maps --elevation image \
     --map-set elevation.path=heightmap.png --map-set elevation.stretch=true
 ```
 

@@ -8,7 +8,7 @@ floats over a road.
 
 ```bash
 python -m cli pipeline lsystem --set start=[0,0] --set extent=[1000,320] --buildings -o city
-python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings -o hills
+python -m cli pipeline lsystem --preset city --maps --ground --buildings -o hills
 python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osgt
 ```
 

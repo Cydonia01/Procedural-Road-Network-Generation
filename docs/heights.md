@@ -158,8 +158,8 @@ height (1 cm) and grade (0.01) at every contact point. Drive-check confirms
 that esmini reads the same heights.
 
 ```bash
-python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings -o hills
-python -m cli pipeline lsystem --preset city --maps --allow-traps --flat     # roads stay flat
+python -m cli pipeline lsystem --preset city --maps --ground --buildings -o hills
+python -m cli pipeline lsystem --preset city --maps --flat     # roads stay flat
 python -m cli drape out/<hash>/net.json --map-file elevation=out/<hash>/net_elevation.npz \
     --map-file terrain=out/<hash>/net_terrain.npz                           # -> net.draped.json
 ```

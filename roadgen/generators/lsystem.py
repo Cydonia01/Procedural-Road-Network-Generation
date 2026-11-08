@@ -124,7 +124,7 @@ from roadgen.generators.patterns import (
     StreetField,
 )
 from roadgen.generators.repair import repair_short_edges
-from roadgen.generators.transforms.culdesac import add_culdesacs
+from roadgen.generators.transforms.culdesac import add_culdesacs, cut_dead_ends
 from roadgen.generators.transforms.interchange import (
     STRAIGHT_TOL,
     InterchangeParams,
@@ -213,7 +213,7 @@ class LSystemParams:
     min_block_depth: float = _D["min_block_depth"]  # [m] extra gap between near-parallel roads
     parallel_deg: float = _D["parallel_deg"]  # roads closer than this in heading are near-parallel
     # --- dead ends (stage R3) ----------------------------------------------------------------
-    dead_ends: bool = _D["dead_ends"]  # extend, trim or bulb the dead ends after growth
+    dead_ends: bool = _D["dead_ends"]  # extend, trim, bulb or cut the dead ends after growth (exits stay)
     dead_end_reach: float = _D["dead_end_reach"]  # an extension reaches this many block lengths
     dead_end_trim: float = _D["dead_end_trim"]  # stubs shorter than this many block lengths go
     # --- input maps; ignored without maps -----------------------------------------------
@@ -1794,6 +1794,9 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                                   params.culdesac_radius, params.culdesac_speed, growth.culdesac_allowed,
                                   road_classes=classes):
             assign_node_kinds(graph)
+        graph.metadata["exits"] = self._exits(graph, params)
+        if params.dead_ends and cut_dead_ends(graph, (*classes, "highway"), keep=graph.metadata["exits"]):
+            assign_node_kinds(graph)  # no room for a bulb, not an exit: no traps either
         if not graph.edges:
             log.warning("lsystem: no road could be grown from the seed point; on input maps it is "
                         "usually too steep around it (max_grade %.2f), or water, vegetation or "
@@ -1850,6 +1853,28 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         xs = [ox + c * x - s * y for x, y in box]
         ys = [oy + s * x + c * y for x, y in box]
         return min(xs), min(ys), max(xs), max(ys)
+
+    @staticmethod
+    def _exits(graph: RoadGraph, p: LSystemParams) -> list[int]:
+        """Dead ends where a road leaves the area: going on the largest block size
+        straight ahead would leave it (the validators' exits, a freeway running on)."""
+        w, h = p.extent
+        theta = math.radians(p.rotation_deg)
+        c, s = math.cos(theta), math.sin(theta)
+        ahead = max(p.block_size)
+        out = []
+        for n in sorted(graph.nodes):
+            if graph.degree(n) != 1:
+                continue
+            (e,) = graph.incident_edges(n)
+            a, b = graph.nodes[n], graph.nodes[e.from_node if e.to_node == n else e.to_node]
+            length = math.hypot(a.x - b.x, a.y - b.y)
+            x = a.x + (a.x - b.x) / length * ahead - p.origin[0]
+            y = a.y + (a.y - b.y) / length * ahead - p.origin[1]
+            lx, ly = c * x + s * y, -s * x + c * y  # back into the area's frame
+            if not (0.0 <= lx <= w and 0.0 <= ly <= h):
+                out.append(n)
+        return out
 
     @staticmethod
     def _to_graph(g: _Growth, p: LSystemParams, seed: int,

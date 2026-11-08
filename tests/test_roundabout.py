@@ -107,3 +107,22 @@ def _moves(g: RoadGraph, params: JunctionParams):
 def test_invalid_u_turn_radius():
     with pytest.raises(ValueError):
         JunctionParams(u_turn_radius=0.0)
+
+
+def test_short_spur_into_a_tight_bend_gets_no_roundabout():
+    # F3: an arm reaching a 110 deg bend 49 m out of the centre leaves a 17 m spur from
+    # the two-lane ring's entry, less than the entry's and the bend's trims; that
+    # roundabout would not build, so it is not placed.
+    import math
+
+    g = star([0, 120, 240], lanes=((2, 2),), length=250.0)
+    for e in g.edges.values():
+        e.road_class = "avenue"
+    end = g.nodes[2]  # the arm at 0 deg
+    end.x = 49.0
+    turn = math.radians(110.0)
+    g.add_node(Node(99, 49.0 + 150.0 * math.cos(turn), 150.0 * math.sin(turn)))
+    g.add_edge(Edge(99, end.id, 99, "avenue", 2, 2))
+    n = add_roundabouts(g, np.random.default_rng(0), lambda node: 1.0, 25.0, 32.0, 8.3)
+    assert n == 0
+    OpenDriveBuilder(hd=HdMapParams(enabled=False)).build(g)

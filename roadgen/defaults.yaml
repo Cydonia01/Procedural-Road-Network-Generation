@@ -47,7 +47,7 @@ generators:
     min_block_depth: 15.0      # extra gap between near-parallel roads [m]
     parallel_deg: 20.0         # roads closer than this in heading are near-parallel [deg]
     # Dead ends after growth: extend to a road ahead, else trim a short stub, else a turning circle
-    dead_ends: true            # (all dead-end roads but highways; suburb streets stay, roads cut off by the area edge go)
+    dead_ends: true            # extend, trim, bulb or cut dead ends; exits (roads leaving the area) stay
     dead_end_reach: 1.5        # an extension reaches this many block lengths (largest block size)
     dead_end_trim: 1.0         # stubs shorter than this many block lengths (smallest block size) are cut
     # Input maps (pipeline --maps / --map-file); ignored without maps.

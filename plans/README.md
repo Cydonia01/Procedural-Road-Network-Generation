@@ -27,7 +27,7 @@ led to them, and record decisions.
 | 2026-11-07 | [What remains after stage R, open issues from earlier stages](2026-11-07-remaining-work-and-open-issues.md) | review |
 | 2026-11-07 | [Polish stage: the complete to-do list (drops, fixes, tests)](2026-11-07-polish-todo.md) | review, decided (section 1 done, section 2 in progress) |
 | 2026-11-08 | [Polish 1: drop old implementations](2026-11-08-polish-drops.md) | done (groups 1–4) |
-| 2026-11-08 | [Polish 2: fixes (F items)](2026-11-08-polish-fixes.md) | in progress (group 1 done) |
+| 2026-11-08 | [Polish 2: fixes (F items)](2026-11-08-polish-fixes.md) | in progress (groups 1–2 done) |
 
 The review these come from is `Roadgen AV Readiness Review.pdf` in the repo
 root (written in an earlier chat; its prompts were not saved).

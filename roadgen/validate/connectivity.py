@@ -11,6 +11,10 @@ Errors are:
 - unreachable roads: traffic leaves on an edge that nothing ever feeds;
 - the node-level lane-direction graph not being strongly connected.
 
+Exits: graph.metadata["exits"] lists the dead ends where a road leaves the
+generated area (a freeway running on beyond the map). Traffic arriving there
+leaves the map and may come back at any exit, so an exit is no trap.
+
 Traversal groups that differ only by direction of travel (e.g. clockwise vs.
 counter-clockwise on a pure loop, where reversing needs a U-turn) strand no
 vehicle, so they are logged but not reported as errors.
@@ -28,6 +32,13 @@ from roadgen.graph.model import RoadGraph
 log = logging.getLogger(__name__)
 
 Traversal = tuple[int, bool]  # (edge id, True = from_node -> to_node)
+OUTSIDE: Traversal = (-1, True)  # the world beyond the exits
+OUTSIDE_NODE = -1
+
+
+def exits(graph: RoadGraph) -> set[int]:
+    """Dead ends listed as exits in graph.metadata["exits"] (see module docstring)."""
+    return {n for n in graph.metadata.get("exits") or () if n in graph.nodes and graph.degree(n) == 1}
 
 
 def lane_digraph(graph: RoadGraph) -> nx.DiGraph:
@@ -39,6 +50,9 @@ def lane_digraph(graph: RoadGraph) -> nx.DiGraph:
             g.add_edge(e.from_node, e.to_node)
         if e.lanes_backward > 0:
             g.add_edge(e.to_node, e.from_node)
+    for n in exits(graph):
+        g.add_edge(n, OUTSIDE_NODE)
+        g.add_edge(OUTSIDE_NODE, n)
     return g
 
 
@@ -54,12 +68,17 @@ def traffic_digraph(graph: RoadGraph) -> nx.DiGraph:
             if lanes > 0:
                 g.add_node((e.id, forward))
                 leaving[tail].append((e.id, forward))
+    out = exits(graph)
     for t in list(g.nodes):
         edge = graph.edges[t[0]]
         head = edge.to_node if t[1] else edge.from_node
         for nxt in leaving[head]:
             if nxt[0] != t[0]:
                 g.add_edge(t, nxt)
+        if head in out:
+            g.add_edge(t, OUTSIDE)
+        if (edge.from_node if t[1] else edge.to_node) in out:
+            g.add_edge(OUTSIDE, t)
     return g
 
 
@@ -82,6 +101,8 @@ def check_traffic_connectivity(graph: RoadGraph) -> list[str]:
     traps: dict[int, set[int]] = defaultdict(set)  # node -> edges arriving with no exit
     unreachable: dict[int, set[int]] = defaultdict(set)  # node -> edges leaving, never fed
     for t in g.nodes:
+        if t == OUTSIDE:
+            continue
         if g.out_degree(t) == 0:
             traps[_head(graph, t)].add(t[0])
         if g.in_degree(t) == 0:
