@@ -391,7 +391,11 @@ At each free highway end:
      listed in `metadata["bridges"]`;
    - **grade:** at most `highway_max_grade` (or `max_grade`) on land;
      bridges are level;
-   - **density:** the end needs `highway_min_density`;
+   - **density:** the first segment of a highway (from the seed point or a
+     branch) must end where `highway_min_density` people live. A running
+     highway goes on through empty land and forest to the area edge, water
+     it cannot bridge, or a hill it cannot tunnel, so it never ends inside
+     the area just because nobody lives ahead;
    - **detour:** if nothing in the fan passes, directions up to
      ±`highway_max_detour_deg` are tried, smallest turn first. The highway
      goes around a lake or along a hill (the paper's "rotate the segment
@@ -428,7 +432,7 @@ cell. Maps are sampled every half of the finest cell size.
 | `highway_rays`, `highway_max_turn_deg`, `highway_max_detour_deg` | 7, 25, 60 | Direction fan and detour [deg]; turn ≤ detour < 90 |
 | `highway_ray_length`, `highway_ray_samples` | 800, 8 | Population rays [m] |
 | `highway_branch_prob`, `highway_branch_delay` | 0.1, 6 | New highways per side and segment |
-| `highway_min_density` | 1500 | Highways stop below this [people/km²] |
+| `highway_min_density` | 1500 | Highways start and branch only where this many live [people/km²] |
 | `highway_lanes`, `highway_speed` | (2, 2), 22.2 | Lanes and speed [m/s] |
 | `max_bridge_length` | 250 | Longest water crossing [m] |
 | `street_min_density` | 500 | Streets stop below this [people/km²] |

@@ -205,3 +205,21 @@ def test_exits_are_no_traps():
     assert len([e for e in check_traffic_connectivity(g) if "trap" in e]) == 1
     g.metadata["exits"] = [1, 3]
     assert not check_traffic_connectivity(g)  # in at one end, out at the other, back via the world
+
+
+def test_cut_lets_a_one_way_ring_run_on():
+    # A one-way ring 3 -> 1 -> 4 through entry 1, whose arm 1 - 5 - 6 ends at 6.
+    g = cross()
+    del g.edges[1], g.edges[2], g.edges[3]
+    g.add_edge(Edge(1, 3, 1, "avenue", 1, 0))
+    g.add_edge(Edge(2, 1, 4, "avenue", 1, 0))
+    g.add_edge(Edge(3, 4, 3, "avenue", 1, 0))
+    del g.nodes[2]
+    g.metadata = {"exits": [], "roundabouts": [{"entries": [1], "ring": [1, 3, 4]}]}
+    assert cut_dead_ends(g, keep=[]) == 1
+    assert set(g.edges) == {1, 2, 3} and g.metadata["roundabouts"][0]["entries"] == []
+    assert not check_traffic_connectivity(g)
+    g.edges[2] = Edge(2, 4, 1, "avenue", 1, 0)  # both into 1: no way on, so no cut
+    g.add_node(Node(5, 0, -100)); g.add_node(Node(6, 0, -200))
+    g.add_edge(Edge(4, 1, 5, "street", 1, 1)); g.add_edge(Edge(5, 5, 6, "street", 1, 1))
+    assert cut_dead_ends(g, keep=[]) == 0

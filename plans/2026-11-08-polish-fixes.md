@@ -181,3 +181,135 @@ entry).
 | 6 | Dead ends where a road leaves the area are *exits*, listed by the generator in `metadata.exits`; the traffic check treats them as connected through the outside world. This is the graph-level counterpart of a map cut out of a bigger network. | Claude: the validator stays generator-independent, and a highway that ends mid-map still counts as a trap. |
 | 7 | Dead ends still left after the bulbs are cut back to their junction, highways included. A class change left behind is resolved by stepping the bigger road down, never up. | Claude: stepping down can only lower speeds, so no curve breaks the dynamics check; stepping up broke hill_town. |
 | 8 | highway_corridor keeps `--allow-traps` in the examples until its freeway end is fixed. | Claude |
+
+## Group 3: F6, F8, F14, F22
+
+**2026-11-08, prompt 3**
+
+> Then, continue with them.
+
+(After group 2's report proposed F6, F8, F14 and the highway_corridor
+freeway end.)
+
+### F6: "no connecting lane" warnings
+
+Already explained in B9 (plans/2026-10-29-stage-b-implementation.md, "The
+fifth esmini warning"). They are cars of esmini's default driver reaching a
+correct OpenDRIVE lane drop (a lane narrowing to 0 with no successor). The
+driver does not merge first, so it snaps to the next lane and warns. This is
+not a network bug.
+
+On today's networks, odrviewer with cars (`--density 2 --duration 60
+--fixed_timestep 0.1`) logs no lane-connection warnings at all on city 7,
+hill_town 1 or suburb 1. The stroke hierarchy left fewer lane drops along
+roads. mixed_city did not finish within 300 s: odrviewer builds the 3D
+model slowly, which is the esmini load-time issue (2026-10-31 draft).
+Loading alone logs only missing 3D models for German signs. Closed.
+
+### F8: class changes along straight roads
+
+Before (pipeline `--no-hd`), the straight-on class changes at junctions were:
+
+| | highway–street | highway–avenue | avenue–street |
+|---|---|---|---|
+| city 7 | 7 | 5 | 1 |
+| mixed_city 1 | 3 | 2 | 3 |
+| hill_town 1 | 5 | 3 | 5 |
+
+Most of them were a highway running into a local street. In
+`roadgen/generators/hierarchy.py`, a stroke is now ranked at least arterial
+(an avenue) when it:
+
+- runs straight on (within `stroke_max_deflection_deg`) from a highway, and
+  is straighter than the highway's own continuation at that node, if any; or
+- is the only other road where a highway ends at a two-road node.
+
+Avenue–street changes are ordinary stroke ranking and stay. After F8 and
+F22 (final code):
+
+| | highway–street | highway–avenue | avenue–street | two-road changes |
+|---|---|---|---|---|
+| city 7 | 3 | 12 | 2 | 0 |
+| mixed_city 1 | 1 | 12 | 0 | 0 |
+| hill_town 1 | 0 | 15 | 5 | 0 |
+
+In the highway–street joins left, the street is about as straight as the
+highway's own continuation.
+
+The naturalness metric no longer counts a highway running out into an avenue
+at a two-road node (both are 2 + 2 lanes): a freeway becoming an arterial is
+an intended transition, like a highway lane add. After F22, each city had 4
+such nodes (highways now stop mid-map only for local reasons, and a street
+grown from that node was their continuation). With the second rule they
+became avenues with the same lanes.
+
+### F14: ground poke-through as a gate
+
+`test_cli_pipeline_drapes_and_writes_the_scene` (`tests/test_elevation.py`)
+runs `pipeline --maps --ground --buildings` on a 1500 × 900 m city. It now
+requires the pipeline's "ground: N of M road-surface samples under the
+ground" line to report 0 of more than 10 000. The hand-made river-valley test
+stays. The pipeline still only logs the count (the scene is presentation),
+but a regression now fails the suite.
+
+### F22: highway_corridor's freeway stopped inside the area
+
+The freeway stopped 615 m short of the west edge where a forest dropped the
+population to 150–210 people/km², below `highway_min_density` (1500), before
+it recovered to ~1400.
+
+**User decision:** population decides where highways start and branch, and
+a running highway goes on until the area edge, water it can't bridge, or a
+slope it can't tunnel. Only a highway's first segment (from the seed point,
+or a branch) checks `highway_min_density`; continuations are `follow`
+proposals and skip it.
+
+- highway_corridor 1 passes without `--allow-traps` (1823/1823 movements),
+  so no example uses the flag any more.
+- Highways are longer in every map preset: highway share of road length in
+  mixed_city 9 → 22 %, hill_town 11 → 26 %, city 7 24 → 24 %.
+- `test_highways_stop_below_their_min_density` became
+  `test_running_highways_cross_empty_land_to_the_edge` (it fails on the old
+  code: the highway stopped at x ≈ 396) and
+  `test_highways_start_only_where_people_live`.
+
+With longer highways, mixed_city 1 got one new trap: an avenue arm of a
+roundabout ending 225 m out. The cut skipped it because the entry would be
+left with the two one-way ring edges, which `_mergeable` refused (one-way). A
+ring now runs on through a cut arm's entry when both ring edges have the
+same class and lanes and drive through the node in one direction. The entry
+leaves the roundabout's `entries` metadata, which nothing else reads.
+mixed_city 1 then passes (3460/3460 movements).
+
+Fingerprints re-recorded (city_maps, hill_town_maps; intended).
+
+### Examples after group 3
+
+All ten examples pass `pipeline --drive-check` without `--allow-traps`:
+
+| Example | movements | time (s), group 2 → 3 |
+|---|---|---|
+| city 7 | 3421/3421 (was 2779) | 77 → 203 |
+| manhattan_like 1 | 2631/2631 | 65 → 129 |
+| paris | 1898/1898 | 36 → 67 |
+| suburb 1 | 1751/1751 | 31 → 60 |
+| mixed_city 1 | 3460/3460 (was 3803) | 140 → 212 |
+| hill_town 1 | 2885/2885 (was 2387) | 82 → 96 |
+| freeways | 321/321 (was 135) | 12 → 18 |
+| highway_corridor 1 | 1843/1843 | 21 → 50 |
+| diamond, cloverleaf | 40/40, 48/48 | 3 → 3 |
+
+The networks with maps are bigger, because their highways reach the edge.
+The times include the drive-check. The two runs differ in machine load
+(manhattan_like and paris did not change and still took twice as long),
+so they are not a benchmark.
+
+### Decisions (group 3)
+
+| # | Decision | By |
+|---|---|---|
+| 9 | F22: density decides where highways start and branch; a running highway goes on to the edge. | user |
+| 10 | F8: strokes continuing a highway become at least arterial. Avenue–street changes stay (ranking). | Claude: a freeway running out into a residential street is the "unnatural join" of the screenshots; arterials have the highway's lanes. |
+| 11 | Naturalness: highway → avenue at a two-road node is not a change. | Claude: the gate targets lane jumps and class flips inside a road; a freeway ending into an arterial with the same lanes is neither. |
+| 12 | F14 gate is a test on a full pipeline run, not a pipeline error. | Claude: the ground is presentation; the .xodr does not depend on it. |
+| 13 | F6 closed as explained (esmini driver at lane drops). | Claude |

@@ -60,7 +60,7 @@ generators:
     highway_ray_samples: 8     # population samples per ray
     highway_branch_prob: 0.1   # new highway per side per segment
     highway_branch_delay: 6
-    highway_min_density: 1500.0  # highways stop below this [people/km^2]
+    highway_min_density: 1500.0  # highways start and branch only where this many live [people/km^2]; a running one goes on to the edge
     highway_lanes: [2, 2]
     highway_speed: 22.2        # [m/s] (80 km/h)
     max_bridge_length: 250.0   # [m] of water a highway may cross

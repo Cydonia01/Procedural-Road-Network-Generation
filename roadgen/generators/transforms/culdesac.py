@@ -159,7 +159,7 @@ def cut_dead_ends(graph: RoadGraph, road_classes: Sequence[RoadClass] = ("street
         if not chain or len(adj[here]) < 3:
             continue
         rest = [e for e in adj[here] if e != chain[-1]]
-        if len(rest) == 2 and not _mergeable(graph, rest) and not _step_down(graph, adj, here, rest, dry=True):
+        if len(rest) == 2 and not _mergeable(graph, rest, here) and not _step_down(graph, adj, here, rest, dry=True):
             continue  # the junction would be left with two roads that do not run on as one
         for eid in chain:
             e = graph.edges.pop(eid)
@@ -168,7 +168,10 @@ def cut_dead_ends(graph: RoadGraph, road_classes: Sequence[RoadClass] = ("street
         for n in nodes:
             del graph.nodes[n]
             del adj[n]
-        if len(adj[here]) == 2 and not _mergeable(graph, adj[here]):
+        for rb in graph.metadata.get("roundabouts") or ():
+            if here in rb.get("entries", ()):  # the ring goes on through the cut arm's entry
+                rb["entries"] = [n for n in rb["entries"] if n != here]
+        if len(adj[here]) == 2 and not _mergeable(graph, adj[here], here):
             _step_down(graph, adj, here, adj[here])
         cut += 1
     if cut:
@@ -177,12 +180,19 @@ def cut_dead_ends(graph: RoadGraph, road_classes: Sequence[RoadClass] = ("street
 
 
 
-def _mergeable(graph: RoadGraph, edge_ids: Sequence[int]) -> bool:
-    """Whether two roads left at a two-road node run on as one: same class and lanes,
-    both two-way (a class or lane change there, or a one-way ramp, would not)."""
+def _mergeable(graph: RoadGraph, edge_ids: Sequence[int], node: int) -> bool:
+    """Whether two roads left at two-road node run on as one: same class and lanes,
+    both two-way or both one-way through node in one direction (a ring road going
+    on); a class or lane change there, or a one-way ramp, would not."""
     a, b = (graph.edges[e] for e in edge_ids)
-    return (a.road_class, a.total_lanes) == (b.road_class, b.total_lanes) \
-        and not a.is_one_way and not b.is_one_way
+    if (a.road_class, a.total_lanes) != (b.road_class, b.total_lanes):
+        return False
+    if not a.is_one_way and not b.is_one_way:
+        return True
+    if not (a.is_one_way and b.is_one_way):
+        return False
+    into = [(e.to_node == node) == (e.lanes_forward > 0) for e in (a, b)]  # drives towards node
+    return into[0] != into[1]
 
 
 _RANK = {"street": 0, "avenue": 1, "highway": 2}

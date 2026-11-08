@@ -226,7 +226,7 @@ class LSystemParams:
     highway_ray_samples: int = _D["highway_ray_samples"]  # population samples per ray
     highway_branch_prob: float = _D["highway_branch_prob"]  # per side, per segment
     highway_branch_delay: int = _D["highway_branch_delay"]
-    highway_min_density: float = _D["highway_min_density"]  # [people/km^2] highways stop below
+    highway_min_density: float = _D["highway_min_density"]  # [people/km^2] highways start (and branch) only above
     highway_lanes: tuple[int, int] = _D["highway_lanes"]
     highway_speed: float = _D["highway_speed"]
     max_bridge_length: float = _D["max_bridge_length"]  # [m] of water a highway may cross
@@ -1362,7 +1362,7 @@ class _Growth:
     def step_highway(self, prop: _Proposal) -> None:
         """Best direction by population whose segment passes the constraints."""
         for heading, end, bridge, tunnel in self.maps.highway_candidates(self.pos[prop.node], prop.heading,
-                                                                         self.inside):
+                                                                         self.inside, start=not prop.follow):
             added = self.connect(prop.node, end, HIGHWAY)
             if added is None:
                 continue  # rejected by the local constraints: try the next direction
@@ -1440,7 +1440,7 @@ class _Growth:
     def grow_highway(self, prop: _Proposal, node: int, heading: float) -> None:
         """Continue, maybe branch a new highway, and spawn grid streets on both sides."""
         p = self.p
-        self.propose(prop.t + 1, node, HIGHWAY, 1, heading)
+        self.propose(prop.t + 1, node, HIGHWAY, 1, heading, follow=True)
         for side in (1, -1):
             normal = heading + side * math.pi / 2
             if self.rng.random() < p.highway_branch_prob:
@@ -1647,8 +1647,8 @@ class _MapView:
         second = next(h for h in ranked if abs(_wrap(h - first)) >= math.pi / 2 - EPS)
         return [first, second]
 
-    def highway_candidates(self, a: Point, heading: float,
-                           inside: Any) -> Iterator[tuple[float, Point, bool, bool]]:
+    def highway_candidates(self, a: Point, heading: float, inside: Any,
+                           start: bool = True) -> Iterator[tuple[float, Point, bool, bool]]:
         """(heading, end, bridge, tunnel) for the fan of directions, best population first.
 
         Then, as a detour, the directions between highway_max_turn_deg and
@@ -1664,12 +1664,18 @@ class _MapView:
         ranked += [side * float(t) for t in detours for side in (1, -1)]
         for t in ranked:
             h = heading + float(t)
-            segment = self.highway_segment(a, h, inside)
+            segment = self.highway_segment(a, h, inside, start)
             if segment is not None:
                 yield (h, *segment)
 
-    def highway_segment(self, a: Point, heading: float, inside: Any) -> Optional[tuple[Point, bool, bool]]:
+    def highway_segment(self, a: Point, heading: float, inside: Any,
+                        start: bool = True) -> Optional[tuple[Point, bool, bool]]:
         """End point, bridge and tunnel flags, or None if the direction is not allowed.
+
+        Only a highway's first segment (start: the seed's or a branch's) must end
+        where at least highway_min_density people live; a running highway goes on
+        through empty land and forest up to the area edge, water it cannot bridge
+        or a hill it cannot tunnel.
 
         Water may be crossed once, up to max_bridge_length; the segment is
         stretched to the far shore when it would end in water. A segment too
@@ -1714,7 +1720,8 @@ class _MapView:
                     break
             else:
                 return None
-        if self.sample(self.population, np.array([end[0]]), np.array([end[1]]))[0] < p.highway_min_density:
+        if start and self.sample(self.population, np.array([end[0]]), np.array([end[1]]))[0] \
+                < p.highway_min_density:
             return None
         return end, bridge, tunnel
 

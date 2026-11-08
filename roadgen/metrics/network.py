@@ -23,7 +23,8 @@ measured and compared with real-city statistics (stage D):
 - block areas: the bounded faces of the street lines (shapely polygonize);
 - counts of stage C features listed in the graph metadata;
 - naturalness (stage R quality gates): dead-end share, lane or class changes
-  at two-road nodes (where a road just goes on), class changes along straight
+  at two-road nodes (where a road just goes on; highway lane adds and a
+  highway running out into an avenue aside), class changes along straight
   continuations (under STRAIGHT_DEG) at any node, and road bodies (straight
   edges buffered by their driving half width) that overlap by more than
   OVERLAP_AREA without sharing a node; bridges and tunnels (overpasses) are
@@ -186,7 +187,8 @@ def naturalness(graph: RoadGraph) -> dict[str, Any]:
         es = graph.incident_edges(n)
         if len(es) == 2 and not all(e.road_class == "highway" for e in es):  # highway lane adds are wanted
             a, b = es
-            two_road += a.road_class != b.road_class or a.total_lanes != b.total_lanes
+            runs_out = {a.road_class, b.road_class} == {"highway", "avenue"}  # a freeway becomes an arterial
+            two_road += (a.road_class != b.road_class and not runs_out) or a.total_lanes != b.total_lanes
         heads = arm_headings(graph, n)
         for i in range(len(heads)):
             for j in range(i + 1, len(heads)):

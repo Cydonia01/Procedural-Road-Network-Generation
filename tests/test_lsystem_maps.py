@@ -148,14 +148,23 @@ def test_highways_bridge_narrow_water_only():
     assert max(n.x for n in g.nodes.values()) < 650.0
 
 
-def test_highways_stop_below_their_min_density():
-    pop = np.where(X < 600.0, 5000.0, 100.0)
+def test_running_highways_cross_empty_land_to_the_edge():
+    # Many people west of x = 450, few between 450 and 650, many again further east:
+    # the highway starts in the west (seed point at x = 300) and runs on through the empty strip to the area edge instead of stopping in it.
+    pop = np.where((X > 450.0) & (X < 650.0), 100.0, 5000.0)
     g = grow(MapSet(population=population(pop)), highway_min_density=1000.0,
+             street_min_density=0.0, start=(0.3, 0.5))
+    xs = [x for eid in classes(g, "highway") for x in (g.nodes[g.edges[eid].from_node].x,
+                                                       g.nodes[g.edges[eid].to_node].x)]
+    assert xs and max(xs) > 650.0  # crossed the empty strip
+    assert not [n for n in g.nodes if g.degree(n) == 1 and n not in g.metadata["exits"]
+                and g.incident_edges(n)[0].road_class == "highway"]  # no highway ends inside
+
+
+def test_highways_start_only_where_people_live():
+    g = grow(MapSet(population=population(np.full(GRID.shape, 100.0))), highway_min_density=1000.0,
              street_min_density=0.0)
-    snap = LSystemParams().snap_radius  # an end may snap a little past the boundary
-    for eid in classes(g, "highway"):
-        e = g.edges[eid]
-        assert max(g.nodes[e.from_node].x, g.nodes[e.to_node].x) < 600.0 + snap
+    assert not classes(g, "highway")
 
 
 # --- population and elevation ---------------------------------------------------------------

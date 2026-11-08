@@ -23,8 +23,7 @@ _run() {
     RUN=out/$(echo "$log" | grep -oE "roadgen.cli: run [0-9a-f]{12}" | tail -1 | grep -oE "[0-9a-f]{12}$")
 }
 
-# name | note | pipeline arguments (the output name is added). highway_corridor keeps
-# --allow-traps: its freeway stops inside the area (plans/2026-11-07-polish-todo.md, F20).
+# name | note | pipeline arguments (the output name is added)
 EXAMPLES=(
 "city|Mixed-density city on generated maps: highways, ring roads, river, hills|lsystem --preset city --maps --seed 7 --ground --buildings"
 "manhattan|Manhattan grid: alternating one-way avenues and streets, ring road|lsystem --preset manhattan_like --seed 1 --buildings"
@@ -33,7 +32,7 @@ EXAMPLES=(
 "mixed_city|Mixed city: style-map districts on generated maps|lsystem --preset mixed_city --maps --seed 1 --ground --buildings"
 "hill_town|Hill town: contour streets on hilly maps|lsystem --preset hill_town --maps --seed 1 --ground --buildings"
 "freeways|City with freeways and overpasses|lsystem --preset city --maps --seed 1 --set highway_crossings=separated --ground --buildings"
-"highway_corridor|Freeway corridor with a diamond interchange, lane adds and drops|lsystem --preset highway_corridor --maps --seed 1 --ground --buildings --allow-traps"
+"highway_corridor|Freeway corridor with a diamond interchange, lane adds and drops|lsystem --preset highway_corridor --maps --seed 1 --ground --buildings"
 "diamond|Diamond interchange: freeway crossing an arterial with ramps|junction --preset diamond --set interchange_length=800"
 "cloverleaf|Cloverleaf interchange: freeway crossing a freeway with loop ramps|junction --preset cloverleaf --set interchange_length=800"
 )
