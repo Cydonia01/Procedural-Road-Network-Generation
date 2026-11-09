@@ -28,10 +28,12 @@ repaired, the pockets at its two junctions are left out, one at a time, until it
 fits (graph metadata "no_pockets", [node, edge] pairs; real designs leave them out
 on short blocks too). An edge that is too short only because of the side lanes
 (it fits with the driving lanes alone) is never collapsed or removed (prompt 13):
-road ends at its junctions become bare instead, one at a time until it fits (its
-own ends first, then the other arms there), so their sidewalks, shoulders, parking
-and bike lanes end before the junction (graph metadata "no_side_lanes",
-cross_section.bare_ends). If even that is not enough and one end is a two-road bend
+road ends at its junctions lose side lanes instead, one at a time until it fits
+(its own ends first, then the other arms there): first only their bike lanes end
+before the junction, the curb and sidewalk going on round the corner (graph metadata
+"no_bike_lanes", cross_section.bike_ends); if that is not enough the ends become bare,
+their sidewalks, shoulders, parking and bike lanes ending before the junction (graph
+metadata "no_side_lanes", cross_section.bare_ends). If even that is not enough and one end is a two-road bend
 (which the side lanes turned into a junction: its curve no longer clears the
 sidewalks around), the bend is straightened: its two edges, the same road, become
 one, and the bend node goes (metadata "straightened_bends"); the road stays.
@@ -221,8 +223,9 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
     if dropped:
         log.info("repair: left out %d turn pocket(s) on blocks too short for them", dropped)
     if bared:
-        log.info("repair: %d road end(s) bare (side lanes end before the junction) on blocks too short for them",
-                 bared)
+        bikes = len(graph.metadata.get("no_bike_lanes", []))
+        log.info("repair: %d road end(s) bare (side lanes end before the junction), %d with only the bike "
+                 "lanes ending, on blocks too short for them", bared - bikes, bikes)
     if dissolved:
         log.info("repair: %d two-road bend(s) straightened (their two edges made one)", dissolved)
     if fixed:
@@ -239,10 +242,12 @@ def fit_cross_sections(graph: RoadGraph, design: DesignParams, junction_margin: 
     max_degree = max([MAX_DEGREE] + [graph.degree(n) for n in graph.nodes])
     known = frozenset(stub_roads(graph, design, junction_margin, dead_ends=True))
     n = repair_short_edges(graph, design, junction_margin, max_degree, cross_section, known, dead_ends=True)
-    if n or any(graph.metadata.get(k) for k in ("no_pockets", "no_side_lanes", "straightened_bends")):
+    if n or any(graph.metadata.get(k) for k in ("no_pockets", "no_bike_lanes", "no_side_lanes",
+                                                "straightened_bends")):
         graph.metadata["fit"] = {"repaired_edges": n, "profile": cross_section.profile,
                                  "dropped_pockets": len(graph.metadata.get("no_pockets", [])),
                                  "bare_ends": len(graph.metadata.get("no_side_lanes", [])),
+                                 "bike_lane_ends": len(graph.metadata.get("no_bike_lanes", [])),
                                  "straightened_bends": len(graph.metadata.get("straightened_bends", []))}
     return graph
 
@@ -275,7 +280,11 @@ def _bare(graph: RoadGraph, eid: int, too_short: Callable[[], bool], cross_secti
     ends = [[n, eid] for n in nodes]
     ends += [[n, x.id] for n in nodes for x in sorted(graph.incident_edges(n), key=lambda x: x.id) if x.id != eid]
     ends = [pair for pair in ends if has_side_lanes(pair[1]) and pair not in graph.metadata.get("no_side_lanes", [])]
-    return _leave_out(graph, "no_side_lanes", ends, too_short)
+    # First only the bike lanes (sidewalks go on round the corner), then whole bare ends.
+    bikes = [pair for pair in ends if pair not in graph.metadata.get("no_bike_lanes", []) and any(
+        s.kind == "biking" for s in edge_cross_section(graph.edges[pair[1]], cross_section, pair[1] in loops).right)]
+    n = _leave_out(graph, "no_bike_lanes", bikes, too_short) if bikes else 0
+    return n or _leave_out(graph, "no_side_lanes", ends, too_short)
 
 
 def _bare_without_pockets(graph: RoadGraph, eid: int, too_short: Callable[[], bool],

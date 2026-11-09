@@ -194,6 +194,8 @@ maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and
       # On a terrain map (pipeline): water lies flat at min_elevation, land rises from it
       shore_width: 600.0       # land reaches full height this far from water [m]
       shore_height: 2.0        # land at the shore, above the water surface [m]
+      forest_relief: 15.0      # parks / forest stand this much higher, on hills of their own [m]; 0 = off
+      forest_relief_width: 100.0  # ... rising over this distance from their edge [m]
     image:
       min_elevation: 0.0       # [m] at black
       max_elevation: 100.0     # [m] at white

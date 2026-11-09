@@ -124,8 +124,7 @@ def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = N
                 steep.append((grade, eid))
     if steep:
         worst, eid = max(steep)
-        log.warning("drape: %d road(s) steeper than %.0f %% over %.0f m (worst: edge %d, %.1f %%); the "
-                    "network was grown without these heights (no elevation map, or max_grade 0)",
+        log.warning("drape: %d road(s) steeper than %.0f %% over %.0f m (worst: edge %d, %.1f %%)",
                     len(steep), 100 * params.max_grade, params.grade_length, eid, 100 * worst)
     out.metadata["drape"] = asdict(params)
     log.info("drape: %d nodes, %d edges, %d bridges, %d tunnels, steepest grade %.1f %%",

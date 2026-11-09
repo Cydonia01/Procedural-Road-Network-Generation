@@ -65,6 +65,7 @@ from roadgen.geometry.cross_section import (
     SHOULDERS_END,
     CrossSectionParams,
     bare_ends,
+    bike_ends,
     edge_cross_section,
     pocket_ends,
 )
@@ -432,6 +433,7 @@ def _junction_ends(graph: RoadGraph, ca: ChainAlignment, junctions: frozenset[in
         at_loop = any(e.id in loops for e in graph.incident_edges(node)) and not all(
             e.id in loops for e in graph.incident_edges(node))
         edge = ca.chain.edge_ids[0 if at_start else -1]
+        at_loop |= edge in bike_ends(graph, node)  # bike lanes end before it, as where a loop starts
         out.append((at_start, graph.nodes[node].kind == "ramp", at_loop, edge in bare_ends(graph, node)))
     return out
 

@@ -407,3 +407,112 @@ Test: `test_drape_warns_about_steep_roads`.
 | 14 | F12: resultant-slope cap 10 % (RAL/RAA), applied to corner banking; junction-plane ramps are left out of the check. | Claude |
 | 15 | F13: warn, do not change heights. | Claude: node heights fix the junctions; a cap would need re-grading whole chains. |
 | 16 | F11: left open for the user (growth change in every map city). | Claude |
+
+## Group 5: F10, F15, F16 (P3); F11 dropped
+
+**2026-11-09, prompt 5**
+
+> we can discard f11. Car movements in the simulation is not our aim. conitnue with f10, f15, and f16
+
+### F11: dropped (user)
+
+Advisory speeds on corners concern how cars drive, not the network. The
+advisory speeds stay in the .xodr as they are.
+
+### F10: sidewalks at bare road ends
+
+The proposal ("taper instead of cut") was already true since B9. A bare
+end's side lanes narrow to 0 over `side_taper` (5 m), and the continuity
+check rejects any lane whose width jumps or that starts or ends wide. What
+remained was that a bare end drops every side lane at once (bike lane,
+parking, sidewalk, shoulder). On an urban avenue that breaks the sidewalk
+network: the corner roads, which take their lanes from the road end, carry
+no sidewalk around that corner.
+
+The repair now tries a milder step first: only the bike lanes end before
+the junction (graph metadata `no_bike_lanes`, `cross_section.bike_ends`,
+handled like bike lanes where a loop starts). Curb, sidewalk and curb return
+stay. Only if the edge still does not fit do its ends become bare as before.
+Measured with `pipeline --flat`:
+
+| | bare ends that drop a sidewalk, before → after | bike-lane-only ends | all bare ends |
+|---|---|---|---|
+| mixed_city 1 | 7 → 5 | 4 | 13 → 10 |
+| hill_town 1 | 5 → 3 | 5 | 12 → 9 |
+| city 7 | 0 → 0 | 0 | 2 → 2 |
+
+The other bare ends are on highways (shoulders only) or on edges too short
+even without bike lanes. Test:
+`test_repair_ends_bike_lanes_before_making_an_end_bare` (28 m avenue gap:
+bike lanes only, and the sidewalk reaches the junction; 24 m: bare).
+
+### F15: height-aware overlaps
+
+`naturalness` (`metrics/network.py`) used to leave every edge with a bridge
+or tunnel out of the body-overlap count. That hid real overlaps on those
+edges, and overpasses from `separate` had no such marker. The probe script
+had its own copy that read no heights, so it counted highway_corridor's
+overpasses as overlaps.
+
+Now an overlap counts unless the two edges are at least
+`grade_separation.clearance` − 1 m (5 m, as the clearance validator) apart
+in height over it. On a graph without heights yet (generator output, before
+`separate` and `drape`), centre lines that cross without a node are a
+planned crossing; bodies overlapping without crossing still count.
+`plans/scripts/refinement_probe.py` now uses `naturalness` for its overlap
+count.
+
+| | body overlaps |
+|---|---|
+| highway_corridor 1, pipeline graph (17 overpasses) | 0 |
+| city 1 separated, city 7, hill_town 1 (pipeline) | 0 |
+| organic_town 1, paris 0, city 2, suburb 1 (generator) | 0 |
+
+Test: `test_body_overlaps_read_heights` (no heights: planned crossing; 6 m
+apart: overpass; 2 m: overlap, also with a bridge listed on the edge).
+
+### F16: map order limits
+
+- **Forests on hills.** Terrain is built before elevation and cannot read
+  it. Instead, the `fbm` elevation (which already reads the terrain for
+  water) raises hills under parks and forest. They rise by `forest_relief`
+  (15 m) over `forest_relief_width` (100 m) from their edge, before erosion.
+  Roads stay out of vegetation, so the relief takes no buildable land. Test
+  `test_forests_stand_on_hills`.
+- **Zones and parks.** `zones` took a district's mean density and grade over
+  land including parks and forest. Now it uses open land only (water was
+  already left out), since no street grows in a forest. Test
+  `test_zones_judge_districts_by_their_open_land`.
+
+Fingerprints re-recorded (city_maps, hill_town_maps: the elevation changed;
+intended).
+
+### Examples after group 5
+
+All ten pass `pipeline --drive-check` (map cities with `--ground`: 0 road
+samples under the ground):
+
+| Example | movements, group 4 → 5 |
+|---|---|
+| city 7 | 3421 → 3454 |
+| manhattan_like 1, paris, suburb 1 | unchanged |
+| mixed_city 1 | 3460 → 3105 |
+| hill_town 1 | 2885 → 1966 |
+| freeways | 321 → 141 |
+| highway_corridor 1 | 1843 → 1126 |
+| diamond, cloverleaf | unchanged |
+
+The networks on maps shrank. The forest hills (F16) are up to 15 m high,
+and running highways now stop where a forest hill is too steep to climb
+and too low to tunnel through. city 7's drape also reports 2 roads steeper
+than 15 % over 25 m (worst 17.4 %): drape smooths heights differently from
+growth's grade check. The warning's text no longer claims a cause.
+
+### Decisions (group 5)
+
+| # | Decision | By |
+|---|---|---|
+| 17 | F11 dropped: car behaviour, not the network. | user |
+| 18 | F10: a milder repair step (bike lanes only) before bare ends; the taper itself already existed. | Claude |
+| 19 | F15: overlaps judged by height (5 m, as the validator); without heights, crossing centre lines are planned crossings. The probe uses the metric. | Claude |
+| 20 | F16: hills under forests (elevation reads terrain) rather than reordering the maps; zones on open land. Forest relief on by default (15 m). | Claude: the order terrain → elevation stays, the look is what F16 asked for. |

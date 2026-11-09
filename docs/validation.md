@@ -303,7 +303,7 @@ from the RoadGraph alone, for comparison with real-city statistics:
 | **Tortuosity** | Length / chord of every road through its bends, and the share of length on roads at least `straight_tortuosity` (1.01) |
 | **Block areas** | Bounded faces of the street lines |
 | **Features** | Counts of the `metadata` lists: roundabouts, cul-de-sacs, overpasses, tunnels, interchanges, bridges |
-| **Naturalness** | Quality gates: dead-end share; lane or class changes at two-road nodes (where a road just goes on; highway lane adds and a highway running out into an avenue aside); class changes along straight continuations (under 30°) at any node; road bodies (driving width) overlapping by more than 1 m² without a shared node (bridges and tunnels aside) |
+| **Naturalness** | Quality gates: dead-end share; lane or class changes at two-road nodes (where a road just goes on; highway lane adds and a highway running out into an avenue aside); class changes along straight continuations (under 30°) at any node; road bodies (driving width) overlapping by more than 1 m² without a shared node, unless they pass over each other (5 m apart in height over the overlap; on a graph without heights yet, centre lines that cross count as a planned crossing) |
 
 ### HD-map metrics
 

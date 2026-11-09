@@ -22,6 +22,7 @@ from roadgen.geometry.cross_section import (
     edge_cross_section,
     loop_edges,
     bare_ends,
+    bike_ends,
     pocket_ends,
     side_half_widths,
 )
@@ -160,6 +161,7 @@ def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSecti
     # corners: no class curb returns there, and bike lanes end before it.
     at_loop = any(e.id in loops for e in incident)
     bare = bare_ends(graph, node_id) if cross_section is not None else frozenset()
+    no_bikes = bike_ends(graph, node_id) if cross_section is not None else frozenset()
     pockets = (pocket_ends(graph, node_id, cross_section.turn_lanes)
                if cross_section is not None and cross_section.turn_lanes is not None else frozenset())
     arms = []
@@ -178,7 +180,8 @@ def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSecti
         loop = e.id in loops
         rc, lc, ro, lo = side_half_widths(e, cross_section, right, left, at_junction=True,
                                           bare=e.id in bare,
-                                          ramp=node.kind == "ramp", loop=loop, at_loop=at_loop)
+                                          ramp=node.kind == "ramp", loop=loop,
+                                          at_loop=at_loop or e.id in no_bikes)
         if node_id != start_node:
             rc, lc, ro, lo = lc, rc, lo, ro
         if e.id in pockets:  # a left-turn pocket widens the incoming side: the arm's left
@@ -221,7 +224,8 @@ def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Opt
         return node_id, node.x, node.y, margin, tuple(sorted(arms))
     left_out = tuple(sorted(e for n, e in graph.metadata.get("no_pockets", []) if n == node_id))
     return (node_id, node.x, node.y, node.kind, node.control, margin, repr(cross_section), tuple(sorted(arms)),
-            any(node_id in r.get("entries", []) for r in rings), left_out, tuple(sorted(bare_ends(graph, node_id))))
+            any(node_id in r.get("entries", []) for r in rings), left_out, tuple(sorted(bare_ends(graph, node_id))),
+            tuple(sorted(bike_ends(graph, node_id))))
 
 
 def _node_trims(graph: RoadGraph, node_id: int, margin: float,

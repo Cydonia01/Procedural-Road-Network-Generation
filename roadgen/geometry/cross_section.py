@@ -19,7 +19,9 @@ the corner) and before every ramp node (the gore between highway and ramp),
 bike lanes before roundabout entries
 (FHWA roundabout guide), and medians taper out (or, later, become turn
 pockets). Where the side lanes leave a block too short for its junctions,
-the repair makes that road end bare (graph metadata "no_side_lanes",
+the repair first ends only that road end's bike lanes before the junction
+(graph metadata "no_bike_lanes", bike_ends: the curb, sidewalk and curb return
+stay), and if that is not enough makes it bare (graph metadata "no_side_lanes",
 [node, edge] pairs; bare_ends): parking, bike lanes, sidewalks and shoulders
 all end before the junction, the curb stays, and its corners get no class curb
 return (stage B9, prompt 13).
@@ -231,6 +233,12 @@ def outer_half_width(edge: Edge, params: CrossSectionParams, loop: bool = False)
         right, left = edge.lanes_forward, edge.lanes_backward
     _, _, r_out, l_out = side_half_widths(edge, params, right, left, loop=loop)
     return max(r_out, l_out)
+
+
+def bike_ends(graph: RoadGraph, node_id: int) -> frozenset[int]:
+    """Edges whose bike lanes end before node_id, the curb and sidewalk going on round the
+    corner (the repair's graph metadata "no_bike_lanes", tried before a bare end)."""
+    return frozenset(e for n, e in graph.metadata.get("no_bike_lanes", []) if n == node_id)
 
 
 def bare_ends(graph: RoadGraph, node_id: int) -> frozenset[int]:

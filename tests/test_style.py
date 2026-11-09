@@ -65,6 +65,20 @@ def test_uniform_dense_population_is_one_grid():
     assert np.all(style.data == STYLE_GRID)
 
 
+def test_zones_judge_districts_by_their_open_land():
+    # F16: a district half forest (dense on paper, but nobody builds there) and half
+    # sparse land is a suburb: only open land counts, as for water.
+    from roadgen.maps.model import LAND, VEGETATION
+
+    forest = X < 1500.0
+    t = MapLayer("terrain", GRID, np.where(forest, VEGETATION, LAND).astype(np.uint8), {})
+    pop = population(np.where(forest, 20000.0, 100.0))
+    style = zones(MapSet(terrain=t, population=pop), zone_size=3000.0, radial_radius=0.0, warp=0.0)
+    assert np.all(style.data == STYLE_SUBURB)
+    assert np.all(zones(MapSet(population=pop), zone_size=3000.0, radial_radius=0.0, warp=0.0).data
+                  == STYLE_GRID)  # without the terrain, the forest's density counts
+
+
 def test_density_bands_and_radial_centre():
     centre = (1500.0, 1200.0)
     density = 15000.0 * np.exp(-np.hypot(X - centre[0], Y - centre[1]) / 700.0)

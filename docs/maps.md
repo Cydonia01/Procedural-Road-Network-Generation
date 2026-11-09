@@ -112,6 +112,13 @@ After Musgrave et al. (1989), which Parish & Müller cite for terrain:
 - After erosion, every water cell is set to `min_elevation` (the water
   surface), and land stays at least `shore_height` above it.
 
+**On a terrain map with vegetation**, parks and forests stand `forest_relief`
+higher, rising from their edge over `forest_relief_width` (a smoothstep over
+the distance to open land), before erosion. Terrain is built before
+elevation, so rather than forests seeking hills, hills rise under the
+forests. Roads stay out of vegetation, so the relief takes no buildable
+land.
+
 Lakes, rivers and sea therefore lie in valleys, all at one level. A small
 `shore_width` packs the relief into steep banks that roads can't climb. The
 default of 600 m keeps the share of steep cells about as without terrain.
@@ -124,6 +131,7 @@ default of 600 m keeps the share of steep cells about as without terrain.
 | `exponent` | 1 | > 1 flattens valleys, sharpens peaks |
 | `erosion_iterations`, `talus_deg`, `erosion_rate` | 20, 30, 0.5 | Erosion passes, steepest stable slope [deg], share moved per pass |
 | `shore_width`, `shore_height` | 600, 2 | On a terrain map only: distance to full height [m], height at the shore [m] |
+| `forest_relief`, `forest_relief_width` | 15, 100 | On a terrain map only: extra height of parks and forest [m] (0 = off), reached this far inside their edge [m] |
 
 Presets: `flat`, `rolling`, `hilly`, `mountainous`.
 
@@ -179,9 +187,12 @@ spot in it. Each cell belongs to its nearest site after a domain warp of
 
 **Each district gets a class**, by the first rule that applies:
 
+Mean grade and density are taken over the district's open land: water,
+parks and forest are left out, as no street grows there.
+
 1. **Contour**, on an elevation map, if its mean grade is at least
    `contour_grade`.
-2. On a population map, by its mean density on land:
+2. On a population map, by its mean density:
    - **radial** if it holds the main centre or its site is within
      `radial_radius` of it;
    - **grid** at `core_density` or more;

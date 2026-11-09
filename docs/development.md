@@ -120,11 +120,9 @@ product, and `view` is the presentation.
   geometry.
 - **Drape has no grade limit.** lsystem keeps grades under `max_grade` while
   growing, but networks grown without maps (or with `max_grade: 0`) can get
-  steep roads on hilly maps.
-- **Map pipeline order limits.**
-  - Terrain can't see elevation, so forests don't prefer steep or high
-    ground. That would need a post-step on the terrain.
-  - Style `zones` reads only density and slope, not water or parks.
+  steep roads on hilly maps; the drape warns about them (`drape.max_grade`).
+- **Map pipeline order.** Terrain can't see elevation; instead the `fbm`
+  elevation raises hills under parks and forest (`forest_relief`).
 
 ### esmini load time
 
