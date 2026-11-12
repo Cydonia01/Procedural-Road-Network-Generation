@@ -52,5 +52,5 @@ ground_truth.osi
 *.osi
 screen_shot_*.tga
 
-./files
-./plans
+files/
+plans/
