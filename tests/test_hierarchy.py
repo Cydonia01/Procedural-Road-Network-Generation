@@ -129,3 +129,35 @@ def test_deterministic():
     p = LSystemParams.preset("paris")
     a, b = LSystemGenerator().generate(p, 3), LSystemGenerator().generate(p, 3)
     assert a == b
+
+
+def test_road_straight_on_from_a_highway_is_arterial():
+    # Highway 1 - 2 ends at junction 2; 2 - 3 runs straight on, 2 - 4 and 2 - 5 cross.
+    g = graph({1: (-300, 0), 2: (0, 0), 3: (300, 0), 4: (0, 300), 5: (0, -300)},
+              [(1, 2), (2, 3), (2, 4), (4, 5)])
+    g.edges[1].road_class = "highway"
+    del g.edges[4]
+    g.add_edge(Edge(4, 2, 5, "street", 1, 1))
+    levels = assign_hierarchy(g, HierarchyParams(LEVELS, arterial_share=0.0, collector_share=0.0), 0, fixed={1})
+    assert levels[2] == ARTERIAL and g.edges[2].road_class == "avenue"
+    assert levels[3] == LOCAL and levels[4] == LOCAL  # the cross road stays local
+
+
+def test_highway_going_on_straight_promotes_nothing():
+    # Highway 1 - 2 - 3 runs straight through 2; a street 2 - 4 leaves 20 deg off it.
+    a = math.radians(20)
+    g = graph({1: (-300, 0), 2: (0, 0), 3: (300, 0), 4: (300 * math.cos(a), 300 * math.sin(a))},
+              [(1, 2), (2, 3), (2, 4)])
+    g.edges[1].road_class = g.edges[2].road_class = "highway"
+    levels = assign_hierarchy(g, HierarchyParams(LEVELS, arterial_share=0.0, collector_share=0.0), 0, fixed={1, 2})
+    assert levels[3] == LOCAL
+
+
+def test_road_meeting_a_highway_end_at_a_bend_is_arterial():
+    # Highway 1 - 2 ends at 2, where only a street 2 - 3 goes on, 90 deg off.
+    g = graph({1: (-300, 0), 2: (0, 0), 3: (0, 300), 4: (300, 300), 5: (0, 600)},
+              [(1, 2), (2, 3), (3, 4), (3, 5)])
+    g.edges[1].road_class = "highway"
+    g.edges[1].lanes_forward = g.edges[1].lanes_backward = 2
+    levels = assign_hierarchy(g, HierarchyParams(LEVELS, arterial_share=0.0, collector_share=0.0), 0, fixed={1})
+    assert levels[2] == ARTERIAL and g.edges[2].total_lanes == 4  # no lane jump at the bend

@@ -49,6 +49,7 @@ from shapely.geometry.base import BaseGeometry
 from roadgen.geometry import design
 from roadgen.geometry.chains import Chain, find_chains, junction_nodes
 from roadgen.geometry.cross_section import (
+    CLASSES,
     CrossSectionParams,
     loop_edges,
     outer_half_width,
@@ -235,10 +236,17 @@ def half_width(edge: Edge) -> float:
     return max(edge.lanes_forward, edge.lanes_backward) * edge.lane_width
 
 
-def _inner_offset(a: Edge, b: Edge) -> float:
+def _inner_offset(a: Edge, b: Edge, cs: CrossSectionParams = CrossSectionParams()) -> float:
     """Distance from the reference line to the farthest lane centre [m]: the innermost
-    lane on whichever side the road turns to."""
-    return max(half_width(e) - e.lane_width / 2 for e in (a, b))
+    lane on whichever side the road turns to, beyond half the median where the road
+    will get one (cs.median of its class, at least cs.median_min_lanes lanes each way)."""
+    return max(half_width(e) - e.lane_width / 2 + _median_half(e, cs) for e in (a, b))
+
+
+def _median_half(e: Edge, cs: CrossSectionParams) -> float:
+    if min(e.lanes_forward, e.lanes_backward) < cs.median_min_lanes:
+        return 0.0
+    return cs.median[CLASSES.index(e.road_class)] / 2
 
 
 def _class_of(a: Edge, b: Edge) -> str:

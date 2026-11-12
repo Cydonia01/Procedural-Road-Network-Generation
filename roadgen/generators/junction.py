@@ -155,6 +155,7 @@ class JunctionGenerator(RoadNetworkGenerator[JunctionLayoutParams]):
             add_culdesacs(graph, np.random.default_rng([seed, SALT_CULDESAC]), two_way, p.culdesac_radius,
                           p.culdesac_speed, road_classes=("street", "avenue"))
         assign_node_kinds(graph)
+        graph.metadata["exits"] = leg_ends(graph)
         log.debug("junction: %s after %d tries", graph.metadata["name"], attempt + 1)
         return graph
 
@@ -176,7 +177,14 @@ def _interchange(p: JunctionLayoutParams, seed: int) -> RoadGraph:
     if not built:
         raise ValueError(f"the {p.interchange} template does not fit; lengthen interchange_length")
     assign_node_kinds(graph)
+    graph.metadata["exits"] = leg_ends(graph)
     return graph
+
+
+def leg_ends(graph: RoadGraph) -> list[int]:
+    """A lone junction stands for one in a bigger network: its legs' dead ends are
+    exits (roadgen.validate.connectivity), roads running on beyond it."""
+    return [n for n in sorted(graph.nodes) if graph.degree(n) == 1]
 
 
 def _headings(p: JunctionLayoutParams, rng: np.random.Generator) -> list[float]:

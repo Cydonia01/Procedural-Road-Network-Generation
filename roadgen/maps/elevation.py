@@ -33,7 +33,7 @@ from roadgen.config import DEFAULTS, section
 from roadgen.maps import noise
 from roadgen.maps.base import MapGenerator, register_map
 from roadgen.maps.image import grayscale, read_raster, resample
-from roadgen.maps.model import WATER, GridSpec, MapLayer, MapSet
+from roadgen.maps.model import VEGETATION, WATER, GridSpec, MapLayer, MapSet
 
 _D = section(DEFAULTS, "maps", "elevation", "fbm")
 _DI = section(DEFAULTS, "maps", "elevation", "image")
@@ -58,6 +58,8 @@ class FbmElevationParams:
     # --- on a terrain map; ignored without one -----------------------------------------
     shore_width: float = _D["shore_width"]  # land reaches full height this far from water [m]
     shore_height: float = _D["shore_height"]  # land at the shore, above the water surface [m]
+    forest_relief: float = _D["forest_relief"]  # vegetation stands this much higher [m]; 0 = off
+    forest_relief_width: float = _D["forest_relief_width"]  # ... rising over this distance [m]
 
     def __post_init__(self) -> None:
         if self.max_elevation < self.min_elevation:
@@ -72,6 +74,8 @@ class FbmElevationParams:
             raise ValueError("erosion_iterations must be >= 0 and talus_deg in (0, 90)")
         if not 0 < self.erosion_rate <= 0.5:
             raise ValueError("erosion_rate must be in (0, 0.5]")
+        if self.forest_relief < 0 or self.forest_relief_width <= 0:
+            raise ValueError("need forest_relief >= 0 and forest_relief_width > 0")
         if self.shore_width < 0 or self.shore_height < 0:
             raise ValueError("shore_width and shore_height must be >= 0")
 
@@ -139,14 +143,18 @@ class FbmElevationGenerator(MapGenerator[FbmElevationParams]):
             z = p.min_elevation + h * (p.max_elevation - p.min_elevation)
         else:
             z = self._on_shores(p, grid, h, water)
+        relief = _forest_relief(p, upstream, grid)
+        if relief is not None:
+            z = z + relief
         if p.erosion_iterations:
             z = thermal_erosion(z, grid.cell_size, p.erosion_iterations, p.talus_deg,
                                 p.erosion_rate)
         meta: dict[str, Any] = {"generator": self.name, "seed": seed, "params": asdict(p),
                                 "unit": "m"}
+        if water is not None or relief is not None:
+            meta["upstream"] = ["terrain"]
         if water is not None:
             z = np.where(water, p.min_elevation, np.maximum(z, p.min_elevation + p.shore_height))
-            meta["upstream"] = ["terrain"]
         return MapLayer("elevation", grid, z.astype(np.float32), meta)
 
     @staticmethod
@@ -158,6 +166,22 @@ class FbmElevationGenerator(MapGenerator[FbmElevationParams]):
             d = noise.distance_to(water, grid.cell_size, p.shore_width) / p.shore_width
             h = h * d * d * (3 - 2 * d)  # smoothstep: flat at the shore and inland
         return low + h * (p.max_elevation - low)
+
+
+def _forest_relief(p: FbmElevationParams, upstream: Optional[MapSet],
+                   grid: GridSpec) -> Optional[np.ndarray]:
+    """Extra height [m] under the upstream terrain's vegetation: forest_relief inside a
+    patch, rising from 0 at its edge over forest_relief_width (a smoothstep over the
+    distance to open land). Terrain comes before elevation, so instead of forests
+    seeking hills, hills rise under the forests. None without terrain, vegetation or
+    forest_relief."""
+    if not p.forest_relief or upstream is None or upstream.terrain is None:
+        return None
+    veg = upstream.terrain.on_grid(grid) == VEGETATION
+    if not veg.any():
+        return None
+    d = noise.distance_to(~veg, grid.cell_size, p.forest_relief_width) / p.forest_relief_width
+    return p.forest_relief * np.where(veg, d * d * (3 - 2 * d), 0.0)
 
 
 def _water(upstream: Optional[MapSet], grid: GridSpec) -> Optional[np.ndarray]:

@@ -130,6 +130,24 @@ def test_naturalness_counts_on_a_hand_made_graph():
     assert naturalness(g)["body_overlaps"] == 1  # 4 -> 6 runs along edge 1, 3 m apart
 
 
+def test_body_overlaps_read_heights():
+    from roadgen.metrics.network import naturalness
+
+    # A street crossing a highway without a node.
+    g = RoadGraph()
+    for n, (x, y) in {1: (-200, 0), 2: (200, 0), 3: (0, -200), 4: (0, 200)}.items():
+        g.add_node(Node(n, x, y))
+    g.add_edge(Edge(1, 1, 2, "highway", 2, 2))
+    g.add_edge(Edge(2, 3, 4, "street", 1, 1))
+    assert naturalness(g)["body_overlaps"] == 0  # no heights yet: a planned crossing
+    g.edges[2].profile = [0.0, 6.0, 0.0]  # the street rises 6 m over the highway
+    assert naturalness(g)["body_overlaps"] == 0  # an overpass
+    g.edges[2].profile = [0.0, 2.0, 0.0]
+    assert naturalness(g)["body_overlaps"] == 1  # 2 m apart: the bodies collide
+    g.edges[2].bridges = [(150.0, 250.0)]  # a bridge (over water) is no excuse
+    assert naturalness(g)["body_overlaps"] == 1
+
+
 @pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("city", 2), ("suburb", 1)])
 def test_presets_pass_the_naturalness_gates(preset, seed):
     from roadgen.generators.lsystem import LSystemGenerator, LSystemParams

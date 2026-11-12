@@ -344,10 +344,21 @@ def test_elevation_puts_water_in_the_valleys():
     near = distance_to(water, GRID.cell_size, 2 * GRID.cell_size) <= GRID.cell_size * 1.5
     assert e.data[near & ~water].mean() < e.data[~water].mean()
     assert e.metadata["upstream"] == ["terrain"]
-    # Without water the terrain changes nothing.
-    inland = gen("terrain", "noise", water_fraction=0.0, rivers=0)
+    # Without water and vegetation the terrain changes nothing.
+    inland = gen("terrain", "noise", water_fraction=0.0, rivers=0, vegetation_fraction=0.0)
     assert np.array_equal(gen("elevation", "fbm", upstream=MapSet(terrain=inland)).data,
                           gen("elevation", "fbm").data)
+
+
+def test_forests_stand_on_hills():
+    # F16: terrain comes before elevation, so hills rise under the forests.
+    t = gen("terrain", "noise", water_fraction=0.0, rivers=0, vegetation_fraction=0.3)
+    veg = t.data == VEGETATION
+    flat = gen("elevation", "fbm", upstream=MapSet(terrain=t), forest_relief=0.0).data
+    hills = gen("elevation", "fbm", upstream=MapSet(terrain=t)).data
+    lift = hills - flat
+    assert lift[veg].mean() > 3.0 and abs(lift[~veg]).mean() < 1.0  # erosion moves a little
+    assert (hills[veg].mean() - hills[~veg].mean()) > (flat[veg].mean() - flat[~veg].mean()) + 3.0
 
 
 def test_population_lives_on_habitable_land():

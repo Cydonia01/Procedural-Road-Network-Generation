@@ -12,7 +12,11 @@ length, then collectors up to collector_share more, the rest local roads.
 Every edge of a stroke gets the stroke's class, lanes and speed, so lane
 counts change only where strokes meet at junctions with three or more roads.
 
-Fixed edges (highways, ring roads) keep what they have and take no part.
+Fixed edges (highways, ring roads) keep what they have and take no part,
+except that a stroke running straight on from a highway at a junction (and
+straighter than the highway goes on, if it does), or meeting a highway's
+end at a two-road node, is at least arterial: a freeway runs out into an
+arterial, not into a local street.
 Edges that are one-way keep their direction and put all lanes forward;
 asymmetric lane tuples are oriented along the stroke.
 """
@@ -175,10 +179,13 @@ def assign_hierarchy(graph: RoadGraph, params: HierarchyParams, seed: int,
     all_length = sum(length.values()) or 1.0
     bounds = ((ARTERIAL, params.arterial_share),
               (COLLECTOR, params.arterial_share + params.collector_share))
+    after_highway = _highway_continuations(graph, fixed, free, max_def)
     out: dict[int, str] = {}
     cum = 0.0
     for _, _, _, stroke, total in scored:
         level = next((name for name, share in bounds if cum < share * all_length - 1e-9), LOCAL)
+        if after_highway.intersection(stroke):
+            level = ARTERIAL
         cum += total
         spec = params.levels[level]
         along = _orientation(graph, stroke, links) if spec.lanes[0] != spec.lanes[1] else {}
@@ -198,4 +205,27 @@ def assign_hierarchy(graph: RoadGraph, params: HierarchyParams, seed: int,
             out[eid] = level
     counts = {lv: sum(1 for v in out.values() if v == lv) for lv in LEVELS}
     log.debug("hierarchy: %d strokes, edges per level %s", len(groups), counts)
+    return out
+
+
+def _highway_continuations(graph: RoadGraph, fixed: set[int], free: Iterable[int],
+                           max_deflection: float) -> set[int]:
+    """Free edges running straight on (within max_deflection) from a fixed highway
+    edge, straighter than the highway itself goes on at that node (if it does), and
+    the one other road where a highway ends at a two-road node."""
+    free = set(free)
+    at: dict[int, list[int]] = {}
+    for eid, e in graph.edges.items():
+        for n in {e.from_node, e.to_node}:
+            at.setdefault(n, []).append(eid)
+    out = set()
+    for node, arms in at.items():
+        highways = [h for h in arms if h in fixed and graph.edges[h].road_class == "highway"]
+        for h in highways:
+            u = _away(graph, h, node)
+            if len(arms) == 2 and len(highways) == 1:  # a bend: the other road is its continuation
+                out |= {f for f in arms if f in free}
+                continue
+            on = min((_deflection(u, _away(graph, o, node)) for o in highways if o != h), default=math.pi)
+            out |= {f for f in arms if f in free and _deflection(u, _away(graph, f, node)) < min(max_deflection, on)}
     return out

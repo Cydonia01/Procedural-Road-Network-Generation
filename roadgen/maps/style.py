@@ -30,13 +30,13 @@ from roadgen.maps import noise
 from roadgen.maps.base import MapGenerator, register_map
 from roadgen.maps.image import read_raster, resample
 from roadgen.maps.model import (
+    LAND,
     STYLE_CLASSES,
     STYLE_CONTOUR,
     STYLE_GRID,
     STYLE_ORGANIC,
     STYLE_RADIAL,
     STYLE_SUBURB,
-    WATER,
     GridSpec,
     MapLayer,
     MapSet,
@@ -110,8 +110,8 @@ class ZonesStyleGenerator(MapGenerator[ZonesStyleParams]):
         zone = cKDTree(sites).query(np.stack([x.ravel(), y.ravel()], axis=1))[1].reshape(grid.shape)
 
         land = np.ones(grid.shape, dtype=bool)
-        if upstream.terrain is not None:
-            land = upstream.terrain.on_grid(grid) != WATER
+        if upstream.terrain is not None:  # streets grow on open land only: not water, parks or forest
+            land = upstream.terrain.on_grid(grid) == LAND
         density = upstream.population.on_grid(grid) if upstream.population is not None else None
         grade = None
         if upstream.elevation is not None:

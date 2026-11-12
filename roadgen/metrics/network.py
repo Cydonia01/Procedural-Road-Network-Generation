@@ -23,11 +23,12 @@ measured and compared with real-city statistics (stage D):
 - block areas: the bounded faces of the street lines (shapely polygonize);
 - counts of stage C features listed in the graph metadata;
 - naturalness (stage R quality gates): dead-end share, lane or class changes
-  at two-road nodes (where a road just goes on), class changes along straight
+  at two-road nodes (where a road just goes on; highway lane adds and a
+  highway running out into an avenue aside), class changes along straight
   continuations (under STRAIGHT_DEG) at any node, and road bodies (straight
   edges buffered by their driving half width) that overlap by more than
-  OVERLAP_AREA without sharing a node; bridges and tunnels (overpasses) are
-  left out of the overlaps.
+  OVERLAP_AREA without sharing a node, unless they pass over each other
+  (OVERPASS_GAP apart in height; without heights, crossing centre lines).
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from shapely.geometry import LineString, MultiPoint
+from shapely.geometry import LineString, MultiPoint, Point
 from shapely.ops import polygonize, unary_union
 from shapely.strtree import STRtree
 
@@ -55,6 +56,9 @@ FEATURES = ("roundabouts", "culdesacs", "overpasses", "tunnels", "interchanges",
 PERCENTILES = (10, 50, 90)
 STRAIGHT_DEG = 30.0  # two arms deflecting less than this continue one road [deg]
 OVERLAP_AREA = 1.0  # [m^2] bodies overlapping by less than this touch only
+# Bodies this far apart in height pass over each other (validate/clearance.py: 5 m
+# clearance between the surfaces; the 1 m deck is not in the graph's heights) [m]
+OVERPASS_GAP = DEFAULTS["grade_separation"]["clearance"] - 1.0
 
 
 @dataclass(frozen=True)
@@ -186,14 +190,15 @@ def naturalness(graph: RoadGraph) -> dict[str, Any]:
         es = graph.incident_edges(n)
         if len(es) == 2 and not all(e.road_class == "highway" for e in es):  # highway lane adds are wanted
             a, b = es
-            two_road += a.road_class != b.road_class or a.total_lanes != b.total_lanes
+            runs_out = {a.road_class, b.road_class} == {"highway", "avenue"}  # a freeway becomes an arterial
+            two_road += (a.road_class != b.road_class and not runs_out) or a.total_lanes != b.total_lanes
         heads = arm_headings(graph, n)
         for i in range(len(heads)):
             for j in range(i + 1, len(heads)):
                 turn = math.pi - abs((heads[i][0] - heads[j][0] + math.pi) % (2 * math.pi) - math.pi)
                 a, b = graph.edges[heads[i][1]], graph.edges[heads[j][1]]
                 straight_changes += turn < math.radians(STRAIGHT_DEG) and a.road_class != b.road_class
-    edges = [e for e in graph.edges.values() if not e.bridges and not e.tunnels]
+    edges = list(graph.edges.values())
     bodies = []
     for e in edges:
         a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
@@ -203,13 +208,38 @@ def naturalness(graph: RoadGraph) -> dict[str, Any]:
     if bodies:
         for i, j in zip(*STRtree(bodies).query(bodies, predicate="intersects")):
             a, b = edges[i], edges[j]
-            if i < j and not {a.from_node, a.to_node} & {b.from_node, b.to_node} \
-                    and bodies[i].intersection(bodies[j]).area > OVERLAP_AREA:
+            if i >= j or {a.from_node, a.to_node} & {b.from_node, b.to_node}:
+                continue
+            overlap = bodies[i].intersection(bodies[j])
+            if overlap.area > OVERLAP_AREA and not _passes_over(graph, a.id, b.id, overlap):
                 overlaps += 1
     dead_ends = sum(1 for n in graph.nodes if graph.degree(n) == 1)
     return {"dead_end_share": round(dead_ends / len(graph.nodes), 4) if graph.nodes else 0.0,
             "two_road_changes": two_road, "straight_class_changes": straight_changes,
             "body_overlaps": overlaps}
+
+
+def _height_at(graph: RoadGraph, eid: int, x: float, y: float) -> float:
+    """Height of edge eid's straight centre line at the point nearest (x, y) [m]."""
+    e = graph.edges[eid]
+    a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
+    d = LineString([(a.x, a.y), (b.x, b.y)]).project(Point(x, y))
+    s, z = graph.edge_profile(eid)
+    return float(np.interp(d, s, z))
+
+
+def _passes_over(graph: RoadGraph, a: int, b: int, overlap) -> bool:
+    """Whether two edges whose bodies overlap pass over each other: at least OVERPASS_GAP
+    apart in height somewhere over the overlap (an overpass, a bridge over a road, a
+    tunnel under one). A graph without heights (before separate and drape) has none
+    yet: there two centre lines that cross without a node are a planned crossing."""
+    if not graph.has_elevation:
+        la, lb = (LineString([(graph.nodes[n].x, graph.nodes[n].y) for n in (e.from_node, e.to_node)])
+                  for e in (graph.edges[a], graph.edges[b]))
+        return la.crosses(lb)
+    pts = [overlap.representative_point(), overlap.centroid]
+    return any(abs(_height_at(graph, a, p.x, p.y) - _height_at(graph, b, p.x, p.y)) >= OVERPASS_GAP - 1e-6
+               for p in pts)
 
 
 def network_metrics(graph: RoadGraph, params: NetworkMetricsParams = NetworkMetricsParams()

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import re
 
 import numpy as np
@@ -119,6 +120,19 @@ def test_drape_follows_a_ramp_and_leaves_the_input_alone():
     assert np.allclose(z[1:-1], 0.05 * x[1:-1], atol=0.1)  # smoothing along a curve
     assert len(d) - 1 == 20  # 400 m at <= 20 m spacing
     assert drape(g, SLOPE) == out  # deterministic
+
+
+def test_drape_warns_about_steep_roads(caplog):
+    g = network()
+    caplog.set_level(logging.WARNING, logger="roadgen.maps.drape")
+    drape(g, SLOPE)  # 5 %
+    assert not caplog.records
+    drape(g, elevation(0.2 * X))  # 20 %
+    (rec,) = caplog.records
+    assert "steeper than 15 %" in rec.getMessage()
+    caplog.clear()
+    drape(g, elevation(0.2 * X), params=DrapeParams(max_grade=0.0))  # no limit, no warning
+    assert not caplog.records
 
 
 def test_drape_bridges_water_straight_and_clear():
@@ -284,10 +298,15 @@ def test_buildings_stand_on_the_ground_and_not_on_water():
 # --- CLI -----------------------------------------------------------------------------------------------
 
 
-def test_cli_pipeline_drapes_and_writes_the_scene(tmp_path):
+def test_cli_pipeline_drapes_and_writes_the_scene(tmp_path, caplog):
     prefix = tmp_path / "city"
+    caplog.set_level(logging.INFO, logger="roadgen.cli")
     assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--allow-traps", "--maps",
                  "--seed", "3", "--ground", "--buildings", "-o", str(prefix)]) == 0
+    # Quality gate (F14): the ground covers no road surface on a whole generated city.
+    (msg,) = [r.getMessage() for r in caplog.records if "road-surface samples under the ground" in r.getMessage()]
+    covered, samples = (int(v) for v in re.match(r"ground: (\d+) of (\d+)", msg).groups())
+    assert samples > 10000 and covered == 0, msg
     g = load_json(prefix.with_suffix(".json"))
     assert g.has_elevation and "drape" in g.metadata
     assert (tmp_path / "city_scene.osgt").is_file() and not (tmp_path / "city_buildings.osgt").exists()

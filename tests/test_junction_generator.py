@@ -82,3 +82,10 @@ def test_cli_pipeline_junction(tmp_path, monkeypatch):
                  "-o", str(prefix)]) == 0
     assert load_json(prefix.with_suffix(".json")).metadata["generator"] == "junction"
     OpenDriveBuilder().build(load_json(prefix.with_suffix(".json")))
+
+
+@pytest.mark.parametrize("preset", ["diamond", "cloverleaf", "t"])
+def test_leg_ends_are_exits_not_traps(preset):
+    g = gen(preset=preset, **({"interchange_length": 800.0} if preset != "t" else {}))
+    assert g.metadata["exits"] == [n for n in sorted(g.nodes) if g.degree(n) == 1]
+    assert not [e for e in check_traffic_connectivity(g) if "trap" in e]

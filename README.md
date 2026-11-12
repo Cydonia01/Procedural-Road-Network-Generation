@@ -37,7 +37,7 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE builder -> .xodr -> validators, drive
 docker compose build && docker compose run --rm dev      # or a native install, see below
 pytest
 python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 --drive-check -o first
-python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings -o hills
+python -m cli pipeline lsystem --preset city --maps --ground --buildings -o hills
 ```
 
 Each run writes into its own folder `out/<hash>/` and logs where.

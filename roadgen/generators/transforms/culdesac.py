@@ -123,3 +123,104 @@ def add_culdesacs(
         graph.metadata["culdesacs"] = bulbs
     log.debug("cul-de-sacs: %d of %d dead ends", len(added), len(dead_ends))
     return len(added)
+
+
+def cut_dead_ends(graph: RoadGraph, road_classes: Sequence[RoadClass] = ("street", "avenue"),
+                  keep: Sequence[int] = ()) -> int:
+    """Cut every dead end left (no bulb fitted) back to its junction; returns how many.
+
+    The road from a dead end node runs back through two-road nodes to the first
+    node of three or more roads; its edges and inner nodes go, so traffic is never
+    trapped. A road of another class anywhere on that stretch keeps it, and so does
+    a piece with no junction at either end (cutting it would remove it whole), and
+    so do the dead ends in keep (exits: roads leaving the area), and those whose
+    junction would be left with two roads that do not run on as one (a class or
+    lane change, a one-way ramp: _mergeable)."""
+    adj: dict[int, list[int]] = {n: [] for n in graph.nodes}
+    for e in graph.edges.values():
+        adj[e.from_node].append(e.id)
+        adj[e.to_node].append(e.id)
+    cut, keep = 0, set(keep)
+    for start in sorted(graph.nodes):
+        if start in keep or len(adj.get(start, ())) != 1:
+            continue
+        chain, nodes, here, prev = [], [start], start, None
+        while True:
+            (eid,) = [e for e in adj[here] if e != prev]
+            edge = graph.edges[eid]
+            if edge.road_class not in road_classes:
+                chain = []
+                break
+            chain.append(eid)
+            here, prev = (edge.to_node if edge.from_node == here else edge.from_node), eid
+            if len(adj[here]) != 2:
+                break
+            nodes.append(here)
+        if not chain or len(adj[here]) < 3:
+            continue
+        rest = [e for e in adj[here] if e != chain[-1]]
+        if len(rest) == 2 and not _mergeable(graph, rest, here) and not _step_down(graph, adj, here, rest, dry=True):
+            continue  # the junction would be left with two roads that do not run on as one
+        for eid in chain:
+            e = graph.edges.pop(eid)
+            adj[e.from_node].remove(eid)
+            adj[e.to_node].remove(eid)
+        for n in nodes:
+            del graph.nodes[n]
+            del adj[n]
+        for rb in graph.metadata.get("roundabouts") or ():
+            if here in rb.get("entries", ()):  # the ring goes on through the cut arm's entry
+                rb["entries"] = [n for n in rb["entries"] if n != here]
+        if len(adj[here]) == 2 and not _mergeable(graph, adj[here], here):
+            _step_down(graph, adj, here, adj[here])
+        cut += 1
+    if cut:
+        log.debug("cut %d dead end(s) without a bulb back to their junction", cut)
+    return cut
+
+
+
+def _mergeable(graph: RoadGraph, edge_ids: Sequence[int], node: int) -> bool:
+    """Whether two roads left at two-road node run on as one: same class and lanes,
+    both two-way or both one-way through node in one direction (a ring road going
+    on); a class or lane change there, or a one-way ramp, would not."""
+    a, b = (graph.edges[e] for e in edge_ids)
+    if (a.road_class, a.total_lanes) != (b.road_class, b.total_lanes):
+        return False
+    if not a.is_one_way and not b.is_one_way:
+        return True
+    if not (a.is_one_way and b.is_one_way):
+        return False
+    into = [(e.to_node == node) == (e.lanes_forward > 0) for e in (a, b)]  # drives towards node
+    return into[0] != into[1]
+
+
+_RANK = {"street": 0, "avenue": 1, "highway": 2}
+
+
+def _step_down(graph: RoadGraph, adj: dict[int, list[int]], node: int, edge_ids: Sequence[int],
+               dry: bool = False) -> bool:
+    """Two two-way roads of different class or lanes meeting at node: the bigger one
+    takes the smaller one's class, lanes, width, speed and profile up to its next
+    junction, so the road runs on as one (only slower and narrower: its curves stay
+    within its speed). Whether that is possible; dry: only check."""
+    a, b = (graph.edges[e] for e in edge_ids)
+    if a.is_one_way or b.is_one_way:
+        return False
+    small, big = sorted((a, b), key=lambda e: (_RANK[e.road_class], e.total_lanes))
+    if small.lanes_forward != small.lanes_backward:
+        return False
+    if dry:
+        return True
+    here, edge = node, big
+    while True:
+        edge.road_class, edge.lanes_forward, edge.lanes_backward = small.road_class, small.lanes_forward, small.lanes_backward
+        edge.lane_width, edge.speed_limit = small.lane_width, min(edge.speed_limit, small.speed_limit)
+        edge.cross_section = small.cross_section
+        here = edge.to_node if edge.from_node == here else edge.from_node
+        if len(adj[here]) != 2:
+            return True
+        (nxt,) = [e for e in adj[here] if e != edge.id]
+        edge = graph.edges[nxt]
+        if edge.is_one_way:
+            return True

@@ -15,9 +15,9 @@ The generator interface and how parameters are set are described in
 ```bash
 python -m cli pipeline lsystem --set start=[0,0] --set extent=[2250,720]
 python -m cli pipeline lsystem --preset manhattan_like --seed 1
-python -m cli pipeline lsystem --preset paris --allow-traps
-python -m cli pipeline lsystem --preset mixed_city --maps --allow-traps
-python -m cli pipeline lsystem --preset highway_corridor --maps --allow-traps
+python -m cli pipeline lsystem --preset paris
+python -m cli pipeline lsystem --preset mixed_city --maps
+python -m cli pipeline lsystem --preset highway_corridor --maps
 ```
 
 ## Presets
@@ -47,9 +47,9 @@ Layouts without a preset of their own:
 | Noisy grid without maps | `--preset city` (without `--maps`) |
 | Curved streets | `--preset organic_town`, or any preset with `--set curve_tortuosity=1.05` |
 
-Networks with dead ends report traffic traps. The [dead-end
-pass](#dead-ends-and-road-bodies) removes most; pass `--allow-traps` for the
-rest ([Validation](validation.md#traffic-connectivity)).
+The [dead-end pass](#dead-ends-and-road-bodies) removes almost all traffic
+traps; for the rest, or with `--set dead_ends=false`, pass `--allow-traps`
+([Validation](validation.md#traffic-connectivity)).
 
 ## How growth works
 
@@ -271,9 +271,19 @@ a clean-up of dead ends after growth (Parish & Müller's "extend" rule).
      segment passes the local constraints and the maps (water, vegetation,
      grade).
   2. **Trim** a road shorter than `dead_end_trim` block lengths back to its
-     junction.
+     junction. A road cut off by the edge of the area (it cannot go on
+     `min_segment_length` without leaving it) goes back to its junction
+     whatever its length, in suburbs too, unless `boundary: ring` collects it.
   3. **Bulb**: every dead end left gets a [cul-de-sac bulb](#connectivity-and-cul-de-sacs)
      where one fits (all classes but highways).
+  4. **Cut**: a dead end still left (no room for a bulb, or a highway
+     stopping inside the area) goes back to its junction, unless that would
+     leave the junction with two roads that do not run on as one (a class or
+     lane change, a one-way ramp); those few stay as traps.
+- **Exits:** dead ends whose road would leave the area within the largest
+  block size (in practice, highways running off the map) are listed in
+  `metadata.exits`; they stay, and the [traffic check](validation.md#traffic-connectivity)
+  does not count them as traps.
 - The map presets `city`, `hill_town` and `highway_corridor` turn on the
   connector pass (`detour_ratio: 2.5`).
 
@@ -381,7 +391,11 @@ At each free highway end:
      listed in `metadata["bridges"]`;
    - **grade:** at most `highway_max_grade` (or `max_grade`) on land;
      bridges are level;
-   - **density:** the end needs `highway_min_density`;
+   - **density:** the first segment of a highway (from the seed point or a
+     branch) must end where `highway_min_density` people live. A running
+     highway goes on through empty land and forest to the area edge, water
+     it cannot bridge, or a hill it cannot tunnel, so it never ends inside
+     the area just because nobody lives ahead;
    - **detour:** if nothing in the fan passes, directions up to
      ±`highway_max_detour_deg` are tried, smallest turn first. The highway
      goes around a lake or along a hill (the paper's "rotate the segment
@@ -418,7 +432,7 @@ cell. Maps are sampled every half of the finest cell size.
 | `highway_rays`, `highway_max_turn_deg`, `highway_max_detour_deg` | 7, 25, 60 | Direction fan and detour [deg]; turn ≤ detour < 90 |
 | `highway_ray_length`, `highway_ray_samples` | 800, 8 | Population rays [m] |
 | `highway_branch_prob`, `highway_branch_delay` | 0.1, 6 | New highways per side and segment |
-| `highway_min_density` | 1500 | Highways stop below this [people/km²] |
+| `highway_min_density` | 1500 | Highways start and branch only where this many live [people/km²] |
 | `highway_lanes`, `highway_speed` | (2, 2), 22.2 | Lanes and speed [m/s] |
 | `max_bridge_length` | 250 | Longest water crossing [m] |
 | `street_min_density` | 500 | Streets stop below this [people/km²] |
@@ -427,7 +441,7 @@ cell. Maps are sampled every half of the finest cell size.
 | `max_grade` | 0.15 | Max rise / run over 25 m; 0 = no limit |
 
 ```bash
-python -m cli pipeline lsystem --preset city --maps --allow-traps \
+python -m cli pipeline lsystem --preset city --maps \
     --map-set terrain.coast_strength=0.8 --map-set population.n_centers=4 --set max_grade=0.2
 ```
 
@@ -474,7 +488,7 @@ python -m cli pipeline lsystem --preset city --maps --allow-traps \
     highways stop where they meet, so they never cross.
 
 ```bash
-python -m cli pipeline lsystem --preset city --maps --set highway_crossings=separated --allow-traps
+python -m cli pipeline lsystem --preset city --maps --set highway_crossings=separated
 python -m cli pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 \
-    --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --allow-traps --ground
+    --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --ground
 ```

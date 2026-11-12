@@ -290,3 +290,36 @@ def test_bare_road_ends_build(tmp_path):
     for sec, ds in ((sections[0], 0.0), (sections[-1], ev.length - float(sections[-1].get("s")))):
         walks = [lane for lane in sec.iter("lane") if lane.get("type") == "sidewalk"]
         assert all(_width(lane, ds) == pytest.approx(0.0, abs=1e-6) for lane in walks)
+
+
+@pytest.mark.parametrize("gap, bikes_only", [(28.0, True), (24.0, False)])
+def test_repair_ends_bike_lanes_before_making_an_end_bare(tmp_path, gap, bikes_only):
+    """F10: on avenues (bike lane, curb, sidewalk) the repair first ends only the bike
+    lanes before the junction; the sidewalk goes on round the corner. Only if that is not
+    enough does a road end become bare."""
+    from lxml import etree
+
+    from roadgen.opendrive.builder import OpenDriveBuilder
+    from roadgen.validate.continuity import _width, check_continuity
+
+    g = two_junctions(gap)
+    for e in g.edges.values():
+        e.road_class = "avenue"
+    hd = HdMapParams(enabled=True)
+    assert repair_short_edges(g, cross_section=hd.active_cross_section, keep_stubs=frozenset(stub_roads(g))) == 0
+    assert bool(g.metadata.get("no_side_lanes")) != bikes_only
+    assert bool(g.metadata.get("no_bike_lanes")) or not bikes_only
+    if not bikes_only:
+        return
+    path = tmp_path / "net.xodr"
+    b = OpenDriveBuilder(hd=hd)
+    b.build(g)
+    b.write(path)
+    assert check_continuity(path) == []
+    (node, eid), = [p for p in g.metadata["no_bike_lanes"]]
+    road = next(r for r in etree.parse(str(path)).getroot().findall("road") if r.get("id") == str(b.edge_to_road[eid]))
+    first, last = road.findall("lanes/laneSection")[0], road.findall("lanes/laneSection")[-1]
+    at_node = first if g.edges[eid].from_node == node else last
+    ds = 0.0 if at_node is first else float(road.get("length")) - float(last.get("s"))
+    kinds = {lane.get("type") for lane in at_node.iter("lane") if _width(lane, ds) > 1e-6}
+    assert "sidewalk" in kinds and "biking" not in kinds

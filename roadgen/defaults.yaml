@@ -47,7 +47,7 @@ generators:
     min_block_depth: 15.0      # extra gap between near-parallel roads [m]
     parallel_deg: 20.0         # roads closer than this in heading are near-parallel [deg]
     # Dead ends after growth: extend to a road ahead, else trim a short stub, else a turning circle
-    dead_ends: true            # (all dead-end roads but highways; suburb streets and roads leaving the area stay)
+    dead_ends: true            # extend, trim, bulb or cut dead ends; exits (roads leaving the area) stay
     dead_end_reach: 1.5        # an extension reaches this many block lengths (largest block size)
     dead_end_trim: 1.0         # stubs shorter than this many block lengths (smallest block size) are cut
     # Input maps (pipeline --maps / --map-file); ignored without maps.
@@ -60,7 +60,7 @@ generators:
     highway_ray_samples: 8     # population samples per ray
     highway_branch_prob: 0.1   # new highway per side per segment
     highway_branch_delay: 6
-    highway_min_density: 1500.0  # highways stop below this [people/km^2]
+    highway_min_density: 1500.0  # highways start and branch only where this many live [people/km^2]; a running one goes on to the edge
     highway_lanes: [2, 2]
     highway_speed: 22.2        # [m/s] (80 km/h)
     max_bridge_length: 250.0   # [m] of water a highway may cross
@@ -194,6 +194,8 @@ maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and
       # On a terrain map (pipeline): water lies flat at min_elevation, land rises from it
       shore_width: 600.0       # land reaches full height this far from water [m]
       shore_height: 2.0        # land at the shore, above the water surface [m]
+      forest_relief: 15.0      # parks / forest stand this much higher, on hills of their own [m]; 0 = off
+      forest_relief_width: 100.0  # ... rising over this distance from their edge [m]
     image:
       min_elevation: 0.0       # [m] at black
       max_elevation: 100.0     # [m] at white
@@ -255,6 +257,8 @@ drape:  # heights for the RoadGraph from the elevation / terrain maps (see docs/
   smoothing: 80.0          # roads follow the terrain averaged over this length [m]
   bridge_clearance: 2.0    # min bridge deck height above the water surface [m]
   tunnel_cover: 5.0        # a road this far below the terrain is in a tunnel [m] (edges in metadata.tunnels)
+  max_grade: 0.15          # warn about draped roads steeper than this (rise / run, over grade_length); 0 = no warning
+  grade_length: 25.0       # ... measured over this distance [m]
 
 scene:  # what the scene file (.osgt) draws besides ground and buildings (roadgen/scene/junctions.py)
   junction_fill: true       # junction surface no lane covers, in asphalt (the .xodr then has no patch objects)
@@ -347,6 +351,7 @@ design:  # design-speed rules for road geometry (roadgen/geometry/design.py; AAS
   spiral_min_shift: 0.2     # spirals shift the curve inward by at least this (AASHTO) [m]
   spiral_max_shift: 1.0     # ... and at most this [m]
   banking: true             # bank curves with superelevation (AASHTO method 5)
+  max_resultant_grade: 0.10 # banking + grade: sqrt(grade^2 + e^2) at most this (RAL/RAA Schraegneigung); steeper grades get no banking
   bank_ramp_length: 30.0    # a road end reaches its junction plane's cross slope over this [m]
   junction_max_grade: 0.04  # steepest sloped junction plane; 0 = flat junctions
   max_merge_deflection_deg: 135.0  # a two-road node turning more than this stays a junction [deg]

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Mapping, NamedTuple
+from typing import Mapping, NamedTuple, Optional
 
 import numpy as np
 
@@ -228,7 +228,8 @@ def hermite(s0: float, s1: float, v0: float, v1: float, m0: float, m1: float) ->
 
 
 def chain_superelevation(graph: RoadGraph, ca: ChainAlignment, planes: Mapping[int, JunctionPlane],
-                         design: DesignParams = DesignParams()) -> list[Cubic]:
+                         design: DesignParams = DesignParams(),
+                         elevation: Optional[list[Cubic]] = None) -> list[Cubic]:
     """Superelevation records (s, a, b, c, d) [rad] of a chain road; [] when it is not banked.
 
     Positive superelevation falls to the right (OpenDRIVE). On each corner
@@ -239,12 +240,17 @@ def chain_superelevation(graph: RoadGraph, ca: ChainAlignment, planes: Mapping[i
     grades stay continuous where a curve ends at a junction. At a junction end the road meets
     the junction plane's cross slope, reached over bank_ramp_length (at most
     half the road) with a smoothstep, so the roll rate is 0 at both ends of
-    the ramp. Ramps and corner banking add up where they overlap.
+    the ramp. Ramps and corner banking add up where they overlap. With the road's
+    elevation records, a corner on a grade banks at most so far that the resultant
+    slope stays within design.max_resultant_grade (design.banking_on_grade, at the
+    corner's steepest grade).
     """
     parts: list[list[Cubic]] = []
     if design.banking:
         for c in ca.corners:
             e = design_lib.superelevation(c.lane_radius, c.design_speed, _class(graph, ca, c.node), design)
+            if elevation:
+                e = design_lib.banking_on_grade(e, max_grade(elevation, c.s_start, c.s_end), design)
             if e <= 0:
                 continue
             phi = -math.copysign(math.atan(e), c.deflection)
@@ -268,6 +274,13 @@ def chain_superelevation(graph: RoadGraph, ca: ChainAlignment, planes: Mapping[i
         return []
     out = _sum(parts, ca.length)
     return [] if all(max(abs(v) for v in r[1:]) < 1e-12 for r in out) else out
+
+
+def max_grade(records: list, s0: float, s1: float, step: float = 1.0) -> float:
+    """Steepest |grade| of elevation records over [s0, s1]."""
+    s = np.linspace(s0, s1, max(2, int(math.ceil((s1 - s0) / step)) + 1))
+    z = evaluate_many(records, s)
+    return float(np.max(np.abs(np.diff(z) / np.diff(s)))) if s1 > s0 else 0.0
 
 
 def _class(graph: RoadGraph, ca: ChainAlignment, node_id: int) -> str:

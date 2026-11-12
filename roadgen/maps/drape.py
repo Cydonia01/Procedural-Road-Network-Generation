@@ -56,8 +56,12 @@ class DrapeParams:
     smoothing: float = _D["smoothing"]  # length the terrain is averaged over [m]
     bridge_clearance: float = _D["bridge_clearance"]  # min deck height above water [m]
     tunnel_cover: float = _D["tunnel_cover"]  # a road this far under the terrain is in a tunnel [m]
+    max_grade: float = _D["max_grade"]  # warn about roads steeper than this (rise / run); 0 = no warning
+    grade_length: float = _D["grade_length"]  # grades are measured over this distance [m]
 
     def __post_init__(self) -> None:
+        if self.max_grade < 0 or self.grade_length <= 0:
+            raise ValueError("need max_grade >= 0 and grade_length > 0")
         if self.sample_spacing <= 0 or self.smoothing < 0 or self.bridge_clearance < 0 or self.tunnel_cover <= 0:
             raise ValueError("need sample_spacing > 0, smoothing >= 0, bridge_clearance >= 0 and "
                              "tunnel_cover > 0")
@@ -92,6 +96,7 @@ def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = N
     for node in out.nodes.values():
         node.z = _node_height(*on_road.get(node.id, (node.x, node.y)), elevation, terrain, params)
     max_grade = 0.0
+    steep: list[tuple[float, int]] = []  # (grade, edge) above params.max_grade
     tunnel_edges = set(out.metadata.get("tunnels") or [])
     loops = loop_edges(out) if cross_section is not None else frozenset()
     for eid, edge in sorted(out.edges.items()):
@@ -114,11 +119,31 @@ def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = N
             edge.bridges = [(s0, s1) for s0, s1 in rounded if s1 - s0 >= 0.01]
         if length > 0:
             max_grade = max(max_grade, float(np.max(np.abs(np.diff(z)) / np.diff(d))))
+            grade = _grade_over(d, z, params.grade_length)
+            if params.max_grade and grade > params.max_grade and not edge.bridges and eid not in tunnel_edges:
+                steep.append((grade, eid))
+    if steep:
+        worst, eid = max(steep)
+        log.warning("drape: %d road(s) steeper than %.0f %% over %.0f m (worst: edge %d, %.1f %%)",
+                    len(steep), 100 * params.max_grade, params.grade_length, eid, 100 * worst)
     out.metadata["drape"] = asdict(params)
     log.info("drape: %d nodes, %d edges, %d bridges, %d tunnels, steepest grade %.1f %%",
              len(out.nodes), len(out.edges), sum(len(e.bridges) for e in out.edges.values()),
              sum(len(e.tunnels) for e in out.edges.values()), 100 * max_grade)
     return out
+
+
+def _grade_over(d: np.ndarray, z: np.ndarray, window: float) -> float:
+    """Steepest |rise / run| of profile z(d) over window metres (or the whole edge
+    if shorter), from the profile interpolated every metre."""
+    if d[-1] <= 0:
+        return 0.0
+    s = np.arange(0.0, d[-1] + 1e-9, 1.0)
+    zs = np.interp(s, d, z)
+    k = int(min(window, d[-1]))
+    if k < 1:
+        return abs(float(z[-1] - z[0])) / float(d[-1])
+    return float(np.max(np.abs(zs[k:] - zs[:-k]))) / k
 
 
 def _node_height(x: float, y: float, elevation: MapLayer, terrain: Optional[MapLayer],

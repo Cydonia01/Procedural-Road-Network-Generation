@@ -14,7 +14,7 @@ reports an error.
 | [Topology](#topology) | `.xodr` | always | `validate/topology.py` |
 | [Continuity](#continuity) | `.xodr` | always | `validate/continuity.py` |
 | [Curvature continuity](#curvature-continuity) | `.xodr` | always (`paramPoly3` jumps are warnings) | `validate/continuity.py` |
-| [Lateral acceleration](#lateral-acceleration) | `.xodr` | always | `validate/dynamics.py` |
+| [Lateral acceleration](#lateral-acceleration), resultant slope | `.xodr` | always | `validate/dynamics.py` |
 | [Clearance](#clearance) | `.xodr` | always | `validate/clearance.py` |
 | [HD-map content](#hd-map-content) | `.xodr` | with HD maps on | `validate/hdmap.py` |
 | [XSD schema](#xsd-schema) | `.xodr` | only with `OPENDRIVE_XSD` or `--xsd` | `validate/schema.py` |
@@ -34,7 +34,11 @@ The check builds a **traversal graph**:
 Reported as errors:
 
 - **Traps:** traffic arriving on an edge has no way out (dead ends, one-way
-  sinks), so vehicles would get stuck.
+  sinks), so vehicles would get stuck. A dead end listed in the graph's
+  `metadata.exits` is no trap: the road leaves the generated area there (a
+  freeway running on), and traffic may come back at any exit. lsystem lists
+  the dead ends whose road would leave its area within one block length;
+  the `junction` generator lists its leg ends.
 - **Unreachable roads:** traffic leaving on an edge that nothing feeds.
 - **Not strongly connected:** the node-level lane-direction graph has several
   strongly connected components. Nodes outside the main one are listed.
@@ -45,9 +49,10 @@ stranded.
 
 **Fixes:**
 
+- lsystem's `dead_ends` (on by default) extends, trims, bulbs, or else cuts
+  the dead ends that are not exits;
 - `--set boundary=ring` for one-way grids;
-- `--set culdesac_prob=1` for turn-around bulbs at dead ends, where they fit;
-- `--allow-traps` when dead ends are intended.
+- `--allow-traps` when dead ends are intended (e.g. `--set dead_ends=false`).
 
 ### Topology
 
@@ -114,6 +119,12 @@ acceleration `v²·|κ|`. The peak is checked:
 
 - at the ends of every line, arc and spiral, where curvature is extreme;
 - every 0.5 m along `paramPoly3` pieces.
+
+`check_resultant_grade`: where a normal road is banked, the resultant slope
+√(grade² + e²) may not exceed `design.max_resultant_grade` (10 %), or the
+grade alone where that is steeper. It is sampled every 1 m, leaving out the
+`bank_ramp_length` next to junction ends, where the cross slope blends into
+the junction plane's (at most `junction_max_grade`).
 
 ### Clearance
 
@@ -292,7 +303,7 @@ from the RoadGraph alone, for comparison with real-city statistics:
 | **Tortuosity** | Length / chord of every road through its bends, and the share of length on roads at least `straight_tortuosity` (1.01) |
 | **Block areas** | Bounded faces of the street lines |
 | **Features** | Counts of the `metadata` lists: roundabouts, cul-de-sacs, overpasses, tunnels, interchanges, bridges |
-| **Naturalness** | Quality gates: dead-end share; lane or class changes at two-road nodes (where a road just goes on; highway lane adds aside); class changes along straight continuations (under 30°) at any node; road bodies (driving width) overlapping by more than 1 m² without a shared node (bridges and tunnels aside) |
+| **Naturalness** | Quality gates: dead-end share; lane or class changes at two-road nodes (where a road just goes on; highway lane adds and a highway running out into an avenue aside); class changes along straight continuations (under 30°) at any node; road bodies (driving width) overlapping by more than 1 m² without a shared node, unless they pass over each other (5 m apart in height over the overlap; on a graph without heights yet, centre lines that cross count as a planned crossing) |
 
 ### HD-map metrics
 

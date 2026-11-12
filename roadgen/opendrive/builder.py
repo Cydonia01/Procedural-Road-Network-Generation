@@ -849,7 +849,7 @@ class OpenDriveBuilder:
         for rec in elevation:
             road.add_elevation(*rec)
         flat = {n: JunctionPlane(graph.nodes[n].x, graph.nodes[n].y, 0.0) for n in junctions}
-        superelevation = chain_superelevation(graph, ca, planes if planes is not None else flat, design)
+        superelevation = chain_superelevation(graph, ca, planes if planes is not None else flat, design, elevation)
         for rec in superelevation:
             road.add_superelevation(*rec)
 

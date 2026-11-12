@@ -124,7 +124,7 @@ from roadgen.generators.patterns import (
     StreetField,
 )
 from roadgen.generators.repair import repair_short_edges
-from roadgen.generators.transforms.culdesac import add_culdesacs
+from roadgen.generators.transforms.culdesac import add_culdesacs, cut_dead_ends
 from roadgen.generators.transforms.interchange import (
     STRAIGHT_TOL,
     InterchangeParams,
@@ -213,7 +213,7 @@ class LSystemParams:
     min_block_depth: float = _D["min_block_depth"]  # [m] extra gap between near-parallel roads
     parallel_deg: float = _D["parallel_deg"]  # roads closer than this in heading are near-parallel
     # --- dead ends (stage R3) ----------------------------------------------------------------
-    dead_ends: bool = _D["dead_ends"]  # extend, trim or bulb the dead ends after growth
+    dead_ends: bool = _D["dead_ends"]  # extend, trim, bulb or cut the dead ends after growth (exits stay)
     dead_end_reach: float = _D["dead_end_reach"]  # an extension reaches this many block lengths
     dead_end_trim: float = _D["dead_end_trim"]  # stubs shorter than this many block lengths go
     # --- input maps; ignored without maps -----------------------------------------------
@@ -226,7 +226,7 @@ class LSystemParams:
     highway_ray_samples: int = _D["highway_ray_samples"]  # population samples per ray
     highway_branch_prob: float = _D["highway_branch_prob"]  # per side, per segment
     highway_branch_delay: int = _D["highway_branch_delay"]
-    highway_min_density: float = _D["highway_min_density"]  # [people/km^2] highways stop below
+    highway_min_density: float = _D["highway_min_density"]  # [people/km^2] highways start (and branch) only above
     highway_lanes: tuple[int, int] = _D["highway_lanes"]
     highway_speed: float = _D["highway_speed"]
     max_bridge_length: float = _D["max_bridge_length"]  # [m] of water a highway may cross
@@ -935,7 +935,10 @@ class _Growth:
         (straight on first, else the nearest node within 60 deg of straight on); if
         none is allowed, a stub shorter than dead_end_trim block lengths is cut back to
         its junction. The rest get turning circles later (cul-de-sac bulbs). Suburb
-        streets (meant to end) stay as they are."""
+        streets (meant to end) stay as they are. A road cut off by the edge of the area
+        (it cannot go on min_segment_length without leaving it) is not a dead end by
+        design: it is extended, else cut back to its junction whatever its length, also
+        in suburbs (boundary "ring" collects these ends instead)."""
         p = self.p
         block = max(p.block_size)
         reach, trim = p.dead_end_reach * block, p.dead_end_trim * min(p.block_size)
@@ -948,14 +951,16 @@ class _Growth:
             if axis == HIGHWAY or eid in self.fixed:
                 continue
             pt = self.pos[node]
-            if self.field is not None and self.field.weights(pt)[SUBURB] >= 0.5:
-                continue
             v = self._vec(self._other(eid, node), node)
             d = (v[0] / math.hypot(*v), v[1] / math.hypot(*v))
+            ahead = (pt[0] + d[0] * p.min_segment_length, pt[1] + d[1] * p.min_segment_length)
+            at_edge = p.boundary != "ring" and not self.inside(ahead)
+            if not at_edge and self.field is not None and self.field.weights(pt)[SUBURB] >= 0.5:
+                continue
             if self.extend(node, d, axis, line, reach):
                 counts["extended"] += 1
-            elif self.trim_stub(node, trim):
-                counts["trimmed"] += 1
+            elif self.trim_stub(node, math.inf if at_edge else trim):
+                counts["trimmed at the edge" if at_edge else "trimmed"] += 1
         log.debug("lsystem: dead ends %s", dict(counts))
 
     def extend(self, node: int, d: Point, axis: int, line: int, reach: float) -> bool:
@@ -1357,7 +1362,7 @@ class _Growth:
     def step_highway(self, prop: _Proposal) -> None:
         """Best direction by population whose segment passes the constraints."""
         for heading, end, bridge, tunnel in self.maps.highway_candidates(self.pos[prop.node], prop.heading,
-                                                                         self.inside):
+                                                                         self.inside, start=not prop.follow):
             added = self.connect(prop.node, end, HIGHWAY)
             if added is None:
                 continue  # rejected by the local constraints: try the next direction
@@ -1435,7 +1440,7 @@ class _Growth:
     def grow_highway(self, prop: _Proposal, node: int, heading: float) -> None:
         """Continue, maybe branch a new highway, and spawn grid streets on both sides."""
         p = self.p
-        self.propose(prop.t + 1, node, HIGHWAY, 1, heading)
+        self.propose(prop.t + 1, node, HIGHWAY, 1, heading, follow=True)
         for side in (1, -1):
             normal = heading + side * math.pi / 2
             if self.rng.random() < p.highway_branch_prob:
@@ -1642,8 +1647,8 @@ class _MapView:
         second = next(h for h in ranked if abs(_wrap(h - first)) >= math.pi / 2 - EPS)
         return [first, second]
 
-    def highway_candidates(self, a: Point, heading: float,
-                           inside: Any) -> Iterator[tuple[float, Point, bool, bool]]:
+    def highway_candidates(self, a: Point, heading: float, inside: Any,
+                           start: bool = True) -> Iterator[tuple[float, Point, bool, bool]]:
         """(heading, end, bridge, tunnel) for the fan of directions, best population first.
 
         Then, as a detour, the directions between highway_max_turn_deg and
@@ -1659,12 +1664,18 @@ class _MapView:
         ranked += [side * float(t) for t in detours for side in (1, -1)]
         for t in ranked:
             h = heading + float(t)
-            segment = self.highway_segment(a, h, inside)
+            segment = self.highway_segment(a, h, inside, start)
             if segment is not None:
                 yield (h, *segment)
 
-    def highway_segment(self, a: Point, heading: float, inside: Any) -> Optional[tuple[Point, bool, bool]]:
+    def highway_segment(self, a: Point, heading: float, inside: Any,
+                        start: bool = True) -> Optional[tuple[Point, bool, bool]]:
         """End point, bridge and tunnel flags, or None if the direction is not allowed.
+
+        Only a highway's first segment (start: the seed's or a branch's) must end
+        where at least highway_min_density people live; a running highway goes on
+        through empty land and forest up to the area edge, water it cannot bridge
+        or a hill it cannot tunnel.
 
         Water may be crossed once, up to max_bridge_length; the segment is
         stretched to the far shore when it would end in water. A segment too
@@ -1709,7 +1720,8 @@ class _MapView:
                     break
             else:
                 return None
-        if self.sample(self.population, np.array([end[0]]), np.array([end[1]]))[0] < p.highway_min_density:
+        if start and self.sample(self.population, np.array([end[0]]), np.array([end[1]]))[0] \
+                < p.highway_min_density:
             return None
         return end, bridge, tunnel
 
@@ -1789,6 +1801,9 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                                   params.culdesac_radius, params.culdesac_speed, growth.culdesac_allowed,
                                   road_classes=classes):
             assign_node_kinds(graph)
+        graph.metadata["exits"] = self._exits(graph, params)
+        if params.dead_ends and cut_dead_ends(graph, (*classes, "highway"), keep=graph.metadata["exits"]):
+            assign_node_kinds(graph)  # no room for a bulb, not an exit: no traps either
         if not graph.edges:
             log.warning("lsystem: no road could be grown from the seed point; on input maps it is "
                         "usually too steep around it (max_grade %.2f), or water, vegetation or "
@@ -1845,6 +1860,28 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         xs = [ox + c * x - s * y for x, y in box]
         ys = [oy + s * x + c * y for x, y in box]
         return min(xs), min(ys), max(xs), max(ys)
+
+    @staticmethod
+    def _exits(graph: RoadGraph, p: LSystemParams) -> list[int]:
+        """Dead ends where a road leaves the area: going on the largest block size
+        straight ahead would leave it (the validators' exits, a freeway running on)."""
+        w, h = p.extent
+        theta = math.radians(p.rotation_deg)
+        c, s = math.cos(theta), math.sin(theta)
+        ahead = max(p.block_size)
+        out = []
+        for n in sorted(graph.nodes):
+            if graph.degree(n) != 1:
+                continue
+            (e,) = graph.incident_edges(n)
+            a, b = graph.nodes[n], graph.nodes[e.from_node if e.to_node == n else e.to_node]
+            length = math.hypot(a.x - b.x, a.y - b.y)
+            x = a.x + (a.x - b.x) / length * ahead - p.origin[0]
+            y = a.y + (a.y - b.y) / length * ahead - p.origin[1]
+            lx, ly = c * x + s * y, -s * x + c * y  # back into the area's frame
+            if not (0.0 <= lx <= w and 0.0 <= ly <= h):
+                out.append(n)
+        return out
 
     @staticmethod
     def _to_graph(g: _Growth, p: LSystemParams, seed: int,
