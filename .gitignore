@@ -51,3 +51,6 @@ ground_truth.osi
 *.dat
 *.osi
 screen_shot_*.tga
+
+./files
+./plans
