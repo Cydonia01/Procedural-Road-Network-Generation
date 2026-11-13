@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from cli import main
 from roadgen.geometry.planar import segment_start, trim
 from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder, sidecar_path
+from roadgen.opendrive.builder import XODR_DIGITS, OpenDriveBuilder, round_numbers, sidecar_path
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.lanes import make_lanes
 from roadgen.validate.schema import validate_schema
@@ -262,3 +263,12 @@ def test_cli_view_passes_scenegraph_and_duration(monkeypatch, tmp_path):
     calls.clear()
     assert main(["view", "net.xodr"]) == 0
     assert "--model" not in calls[0] and "--duration" not in calls[0]
+
+
+def test_round_numbers_keeps_ten_significant_digits():
+    el = ET.Element("geometry", {"x": "1419.4999999998654", "hdg": "-1.5707963267948966", "a": "3.5",
+                                 "version": "1.00", "id": "12", "d": "-0.000758055939168956",
+                                 "name": "x.1234567890123"})
+    round_numbers(el, XODR_DIGITS)
+    assert el.attrib == {"x": "1419.5", "hdg": "-1.570796327", "a": "3.5", "version": "1.00", "id": "12",
+                         "d": "-0.0007580559392", "name": "x.1234567890123"}

@@ -93,7 +93,8 @@ Details are in [Heights](heights.md).
    path. `scenariogeneration` is only used inside the builders, so it can be
    replaced. Its geometry auto-adjustment and slow pretty-printer are
    bypassed, and XML is indented with `ET.indent`: one space per level with
-   HD maps (indentation was a third of the file), four without.
+   HD maps (indentation was a third of the file), four without. Decimals are
+   written with 10 significant digits (see [OpenDRIVE output](opendrive.md)).
 7. **Conventions:**
    - OpenDRIVE 1.6, right-hand traffic;
    - SI units (m, rad, m/s);

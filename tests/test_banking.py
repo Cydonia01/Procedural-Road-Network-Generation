@@ -44,8 +44,9 @@ def test_design_curve_is_banked_towards_its_centre(tmp_path):
     mid = 0.5 * (c.s_start + c.s_end)
     # A left turn falls to the left: negative superelevation, atan(e_max) on the arc.
     assert road.superelevation(mid) == pytest.approx(-math.atan(0.04))
-    assert road.superelevation(c.s_start) == pytest.approx(0.0, abs=1e-12)
-    assert road.superelevation(c.s_end) == pytest.approx(0.0, abs=1e-12)
+    # Zero at both ends, up to the .xodr's XODR_DIGITS significant digits of its cubics.
+    assert road.superelevation(c.s_start) == pytest.approx(0.0, abs=1e-9)
+    assert road.superelevation(c.s_end) == pytest.approx(0.0, abs=1e-9)
     # The inner (left) lane is lower than the outer one.
     assert road.lane_height(1, mid) < road.lane_height(-1, mid)
     assert c.advisory_speed is None

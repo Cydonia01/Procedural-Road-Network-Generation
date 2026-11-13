@@ -124,9 +124,30 @@ ODR_REV_MINOR = "6"
 ROAD_TYPE = xodr.RoadType.town
 # scenariogeneration stamps datetime.now(); a fixed value keeps output reproducible.
 HEADER_DATE = "1970-01-01T00:00:00"
+# Significant digits of every decimal the .xodr holds (P6): float reprs carry 17, of which
+# the last are noise. 10 shift esmini's lane positions by under a micrometre on a 4 km
+# city (plans/2026-11-13-polish-performance.md) and make the file about 12 % smaller.
+XODR_DIGITS = 10
 DEFAULT_JUNCTION_MARGIN = DEFAULTS["opendrive"]["junction_margin"]
 
 PathLike = Union[str, Path]
+
+
+def round_numbers(root: ET.Element, digits: int) -> None:
+    """Round every decimal attribute value (one with a point) of the tree to `digits`
+    significant digits, in place. Values that rounding leaves equal are kept as written,
+    so 3.5 and 1.00 stay; ids and other integers have no point and are not touched."""
+    for el in root.iter():
+        for key, value in el.attrib.items():
+            if "." not in value or len(value) <= digits + 1:
+                continue
+            try:
+                x = float(value)
+            except ValueError:
+                continue
+            r = float(f"{x:.{digits}g}")
+            if r != x:
+                el.set(key, repr(r))
 
 
 def _directions(lanes_at, s: float) -> set[int]:
@@ -576,6 +597,7 @@ class OpenDriveBuilder:
         # dominates write time on large networks; ET.indent is equivalent and fast.
         # With HD maps one space per level: indentation was a third of the file (B9);
         # with HD off the output stays as before.
+        round_numbers(root, XODR_DIGITS)
         ET.indent(root, space=" " if self.hd.enabled else "    ")
         ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
         sidecar = sidecar_path(path)
