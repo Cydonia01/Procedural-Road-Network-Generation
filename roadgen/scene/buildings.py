@@ -34,7 +34,7 @@ from shapely.geometry.polygon import orient
 from shapely.ops import polygonize, substring, triangulate, unary_union
 
 from roadgen.config import DEFAULTS, section
-from roadgen.geometry.alignment import network_alignment
+from roadgen.geometry.alignment import NetworkAlignment, network_alignment
 from roadgen.geometry.cross_section import (
     CrossSectionParams,
     loop_edges,
@@ -90,12 +90,12 @@ def road_half_extent(e: Edge, cross_section: Optional[CrossSectionParams] = None
     return max(e.lanes_forward, e.lanes_backward) * e.lane_width
 
 
-def road_lines(graph: RoadGraph, cross_section: Optional[CrossSectionParams] = None
-               ) -> list[tuple[Edge, LineString]]:
+def road_lines(graph: RoadGraph, cross_section: Optional[CrossSectionParams] = None,
+               na: Optional[NetworkAlignment] = None) -> list[tuple[Edge, LineString]]:
     """Each edge's road centre line in edge-id order: along the fitted road (with the
-    cross-section's trims), or the straight edge if the graph can't be fitted."""
-    na = None
-    if not graph.validate():
+    cross-section's trims; na: that alignment if already computed), or the straight
+    edge if the graph can't be fitted."""
+    if na is None and not graph.validate():
         try:
             na = network_alignment(graph, cross_section=cross_section)
         except ValueError as err:
@@ -116,12 +116,13 @@ def blocks(graph: RoadGraph, lines: Optional[list[tuple[Edge, LineString]]] = No
 
 
 def footprints(graph: RoadGraph, params: BuildingParams,
-               cross_section: Optional[CrossSectionParams] = None) -> list[Polygon]:
+               cross_section: Optional[CrossSectionParams] = None,
+               na: Optional[NetworkAlignment] = None) -> list[Polygon]:
     """Buildable area per block: the face minus the widened roads, corners rounded. With
     a cross-section the roads include their medians, and with its turn lanes the
     approaches with a left-turn pocket a lane more; setback is the ground between them
     and the buildings."""
-    lines = road_lines(graph, cross_section)
+    lines = road_lines(graph, cross_section, na)
     loops = loop_edges(graph) if cross_section is not None else frozenset()
     widened = [
         line.buffer(road_half_extent(e, cross_section, e.id in loops) + params.setback,
@@ -223,15 +224,17 @@ def building_mesh(
     graph: RoadGraph, params: BuildingParams = BuildingParams(),
     elevation: Optional[MapLayer] = None, terrain: Optional[MapLayer] = None,
     cross_section: Optional[CrossSectionParams] = None, population: Optional[MapLayer] = None,
+    na: Optional[NetworkAlignment] = None,
 ) -> tuple[list[tuple[Vec3, Vec3, Vec3]], list[Vec3], int]:
     """(triangles, one normal per triangle, number of buildings), z-up world coordinates.
 
     Triangles are counter-clockwise seen from outside the building. Each block area is
     split into parcels with one building each (roadgen.scene.parcels), as tall as the
-    population map says.
+    population map says. na: the graph's alignment with the cross-section, if already
+    computed.
     """
     rng = np.random.default_rng(params.seed)
-    polys, heights = building_footprints(graph, params, rng, terrain, cross_section, population)
+    polys, heights = building_footprints(graph, params, rng, terrain, cross_section, population, na)
     tris: list[tuple[Vec3, Vec3, Vec3]] = []
     normals: list[Vec3] = []
     count = 0
@@ -266,7 +269,8 @@ def building_mesh(
 
 def building_footprints(graph: RoadGraph, params: BuildingParams, rng: np.random.Generator,
                         terrain: Optional[MapLayer] = None, cross_section: Optional[CrossSectionParams] = None,
-                        population: Optional[MapLayer] = None) -> tuple[list[Polygon], list[float]]:
+                        population: Optional[MapLayer] = None, na: Optional[NetworkAlignment] = None
+                        ) -> tuple[list[Polygon], list[float]]:
     """Each building's footprint and height [m]."""
     from roadgen.scene.parcels import (
         building_footprint,
@@ -276,7 +280,7 @@ def building_footprints(graph: RoadGraph, params: BuildingParams, rng: np.random
         with_frontage,
     )
 
-    areas = footprints(graph, params, cross_section)
+    areas = footprints(graph, params, cross_section, na)
     polys, heights = [], []
     for area in areas:
         for parcel in with_frontage(split_parcels(area, rng, params.frontage, params.depth), area,

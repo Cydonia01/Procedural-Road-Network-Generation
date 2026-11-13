@@ -26,8 +26,7 @@ import shapely
 from lxml import etree
 from shapely.geometry import Polygon
 
-from roadgen.opendrive.plot import _cubics
-from roadgen.validate.continuity import RoadEval
+from roadgen.validate.continuity import Records, RoadEval
 
 log = logging.getLogger(__name__)
 
@@ -77,16 +76,19 @@ class _Road:
 
 
 def read_surfaces(xodr: Union[str, Path, etree._Element], fills: Optional[list[Outline]] = None,
-                  step: float = 2.0) -> RoadSurfaces:
+                  step: float = 2.0, evals: Optional[dict[str, RoadEval]] = None) -> RoadSurfaces:
     """Road surfaces of an .xodr (path or parsed root), plus the junction fill outlines
-    (sidecar "junction_fills") as part of the footprint."""
+    (sidecar "junction_fills") as part of the footprint. evals: the roads' evaluators by
+    id, if the caller has them (the pipeline's validation, roadgen.validate.continuity.road_evals)."""
     root = xodr if isinstance(xodr, etree._Element) else etree.parse(str(xodr)).getroot()
     out = RoadSurfaces()
     edges, samples = [], []
     for road in root.findall("road"):
         structures = [(kind, float(el.get("s")), float(el.get("length")))
                       for kind in ("bridge", "tunnel") for el in road.findall(f"objects/{kind}")]
-        r = _sample_road(road, step, [v for _, s0, length in structures for v in (s0, s0 + length)])
+        ev = evals.get(road.get("id")) if evals is not None else None
+        r = _sample_road(ev if ev is not None else RoadEval(road), step,
+                         [v for _, s0, length in structures for v in (s0, s0 + length)])
         if r is None:
             continue
         inside = np.zeros(len(r.s), bool)
@@ -132,16 +134,13 @@ def read_surfaces(xodr: Union[str, Path, etree._Element], fills: Optional[list[O
     return out
 
 
-def _sample_road(road: etree._Element, step: float, extra: Optional[list[float]] = None) -> Optional[_Road]:
+def _sample_road(ev: RoadEval, step: float, extra: Optional[list[float]] = None) -> Optional[_Road]:
     """Centre line and outer edges (x, y, z) of a road every step, per lane section (both
     ends of each section, so tapers start where the .xodr says), and at every s of extra."""
-    ev = RoadEval(road)
     if ev.length <= 1e-6:
         return None
     sections = ev.sections
     bounds = [float(sec.get("s")) for sec in sections] + [ev.length]
-    elevation = road.findall("elevationProfile/elevation")
-    superelevation = road.findall("lateralProfile/superelevation")
     ss_all, left_all, right_all = [], [], []
     for k, sec in enumerate(sections):
         s0, s1 = bounds[k], bounds[k + 1]
@@ -153,14 +152,14 @@ def _sample_road(road: etree._Element, step: float, extra: Optional[list[float]]
             ss = ss[1:]  # the previous section's last sample
         if not len(ss):
             continue
-        offset = _cubics(ev.offsets, ss, "s")
+        offset = ev.offset_records.values(ss)
         sides = {}
         for side, sign in (("right", -1.0), ("left", 1.0)):
             lanes = sorted(sec.findall(f"{side}/lane"), key=lambda lane: abs(int(lane.get("id"))))
             t = offset.copy()
             lift = np.zeros(len(ss))
             for lane in lanes:
-                w = _cubics(lane.findall("width"), ss - s0, "sOffset")
+                w = Records(lane.findall("width"), "sOffset").values(ss - s0)
                 heights = lane.findall("height")
                 h = _steps(heights, ss - s0) if heights else np.zeros(len(ss))
                 wide = w > 1e-6
@@ -173,9 +172,9 @@ def _sample_road(road: etree._Element, step: float, extra: Optional[list[float]]
     if not ss_all:
         return None
     s = np.concatenate(ss_all)
-    ref = np.array([ev.reference(v) for v in s])
-    z = _cubics(elevation, s, "s")
-    bank = np.sin(_cubics(superelevation, s, "s"))
+    ref = ev.references(s)
+    z = ev.elevation_records.values(s)
+    bank = np.sin(ev.superelevation_records.values(s))
     normal = np.column_stack([-np.sin(ref[:, 2]), np.cos(ref[:, 2])])
 
     def edge(parts) -> np.ndarray:

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Iterable, Optional
 
 from roadgen.config import DEFAULTS, section
 from roadgen.graph.model import Edge, RoadGraph
@@ -105,12 +105,13 @@ def outer_half_width(edge: Edge, params: CrossSectionParams, loop: bool = False)
     return max(half_widths(edge, params, right, left, loop=loop))
 
 
-def loop_edges(graph: RoadGraph) -> frozenset[int]:
+def loop_edges(graph: RoadGraph, edges: Optional[Iterable[Edge]] = None) -> frozenset[int]:
     """Edges of roundabout rings and cul-de-sac loops (graph.metadata "roundabouts" /
-    "culdesacs"): both ends on the same loop."""
+    "culdesacs"): both ends on the same loop. edges: only look at these (e.g. a node's
+    arms) instead of the whole graph."""
     loops = [set(r["ring"]) for r in graph.metadata.get("roundabouts", [])]
     loops += [set(c["loop"]) for c in graph.metadata.get("culdesacs", [])]
-    return frozenset(e.id for e in graph.edges.values()
+    return frozenset(e.id for e in (graph.edges.values() if edges is None else edges)
                      if any(e.from_node in nodes and e.to_node in nodes for nodes in loops))
 
 

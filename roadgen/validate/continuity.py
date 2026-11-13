@@ -186,11 +186,11 @@ class RoadEval:
         return Records(self.offsets, "s")
 
     @cached_property
-    def _elevations(self) -> Records:
+    def elevation_records(self) -> Records:
         return Records(self.road.findall("elevationProfile/elevation"), "s")
 
     @cached_property
-    def _superelevations(self) -> Records:
+    def superelevation_records(self) -> Records:
         return Records(self.road.findall("lateralProfile/superelevation"), "s")
 
     @cached_property
@@ -321,12 +321,12 @@ class RoadEval:
 
     def elevation(self, s: float) -> tuple[float, float]:
         """(height [m], dz/ds) of the reference line at s."""
-        rec = self._elevations
+        rec = self.elevation_records
         return rec.value(s), rec.slope(s)
 
     def superelevation(self, s: float) -> float:
         """Roll angle [rad] of the cross section at s (positive: falls to the right)."""
-        return self._superelevations.value(s)
+        return self.superelevation_records.value(s)
 
     def lane_height(self, lane_id: int, s: float) -> float:
         """Height [m] of the lane centre: the reference height plus t sin(roll) cos(pitch)."""
@@ -343,7 +343,7 @@ class RoadEval:
         axis (0, 1, 0) rolled about it is (-sin r sin p, cos r, sin r cos p).
         """
         r = self.superelevation(s)
-        p = math.atan(self._elevations.slope(s))
+        p = math.atan(self.elevation_records.slope(s))
         return -math.sin(r) * math.sin(p), math.cos(r), math.sin(r) * math.cos(p)
 
     def lane_center(self, lane_id: int, s: float) -> tuple[float, float]:

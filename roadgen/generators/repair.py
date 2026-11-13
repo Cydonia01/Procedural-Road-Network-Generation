@@ -63,10 +63,11 @@ def short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
                 cross_section: Optional[CrossSectionParams] = None) -> list[int]:
     """Edges the builder would reject as too short for their junction trims, by id."""
     chains = find_chains(graph, design.max_merge_deflection_deg)
+    adjacency = graph.adjacency()
     trims = {}
-    for n in junction_nodes(graph, chains):
+    for n in junction_nodes(graph, chains, adjacency):
         try:
-            trims[n] = node_trims(graph, n, junction_margin, cross_section)
+            trims[n] = node_trims(graph, n, junction_margin, cross_section, adjacency[n])
         except ValueError:
             trims[n] = {}  # arms too close: not a length problem
     out = set()

@@ -199,12 +199,15 @@ class OpenDriveBuilder:
         self.bans: list[dict] = []  # banned turns: junction, from / to road end, reason (HD maps on)
         self.lane_use: list[dict] = []  # per approach: incoming lane -> movement kinds, pockets (HD maps on)
 
-    def build(self, graph: RoadGraph) -> xodr.OpenDrive:
+    def build(self, graph: RoadGraph, na: Optional[NetworkAlignment] = None) -> xodr.OpenDrive:
+        """na: the graph's alignment with this builder's design, margin and cross-section,
+        if already computed (the pipeline shares one with the plot and the scene, P4)."""
         errors = graph.validate()
         if errors:
             raise ValueError("invalid RoadGraph: " + "; ".join(errors))
-        na = network_alignment(graph, self.design, self.junction_margin,
-                               cross_section=self.hd.active_cross_section)
+        if na is None:
+            na = network_alignment(graph, self.design, self.junction_margin,
+                                   cross_section=self.hd.active_cross_section)
 
         odr = xodr.OpenDrive(self.name, ODR_REV_MAJOR, ODR_REV_MINOR)
         heights = graph.has_elevation

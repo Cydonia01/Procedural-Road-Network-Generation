@@ -196,9 +196,11 @@ def _borders(ev: RoadEval, sides: dict[int, list[Records]], s0: float, lane_id: 
     return t
 
 
-def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Path:
-    """Draw the lanes of an .xodr into an image; return its path."""
-    root = etree.parse(str(xodr_path)).getroot()
+def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0,
+              tree: Optional[etree._ElementTree] = None, evals: Optional[dict[str, RoadEval]] = None) -> Path:
+    """Draw the lanes of an .xodr into an image; return its path. tree, evals: the file
+    already parsed, and its roads' evaluators by id (roadgen.validate.continuity.road_evals)."""
+    root = (tree if tree is not None else etree.parse(str(xodr_path))).getroot()
     roads = root.findall("road")
     # Connecting roads first, so the normal roads' lanes lie on top of them.
     roads.sort(key=lambda r: r.get("junction", "-1") == "-1")
@@ -209,7 +211,8 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
     signs: list[tuple[str, float, float]] = []
     starts: dict[str, list[tuple[float, float]]] = {}  # junction id -> its connecting roads' starts
     for road in roads:
-        ev = RoadEval(road)
+        ev = evals.get(road.get("id")) if evals is not None else None
+        ev = ev if ev is not None else RoadEval(road)
         for kind, poly in lane_polygons(ev, step):
             polys.setdefault(kind, []).append(poly)
         lines += mark_lines(ev, step)
