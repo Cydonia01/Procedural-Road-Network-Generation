@@ -37,6 +37,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.sim.esmini import esmini_binary
 from roadgen.validate.clearance import check_body_overlaps, check_clearance
 from roadgen.validate.connectivity import check_traffic_connectivity
+from roadgen.validate import stages
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics, check_resultant_grade
 from roadgen.validate.hdmap import check_hdmap
@@ -73,6 +74,17 @@ def timed(label: str) -> Iterator[None]:
     start = time.perf_counter()
     yield
     log.info("%s: %.2f s", label, time.perf_counter() - start)
+
+
+def report(reports: Optional[list], r: "stages.StageReport", stop: bool = False) -> list[str]:
+    """Log a stage's check (roadgen.validate.stages), keep it in reports, and return its
+    errors; stop: exit on them (a map the later stages would build on)."""
+    r.log()
+    if reports is not None:
+        reports.append(r)
+    if stop and r.errors:
+        raise SystemExit(f"error: stage {r.stage}: {r.errors[0]}")
+    return [f"stage {r.stage}: {e}" for e in r.errors]
 
 
 def check_traffic(graph: RoadGraph, allow_traps: bool) -> list[str]:
@@ -117,9 +129,10 @@ def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: flo
 
 def build_and_validate(
     graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str],
-    cfg: Optional[dict] = None, hd: HdMapParams = HdMapParams(),
+    cfg: Optional[dict] = None, hd: HdMapParams = HdMapParams(), reports: Optional[list] = None,
 ) -> list[str]:
-    """Build and write the .xodr, then run every file validator; return all errors."""
+    """Build and write the .xodr, then run every file validator; return all errors (the
+    stage "xodr" in reports)."""
     builder = OpenDriveBuilder(
         name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
         design=DesignParams(**section(cfg or DEFAULTS, "design")),
@@ -130,6 +143,8 @@ def build_and_validate(
             builder.build(graph)
         except ValueError as e:  # e.g. an edge too short for the junctions at its ends
             log.error("build: %s", e)
+            if reports is not None:
+                reports.append(stages.StageReport("xodr", [f"build: {e}"]))
             return [f"build: {e}"]
     with timed("write xodr"):
         sidecar = builder.write(xodr_path)
@@ -163,6 +178,8 @@ def build_and_validate(
         log.warning("... %d curvature warnings in all (paramPoly3 junction turns)", len(curvature_warnings))
     for err in errors:
         log.error("%s", err)
+    if reports is not None:  # logged above
+        reports.append(stages.StageReport("xodr", list(errors), overlaps + curvature_warnings))
     return errors
 
 
@@ -225,12 +242,14 @@ def default_output(args: argparse.Namespace) -> Path:
     return Path("out") / ("_".join(filter(None, [args.generator, preset])) + f"_s{args.seed}")
 
 
-def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLayer]]:
+def generate_graph(args: argparse.Namespace, reports: Optional[list] = None
+                   ) -> tuple[RoadGraph, dict[str, MapLayer]]:
     """The network, and the input maps requested by the map flags.
 
     A generator that reads maps (uses_maps) gets them, built on a grid around
     the area it reports. For any other generator the maps are only built
-    afterwards, around the finished network, for reference.
+    afterwards, around the finished network, for reference. Every stage is
+    checked after it runs (roadgen.validate.stages; kept in reports).
     """
     gen = get_generator(args.generator)
     params = generator_params(args)
@@ -240,7 +259,7 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
     margin, cell = args.cfg["maps"]["grid"]["margin"], args.cfg["maps"]["grid"]["cell_size"]
     if (chosen or files) and gen.uses_maps:
         layers = input_maps(args, GridSpec.from_bounds(gen.map_bounds(params), margin, cell),
-                            chosen, files)
+                            chosen, files, reports)
         maps = MapSet(**layers)
     elif chosen or files:
         log.info("%s does not read input maps; building them around the network for reference",
@@ -248,14 +267,23 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
     with timed(f"generate {args.generator}"):
         graph = gen.generate(params, args.seed, maps=maps) if maps else gen.generate(params, args.seed)
     log.info("generated %d nodes, %d edges", len(graph.nodes), len(graph.edges))
+    report(reports, stages.check_generate(graph, layers))
     if (chosen or files) and not maps:
-        layers = input_maps(args, GridSpec.around(graph, margin, cell), chosen, files)
+        layers = input_maps(args, GridSpec.around(graph, margin, cell), chosen, files, reports)
     if layers:
-        graph = align_graph(graph, layers, args.cfg)
+        before, graph = graph, align_graph(graph, layers, args.cfg)
+        report(reports, stages.check_align(before, graph))
     cross_section = hd_params(args).active_cross_section
     if "elevation" in layers and not args.flat:
-        graph = drape_graph(graph, layers, args.cfg, cross_section)
-    return separate_graph(graph, args.cfg, cross_section), layers
+        before, graph = graph, drape_graph(graph, layers, args.cfg, cross_section)
+        drape_cfg = section(args.cfg, "drape")
+        report(reports, stages.check_drape(before, graph, drape_cfg["max_grade"], drape_cfg["grade_length"]))
+    before, graph = graph, separate_graph(graph, args.cfg, cross_section)
+    if graph is not before:
+        report(reports, stages.check_separate(before, graph, section(args.cfg, "grade_separation")["clearance"],
+                                              DesignParams(**section(args.cfg, "design")),
+                                              args.cfg["opendrive"]["junction_margin"], cross_section))
+    return graph, layers
 
 
 def separate_graph(graph: RoadGraph, cfg: dict, cross_section=None) -> RoadGraph:
@@ -332,9 +360,10 @@ def map_requests(args: argparse.Namespace, kinds: Optional[Sequence[str]] = None
 
 
 def input_maps(args: argparse.Namespace, grid: GridSpec, chosen: dict[str, str],
-               files: dict[str, str]) -> dict[str, MapLayer]:
+               files: dict[str, str], reports: Optional[list] = None) -> dict[str, MapLayer]:
     """Loaded and generated map layers, built in MAP_KINDS order (terrain ->
-    elevation -> population), each generated one on the layers before it.
+    elevation -> population), each generated one on the layers before it, and each
+    checked before the next is built on it (a failing map stops the run).
 
     A loaded file is used as it is, but still feeds the kinds after it.
     """
@@ -353,6 +382,11 @@ def input_maps(args: argparse.Namespace, grid: GridSpec, chosen: dict[str, str],
             values, preset = spec_params(args, "maps", kind, chosen[kind])
             layers[kind] = build_map(kind, chosen[kind], grid, args.seed, args.cfg, preset=preset,
                                      overrides=values, upstream=MapSet(**layers))
+        if kind in layers:
+            report(reports, stages.check_map(layers[kind], {k: v for k, v in layers.items() if k != kind}),
+                   stop=True)
+    if layers:
+        report(reports, stages.check_maps(layers))
     return layers
 
 
@@ -370,29 +404,34 @@ def maps_metadata(layers: dict[str, MapLayer], prefix: Optional[Path]) -> dict[s
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
-    graph, layers = generate_graph(args)
+    reports: list = []
+    graph, layers = generate_graph(args, reports)
     if layers:
         graph.metadata["maps"] = maps_metadata(layers, None)
     output = artifact(args, args.output, default_output(args).with_suffix(".json"))
     save_json(graph, output)
     log.info("wrote %s", output)
-    return 0
+    log.info("validation: %s", stages.summary(reports))
+    return 1 if any(r.errors for r in reports) else 0
 
 
 def cmd_pipeline(args: argparse.Namespace) -> int:
     """Generate, then write <prefix>.json/.png/.xodr and run all validators."""
     prefix = artifact(args, args.output, default_output(args))
-    graph, layers = generate_graph(args)
+    reports: list = []
+    graph, layers = generate_graph(args, reports)
     hd = hd_params(args)
     outputs(args, "elevation" in layers)
     # The scene draws the junction surface no lane covers too (under the .xodr's patch objects).
     fill = (args.ground or args.buildings) and section(args.cfg, "scene")["junction_fill"]
     if hd.enabled:
-        graph = annotate_graph(graph, layers, args.cfg)
+        before, graph = graph, annotate_graph(graph, layers, args.cfg)
+        if graph is not before:
+            report(reports, stages.check_annotate(before, graph))
     graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
-    errors = graph.validate()
-    for err in errors:
-        log.error("graph: %s", err)
+    report(reports, stages.check_fit(graph, DesignParams(**section(args.cfg, "design")), args.junction_margin,
+                                     hd.active_cross_section))
+    errors = [e for r in reports for e in r.errors]
     errors += check_traffic(graph, args.allow_traps)
     for kind, layer in layers.items():  # PREFIX_<kind>.npz / .png with the roads on top
         write_map(layer, Path(f"{prefix}_{kind}"), graph)
@@ -402,7 +441,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     with timed("plot"):
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
-    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd)
+    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd, reports)
     if args.lane_plot and hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
         from roadgen.opendrive.plot import plot_xodr
 
@@ -413,7 +452,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         scenegraph = Path(f"{prefix}_scene.osgt")
         write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
                     hd.active_cross_section, xodr if xodr.exists() and graph.has_elevation else None,
-                    junction_fills(xodr, fill))
+                    junction_fills(xodr, fill), reports)
     elif args.buildings:
         from roadgen.scene.buildings import BuildingParams, building_mesh
         from roadgen.scene.osgt import Mesh, write_osgt
@@ -429,7 +468,10 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
                                     *fill_meshes(junction_fills(xodr, fill), args.cfg)])
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
-        errors += ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
+        failed = ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
+        reports.append(stages.StageReport("drive-check", failed))
+        errors += failed
+    log.info("validation: %s", stages.summary(reports))
     log.info("pipeline %s (%s)", "FAILED" if errors else "passed", prefix)
     return 1 if errors else 0
 
@@ -466,7 +508,7 @@ def fill_meshes(fills: list, cfg: dict) -> list:
 
 def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
                 seed: int, buildings: bool, cross_section=None, xodr: Optional[Path] = None,
-                fills: Optional[list] = None) -> None:
+                fills: Optional[list] = None, reports: Optional[list] = None) -> None:
     """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile. With the
     built .xodr of a draped network the ground is cut around its roads (and the junction
     fills), and bridges and tunnels get their structures; with a cross-section (HD maps)
@@ -485,10 +527,14 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
         surfaces = read_surfaces(xodr, fills) if xodr is not None else None
         ground = ground_mesh(elevation, terrain, surfaces, params)
         meshes = [ground.indexed(), *fill_meshes(fills or [], cfg)]
+        samples = covered = 0
+        worst = 0.0
         if surfaces is not None:
             samples, covered, worst = poke_through(ground, surfaces, params)
-            (log.warning if covered else log.info)(
-                "ground: %d of %d road-surface samples under the ground (worst %.2f m)", covered, samples, worst)
+            log.info("ground: %d of %d road-surface samples under the ground (worst %.2f m)",
+                     covered, samples, worst)
+        report(reports, stages.check_scene(ground, covered, samples, worst))
+        if surfaces is not None:
             structures = StructureParams(**section(cfg, "structures"))
             if structures.enabled and surfaces.spans:
                 def heights(px: np.ndarray, py: np.ndarray) -> np.ndarray:
@@ -526,41 +572,52 @@ def cmd_align(args: argparse.Namespace) -> int:
     layers = load_layers(args.map_file)
     if not {"terrain", "elevation"} & set(layers):
         raise SystemExit("error: align needs --map-file terrain=FILE.npz and/or elevation=FILE.npz")
-    graph = align_graph(load_json(args.input), layers, args.cfg)
+    before = load_json(args.input)
+    graph = align_graph(before, layers, args.cfg)
+    errors = report(None, stages.check_align(before, graph))
     output = artifact(args, args.output, Path(args.input).with_suffix(".aligned.json"))
     save_json(graph, output)
     log.info("wrote %s", output)
-    return 0
+    return 1 if errors else 0
 
 
 def cmd_drape(args: argparse.Namespace) -> int:
     layers = load_layers(args.map_file)
     if "elevation" not in layers:
         raise SystemExit("error: drape needs --map-file elevation=FILE.npz")
-    graph = drape_graph(load_json(args.input), layers, args.cfg)
+    before = load_json(args.input)
+    graph = drape_graph(before, layers, args.cfg)
+    drape_cfg = section(args.cfg, "drape")
+    errors = report(None, stages.check_drape(before, graph, drape_cfg["max_grade"], drape_cfg["grade_length"]))
     output = artifact(args, args.output, Path(args.input).with_suffix(".draped.json"))
     save_json(graph, output)
     log.info("wrote %s", output)
-    return 0
+    return 1 if errors else 0
 
 
 def cmd_separate(args: argparse.Namespace) -> int:
-    graph = separate_graph(load_json(args.input), args.cfg)
+    before = load_json(args.input)
+    graph = separate_graph(before, args.cfg)
+    errors = report(None, stages.check_separate(before, graph, section(args.cfg, "grade_separation")["clearance"],
+                                                DesignParams(**section(args.cfg, "design")),
+                                                args.cfg["opendrive"]["junction_margin"]))
     output = artifact(args, args.output, Path(args.input).with_suffix(".separated.json"))
     save_json(graph, output)
     log.info("wrote %s (%d overpasses)", output, len(graph.metadata.get("overpasses", [])))
-    return 0
+    return 1 if errors else 0
 
 
 def cmd_annotate(args: argparse.Namespace) -> int:
     layers = load_layers(args.map_file)
     if "population" not in layers:
         raise SystemExit("error: annotate needs --map-file population=FILE.npz")
-    graph = annotate_graph(load_json(args.input), layers, args.cfg)
+    before = load_json(args.input)
+    graph = annotate_graph(before, layers, args.cfg)
+    errors = report(None, stages.check_annotate(before, graph))
     output = artifact(args, args.output, Path(args.input).with_suffix(".annotated.json"))
     save_json(graph, output)
     log.info("wrote %s (%s)", output, graph.metadata["annotate"])
-    return 0
+    return 1 if errors else 0
 
 
 def cmd_ground(args: argparse.Namespace) -> int:
@@ -608,8 +665,10 @@ def cmd_map(args: argparse.Namespace) -> int:
     except ValueError as e:
         raise SystemExit(f"error: {e}") from e
     values, preset = spec_params(args, "maps", args.kind, args.map_generator)
+    upstream = upstream_maps(args)
     layer = build_map(args.kind, args.map_generator, grid, args.seed, args.cfg,
-                      preset=preset, overrides=values, upstream=upstream_maps(args))
+                      preset=preset, overrides=values, upstream=upstream)
+    report(None, stages.check_map(layer, upstream.layers()), stop=True)
     graph = load_json(args.graph) if args.graph else None
     name = "_".join(filter(None, [args.kind, args.map_generator, preset])) + f"_s{args.seed}"
     write_map(layer, artifact(args, args.output, Path("out") / name), graph)

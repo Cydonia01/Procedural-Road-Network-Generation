@@ -50,8 +50,8 @@ not a current goal: 4000 x 4000 m networks already work.
                   alignment.py, profiles.py, vertical.py, grade_separation.py, cross_section.py
     opendrive/    builder.py, lanes.py, junctions.py, marks.py, control.py, furniture.py, lights.py,
                   hdmap.py, plot.py
-    validate/     connectivity.py, topology.py, continuity.py, dynamics.py, clearance.py, hdmap.py,
-                  schema.py
+    validate/     stages.py, connectivity.py, topology.py, continuity.py, dynamics.py, clearance.py,
+                  hdmap.py, schema.py
     metrics/      geometry.py, network.py, hdmap.py, sweep.py
     sim/          esmini.py, drive_check.py, screenshot.py
     scene/        surface.py, ground.py, structures.py, buildings.py, parcels.py, junctions.py, osgt.py

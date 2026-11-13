@@ -10,7 +10,8 @@ an error. `pipeline` also runs the drive-check by default
 
 | Check | Runs on | When | Code |
 |-------|---------|------|------|
-| [Graph validity](road-graph.md#roadgraph) | RoadGraph | always | `RoadGraph.validate()` |
+| [Stage checks](#stage-checks) | each map, the RoadGraph after each stage, the scene | after every stage | `validate/stages.py` |
+| [Graph validity](road-graph.md#roadgraph) | RoadGraph | in the generate and fit stage checks | `RoadGraph.validate()` |
 | [Traffic connectivity](#traffic-connectivity) | RoadGraph | always; errors in `pipeline` unless `--allow-traps`, warnings in `build-xodr` | `validate/connectivity.py` |
 | [Topology](#topology) | `.xodr` | always | `validate/topology.py` |
 | [Continuity](#continuity) | `.xodr` | always | `validate/continuity.py` |
@@ -20,6 +21,41 @@ an error. `pipeline` also runs the drive-check by default
 | [HD-map content](#hd-map-content) | `.xodr` | with HD maps on | `validate/hdmap.py` |
 | [XSD schema](#xsd-schema) | `.xodr` | only with `OPENDRIVE_XSD` or `--xsd` | `validate/schema.py` |
 | [Drive-check](#drive-check) | `.xodr` + sidecar | `drive-check`, `pipeline` (default) | `sim/drive_check.py` |
+
+### Stage checks
+
+*Which step broke it?*
+
+Every stage of the [pipeline](architecture.md) is checked right after it
+runs, so a failure names its stage. The checks are cheap: they test what the
+stage promises, on its output (and its input, where the stage must leave
+something unchanged).
+
+| Stage | Errors | Warnings |
+|-------|--------|----------|
+| `map terrain`, `map elevation`, `map population`, `map style` (each as it is built, before the next is built on it) | data not of the grid's shape or not finite; unknown terrain or style classes; a generated elevation map with water above the lowest land (the generator sets water flat at its lowest height); a generated population map with people on water, or negative densities | terrain without land; for a loaded map file (`--map-file`, used as it is) the water rules |
+| `maps` | | the maps on different grids |
+| `generate` | `RoadGraph.validate()`; nodes without a road | nodes outside the maps |
+| `align` | anything changed but `Node.radius_cap`; caps not positive | |
+| `drape` | the plan view changed; heights not finite; bridges or tunnels overlapping or out of order | edges steeper than `drape.max_grade` over `drape.grade_length` |
+| `separate` (when roads cross without a junction) | the plan view changed; a crossing less than `grade_separation.clearance` apart in height, where the fitted roads cross | |
+| `annotate` (HD maps, with a population map) | the plan view or heights changed; unknown profiles or junction controls | |
+| `fit` | `RoadGraph.validate()`; edges too short for their junctions with the HD widths | |
+| `xodr` | the file checks below, from topology to the XSD schema | body overlaps, curvature warnings |
+| `scene` (with the ground) | ground vertices or normals not finite; triangles indexing missing vertices | road surface the ground covers |
+| `drive-check` (`pipeline`, by default) | the drive-check failed | |
+
+A map that fails stops the run there. A graph stage's errors are logged and
+collected; the pipeline still writes its outputs, so the faulty step's result
+can be looked at, and fails at the end. `pipeline` ends with one line naming
+every stage and its errors and warnings:
+
+```
+validation: map terrain ok; map elevation ok; map population ok; maps ok; generate ok; align ok; drape ok; separate ok; annotate ok; fit ok; xodr ok; scene ok
+```
+
+The single-stage commands (`map`, `generate`, `align`, `drape`, `separate`,
+`annotate`) run the same check on their output, and exit with 1 on its errors.
 
 ### Traffic connectivity
 

@@ -36,7 +36,8 @@ flowchart LR
 | Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
 `python -m cli pipeline` runs the stages in this order. Every stage also has
-its own command ([CLI reference](cli-reference.md)).
+its own command ([CLI reference](cli-reference.md)), and is checked right after
+it runs ([stage checks](validation.md#stage-checks)).
 
 ### How maps enter
 
@@ -157,6 +158,7 @@ roadgen/
     hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
     plot.py                plot-xodr: a built .xodr's lanes coloured by type, and its marks
   validate/
+    stages.py              checks after every pipeline stage (maps, graph stages, scene)
     connectivity.py        traffic traps and reachability (RoadGraph)
     topology.py            ids and links (.xodr)
     continuity.py          lane position, heading, height, grade, curvature continuity (.xodr)
