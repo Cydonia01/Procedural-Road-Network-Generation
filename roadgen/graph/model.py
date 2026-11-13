@@ -94,6 +94,17 @@ class RoadGraph:
         return sorted((e for e in self.edges.values() if node_id in (e.from_node, e.to_node)),
                       key=lambda e: e.id)
 
+    def adjacency(self) -> dict[int, list[Edge]]:
+        """Node id -> incident_edges(node id), every node at once in one scan (every node
+        of the graph is a key). A snapshot: for passes that only read the graph and ask
+        for many nodes' edges; it goes stale when edges change."""
+        out: dict[int, list[Edge]] = {n: [] for n in self.nodes}
+        for e in sorted(self.edges.values(), key=lambda e: e.id):
+            out.setdefault(e.from_node, []).append(e)
+            if e.to_node != e.from_node:
+                out.setdefault(e.to_node, []).append(e)
+        return out
+
     def neighbors(self, node_id: int) -> list[int]:
         """Distinct node ids connected to node_id by an edge, sorted."""
         result = set()

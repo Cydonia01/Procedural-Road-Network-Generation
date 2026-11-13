@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 
-from roadgen.geometry.alignment import network_alignment
+from roadgen.geometry.alignment import NetworkAlignment, network_alignment
 from roadgen.graph.model import RoadGraph
 
 log = logging.getLogger(__name__)
@@ -26,18 +26,21 @@ def plot_graph(
     show_node_ids: bool = False,
     dpi: int = 150,
     curved: bool = True,
+    na: Optional[NetworkAlignment] = None,
 ) -> None:
     """Render graph to an image file. Edges referencing missing nodes are skipped.
 
     curved: draw the fitted roads (roadgen.geometry.alignment) as the
     OpenDRIVE builder will build them; straight edges if the graph can't be
-    fitted (or with curved=False).
+    fitted (or with curved=False). na: that alignment, if already computed (the
+    pipeline passes the builder's own, with its cross-section).
     """
     fig = Figure(figsize=(8, 8))
     ax = fig.add_subplot()
 
-    na = None
-    if curved and not graph.validate():
+    if not curved:
+        na = None
+    elif na is None and not graph.validate():
         try:
             na = network_alignment(graph)
         except ValueError as err:

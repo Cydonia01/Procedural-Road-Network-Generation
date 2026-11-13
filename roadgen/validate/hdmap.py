@@ -51,7 +51,7 @@ from typing import Optional, Union
 
 from lxml import etree
 
-from roadgen.validate.continuity import RoadEval, _piecewise, _poly, _width
+from roadgen.validate.continuity import RoadEval, road_evals
 
 PathLike = Union[str, Path]
 EPS = 1e-6  # [m]
@@ -71,11 +71,12 @@ def check_hdmap(xodr_path: PathLike) -> list[str]:
     return check_hdmap_tree(etree.parse(str(path)), json.loads(sidecar.read_text()) if sidecar.exists() else None)
 
 
-def check_hdmap_tree(tree: etree._ElementTree, sidecar: Optional[dict] = None) -> list[str]:
+def check_hdmap_tree(tree: etree._ElementTree, sidecar: Optional[dict] = None,
+                     evals: Optional[dict[str, RoadEval]] = None) -> list[str]:
     """Return a list of errors; empty means the HD-map content is consistent."""
     errors: list[str] = []
     root = tree.getroot()
-    errors += _check_furniture(root)
+    errors += _check_furniture(root, evals if evals is not None else road_evals(tree))
     errors += _check_lane_types(root, sidecar)
     if sidecar is not None:
         errors += _check_approaches(root, sidecar)
@@ -114,22 +115,21 @@ def _check_mark_offsets(road: etree._Element) -> list[str]:
 
 def _outer_edges(ev: RoadEval, s: float) -> tuple[float, float]:
     """(right, left) t of the road's outer edges at s [m]."""
-    rec = _piecewise(ev.offsets, s, "s")
-    offset = _poly(rec, s - float(rec.get("s"))) if rec is not None else 0.0
-    sec = ev._section(s)
-    ds = s - float(sec.get("s"))
-    right = sum(_width(lane, ds) for lane in sec.findall("right/lane"))
-    left = sum(_width(lane, ds) for lane in sec.findall("left/lane"))
+    offset = ev.offset_records.value(s)
+    sec = ev.parsed_section(s)
+    ds = s - sec.s
+    right = sum(w.value(ds) for lane, w in sec.widths.items() if lane < 0)
+    left = sum(w.value(ds) for lane, w in sec.widths.items() if lane > 0)
     return offset - right, offset + left
 
 
-def _check_furniture(root: etree._Element) -> list[str]:
+def _check_furniture(root: etree._Element, evals: dict[str, RoadEval]) -> list[str]:
     errors = []
     signal_ids: Counter = Counter()
     object_ids: Counter = Counter()
     for road in root.findall("road"):
         rid = road.get("id")
-        ev = RoadEval(road)
+        ev = evals[rid]
         items = [(sig, SIGN_MARGIN, 0.0) for sig in road.findall("signals/signal")]
         for obj in road.findall("objects/object"):
             if obj.get("type") == "patch":  # junction-surface fill: in the junction, not on its host road
@@ -238,7 +238,7 @@ def _check_approaches(root: etree._Element, sidecar: dict) -> list[str]:
             role, road = a["role"], roads.get(str(a["road"]))
             if role not in ("stop", "yield", "signal") or road is None or not _incoming(road, a["contact"]):
                 continue
-            length = float(RoadEval(road).length)
+            length = float(road.get("length"))
             s_end = length if a["contact"] == "end" else 0.0
 
             def near(el: etree._Element, s_end: float = s_end) -> bool:

@@ -50,7 +50,8 @@ A road between two nodes. **Forward lanes run `from_node → to_node`.**
 | Method | Purpose |
 |--------|---------|
 | `add_node`, `add_edge` | Insert; duplicate ids raise `ValueError` |
-| `incident_edges(n)`, `neighbors(n)`, `degree(n)` | Topology queries, sorted by id for determinism |
+| `incident_edges(n)`, `neighbors(n)`, `degree(n)` | Topology queries, sorted by id for determinism; each scans all edges (there is no stored index: transforms change edges in place) |
+| `adjacency()` | `incident_edges` of every node from one scan, for read-only passes that ask for many nodes (chains, alignment, the repair's scans); a snapshot that goes stale when edges change |
 | `edge_length(e)`, `edge_heading(e)` | Geometry of the straight edge |
 | `edge_profile(e)` | (distances, heights) along an edge, endpoints included |
 | `has_elevation` | Whether any height is set |

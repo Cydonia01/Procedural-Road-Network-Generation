@@ -35,7 +35,9 @@ flowchart LR
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
 | Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
-`python -m cli pipeline` runs the stages in this order. Every stage also has
+`python -m cli pipeline` runs the stages in this order; the lane plot, the scene
+and the drive-check, which read only the built `.xodr` and the graph, run side by
+side ([pipeline](cli-reference.md#pipeline)). Every stage also has
 its own command ([CLI reference](cli-reference.md)), and is checked right after
 it runs ([stage checks](validation.md#stage-checks)).
 
@@ -93,7 +95,8 @@ Details are in [Heights](heights.md).
    path. `scenariogeneration` is only used inside the builders, so it can be
    replaced. Its geometry auto-adjustment and slow pretty-printer are
    bypassed, and XML is indented with `ET.indent`: one space per level with
-   HD maps (indentation was a third of the file), four without.
+   HD maps (indentation was a third of the file), four without. Decimals are
+   written with 10 significant digits (see [OpenDRIVE output](opendrive.md)).
 7. **Conventions:**
    - OpenDRIVE 1.6, right-hand traffic;
    - SI units (m, rad, m/s);

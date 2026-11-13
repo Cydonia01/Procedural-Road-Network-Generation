@@ -35,7 +35,9 @@ def test_pipeline_writes_everything_by_default(tmp_path, caplog):
     assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps", "-o", str(out)]) == 0
     assert (tmp_path / "net_scene.osgt").is_file() and (tmp_path / "net_hd.png").is_file()
     assert 'Name "buildings"' in (tmp_path / "net_scene.osgt").read_text()
-    assert any("movements drove through correctly" in r.getMessage() for r in caplog.records)
+    # The drive-check runs in its own process (cli.run_side_by_side); the summary says it passed.
+    assert any(r.getMessage().startswith("validation:") and "drive-check ok" in r.getMessage()
+               for r in caplog.records)
 
 
 @pytest.mark.pipeline_defaults

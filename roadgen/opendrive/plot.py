@@ -27,7 +27,7 @@ from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
-from roadgen.validate.continuity import RoadEval, _piecewise, _poly
+from roadgen.validate.continuity import Records, RoadEval
 
 log = logging.getLogger(__name__)
 
@@ -61,11 +61,16 @@ MIN_MARK_POINTS = 0.3  # thinnest drawn mark [pt]
 MAX_PIXELS = 4000  # longest side of the image [px]
 
 
-def lane_polygons(road: etree._Element, step: float = 2.0,
+def _eval(road: Union[etree._Element, RoadEval]) -> RoadEval:
+    return road if isinstance(road, RoadEval) else RoadEval(road)
+
+
+def lane_polygons(road: Union[etree._Element, RoadEval], step: float = 2.0,
                   s_range: Optional[tuple[float, float]] = None) -> list[tuple[str, np.ndarray]]:
-    """(lane type, (n, 2) outline) of every lane of a road, per lane section; with s_range
-    only over that stretch, on the same samples (one beyond each end) as the whole road."""
-    ev = RoadEval(road)
+    """(lane type, (n, 2) outline) of every lane of a road (a <road> or its RoadEval), per
+    lane section; with s_range only over that stretch, on the same samples (one beyond each
+    end) as the whole road."""
+    ev = _eval(road)
     sections = ev.sections
     bounds = [float(sec.get("s")) for sec in sections] + [ev.length]
     out = []
@@ -81,14 +86,14 @@ def lane_polygons(road: etree._Element, step: float = 2.0,
                     continue
                 keep = np.flatnonzero(ss <= s_range[0])[-1:]  # the range lies between two samples
             ss = ss[max(keep[0] - 1, 0):keep[-1] + 2]
-        ref = np.array([ev.reference(s) for s in ss])
-        offset = _cubics(ev.offsets, ss, "s")
+        ref = ev.references(ss)
+        offset = ev.offset_records.values(ss)
         normal = np.column_stack([-np.sin(ref[:, 2]), np.cos(ref[:, 2])])
         for side, sign in (("right", -1.0), ("left", 1.0)):
             lanes = sorted(sec.findall(f"{side}/lane"), key=lambda lane: abs(int(lane.get("id"))))
             inner = offset.copy()
             for lane in lanes:
-                widths = _cubics(lane.findall("width"), ss - s0, "sOffset")
+                widths = Records(lane.findall("width"), "sOffset").values(ss - s0)
                 outer = inner + sign * widths
                 if np.max(widths) > 1e-6:
                     a = ref[:, :2] + normal * inner[:, None]
@@ -98,16 +103,17 @@ def lane_polygons(road: etree._Element, step: float = 2.0,
     return out
 
 
-def mark_lines(road: etree._Element, step: float = 2.0) -> list[tuple[str, float, np.ndarray]]:
+def mark_lines(road: Union[etree._Element, RoadEval], step: float = 2.0) -> list[tuple[str, float, np.ndarray]]:
     """(mark type, width [m], (n, 2) polyline) of every drawn road mark of a road: each
     mark record over its stretch of the lane's outer border, a broken one per dash."""
-    ev = RoadEval(road)
+    ev = _eval(road)
     sections = ev.sections
     bounds = [float(sec.get("s")) for sec in sections] + [ev.length]
     out = []
     for k, sec in enumerate(sections):
         s0, s1 = bounds[k], bounds[k + 1]
-        sides = {sign: sorted(sec.findall(f"{side}/lane"), key=lambda lane: abs(int(lane.get("id"))))
+        sides = {sign: [Records(lane.findall("width"), "sOffset") for lane in
+                        sorted(sec.findall(f"{side}/lane"), key=lambda lane: abs(int(lane.get("id"))))]
                  for side, sign in (("right", -1), ("left", 1))}
 
         for lane in sec.iter("lane"):
@@ -127,12 +133,10 @@ def mark_lines(road: etree._Element, step: float = 2.0) -> list[tuple[str, float
                 lane_id = int(lane.get("id"))
                 for u, v in pieces:
                     ss = np.linspace(u, v, max(2, int(np.ceil((v - u) / step)) + 1))
-                    pts = []
-                    for s in ss:
-                        x, y, hdg = ev.reference(s)
-                        t = _border(ev, sides, s0, lane_id, s)
-                        pts.append((x - np.sin(hdg) * t, y + np.cos(hdg) * t))
-                    out.append((kind, width, np.array(pts)))
+                    ref = ev.references(ss)
+                    t = _borders(ev, sides, s0, lane_id, ss)
+                    out.append((kind, width, np.column_stack([ref[:, 0] - np.sin(ref[:, 2]) * t,
+                                                              ref[:, 1] + np.cos(ref[:, 2]) * t])))
     return out
 
 
@@ -141,10 +145,11 @@ def _road_point(ev: RoadEval, s: float, t: float) -> tuple[float, float]:
     return x - np.sin(hdg) * t, y + np.cos(hdg) * t
 
 
-def furniture(road: etree._Element) -> tuple[list, list, list, list[tuple[str, float, float]]]:
+def furniture(road: Union[etree._Element, RoadEval]) -> tuple[list, list, list, list[tuple[str, float, float]]]:
     """(stop and yield lines and arrow lines as (2, 2) segments, crosswalks as (4, 2)
     polygons, junction-surface patches as polygons, signs as (code, x, y)) of a road."""
-    ev = RoadEval(road)
+    ev = _eval(road)
+    road = ev.road
     lines, crosswalks, patches = [], [], []
     for obj in road.findall("objects/object"):
         s, t = float(obj.get("s")), float(obj.get("t"))
@@ -179,43 +184,23 @@ def furniture(road: etree._Element) -> tuple[list, list, list, list[tuple[str, f
     return lines, crosswalks, patches, signs
 
 
-def _border(ev: RoadEval, sides: dict[int, list[etree._Element]], s0: float, lane_id: int, s: float) -> float:
-    """t of a lane's outer border (the centre lane's: the lane offset) at station s of a
-    section starting at s0, given each side's lanes from the centre outward."""
-    t = _offset(ev, s)
+def _borders(ev: RoadEval, sides: dict[int, list[Records]], s0: float, lane_id: int,
+             ss: np.ndarray) -> np.ndarray:
+    """t of a lane's outer border (the centre lane's: the lane offset) at stations ss of a
+    section starting at s0, given each side's lane widths from the centre outward."""
+    t = ev.offset_records.values(ss)
     if lane_id:
         sign = 1 if lane_id > 0 else -1
-        t += sign * sum(_width(lane, s - s0) for lane in sides[sign][:abs(lane_id)])
+        for widths in sides[sign][:abs(lane_id)]:
+            t = t + sign * widths.values(ss - s0)
     return t
 
 
-def _offset(ev: RoadEval, s: float) -> float:
-    rec = _piecewise(ev.offsets, s, "s")
-    return _poly(rec, s - float(rec.get("s"))) if rec is not None else 0.0
-
-
-def _cubics(records: list[etree._Element], xs: np.ndarray, key: str) -> np.ndarray:
-    """Piecewise cubic records (start attribute key; a, b, c, d) at every x of xs, as
-    _piecewise and _poly pick and evaluate them one x at a time (0 without records)."""
-    if not records:
-        return np.zeros(len(xs))
-    starts = np.array([float(r.get(key)) for r in records])
-    coef = np.array([[float(r.get(k, 0)) for k in ("a", "b", "c", "d")] for r in records])
-    # the last record starting at or before x (+1e-9); before the first, the first
-    idx = np.maximum(np.searchsorted(starts, xs + 1e-9, side="right") - 1, 0)
-    ds = xs - starts[idx]
-    a, b, c, d = coef[idx].T
-    return a + b * ds + c * ds * ds + d * ds ** 3
-
-
-def _width(lane: etree._Element, ds: float) -> float:
-    rec = _piecewise(lane.findall("width"), ds, "sOffset")
-    return _poly(rec, ds - float(rec.get("sOffset"))) if rec is not None else 0.0
-
-
-def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Path:
-    """Draw the lanes of an .xodr into an image; return its path."""
-    root = etree.parse(str(xodr_path)).getroot()
+def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0,
+              tree: Optional[etree._ElementTree] = None, evals: Optional[dict[str, RoadEval]] = None) -> Path:
+    """Draw the lanes of an .xodr into an image; return its path. tree, evals: the file
+    already parsed, and its roads' evaluators by id (roadgen.validate.continuity.road_evals)."""
+    root = (tree if tree is not None else etree.parse(str(xodr_path))).getroot()
     roads = root.findall("road")
     # Connecting roads first, so the normal roads' lanes lie on top of them.
     roads.sort(key=lambda r: r.get("junction", "-1") == "-1")
@@ -226,16 +211,18 @@ def plot_xodr(xodr_path: PathLike, out_path: PathLike, step: float = 2.0) -> Pat
     signs: list[tuple[str, float, float]] = []
     starts: dict[str, list[tuple[float, float]]] = {}  # junction id -> its connecting roads' starts
     for road in roads:
-        for kind, poly in lane_polygons(road, step):
+        ev = evals.get(road.get("id")) if evals is not None else None
+        ev = ev if ev is not None else RoadEval(road)
+        for kind, poly in lane_polygons(ev, step):
             polys.setdefault(kind, []).append(poly)
-        lines += mark_lines(road, step)
-        road_lines, road_crosswalks, road_patches, road_signs = furniture(road)
+        lines += mark_lines(ev, step)
+        road_lines, road_crosswalks, road_patches, road_signs = furniture(ev)
         stop_lines += road_lines
         crosswalks += road_crosswalks
         polys.setdefault("driving", []).extend(road_patches)
         signs += road_signs
         if road.get("junction", "-1") != "-1":
-            starts.setdefault(road.get("junction"), []).append(RoadEval(road).reference(0.0)[:2])
+            starts.setdefault(road.get("junction"), []).append(ev.reference(0.0)[:2])
     if not polys:
         raise ValueError(f"{xodr_path}: no lanes to draw")
     pts = np.vstack([p for ps in polys.values() for p in ps])

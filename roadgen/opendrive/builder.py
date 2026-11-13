@@ -124,9 +124,30 @@ ODR_REV_MINOR = "6"
 ROAD_TYPE = xodr.RoadType.town
 # scenariogeneration stamps datetime.now(); a fixed value keeps output reproducible.
 HEADER_DATE = "1970-01-01T00:00:00"
+# Significant digits of every decimal the .xodr holds (P6): float reprs carry 17, of which
+# the last are noise. 10 shift esmini's lane positions by under a micrometre on a 4 km
+# city (plans/2026-11-13-polish-performance.md) and make the file about 12 % smaller.
+XODR_DIGITS = 10
 DEFAULT_JUNCTION_MARGIN = DEFAULTS["opendrive"]["junction_margin"]
 
 PathLike = Union[str, Path]
+
+
+def round_numbers(root: ET.Element, digits: int) -> None:
+    """Round every decimal attribute value (one with a point) of the tree to `digits`
+    significant digits, in place. Values that rounding leaves equal are kept as written,
+    so 3.5 and 1.00 stay; ids and other integers have no point and are not touched."""
+    for el in root.iter():
+        for key, value in el.attrib.items():
+            if "." not in value or len(value) <= digits + 1:
+                continue
+            try:
+                x = float(value)
+            except ValueError:
+                continue
+            r = float(f"{x:.{digits}g}")
+            if r != x:
+                el.set(key, repr(r))
 
 
 def _directions(lanes_at, s: float) -> set[int]:
@@ -199,12 +220,15 @@ class OpenDriveBuilder:
         self.bans: list[dict] = []  # banned turns: junction, from / to road end, reason (HD maps on)
         self.lane_use: list[dict] = []  # per approach: incoming lane -> movement kinds, pockets (HD maps on)
 
-    def build(self, graph: RoadGraph) -> xodr.OpenDrive:
+    def build(self, graph: RoadGraph, na: Optional[NetworkAlignment] = None) -> xodr.OpenDrive:
+        """na: the graph's alignment with this builder's design, margin and cross-section,
+        if already computed (the pipeline shares one with the plot and the scene, P4)."""
         errors = graph.validate()
         if errors:
             raise ValueError("invalid RoadGraph: " + "; ".join(errors))
-        na = network_alignment(graph, self.design, self.junction_margin,
-                               cross_section=self.hd.active_cross_section)
+        if na is None:
+            na = network_alignment(graph, self.design, self.junction_margin,
+                                   cross_section=self.hd.active_cross_section)
 
         odr = xodr.OpenDrive(self.name, ODR_REV_MAJOR, ODR_REV_MINOR)
         heights = graph.has_elevation
@@ -573,6 +597,7 @@ class OpenDriveBuilder:
         # dominates write time on large networks; ET.indent is equivalent and fast.
         # With HD maps one space per level: indentation was a third of the file (B9);
         # with HD off the output stays as before.
+        round_numbers(root, XODR_DIGITS)
         ET.indent(root, space=" " if self.hd.enabled else "    ")
         ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
         sidecar = sidecar_path(path)
@@ -642,6 +667,13 @@ class OpenDriveBuilder:
         from roadgen.validate.continuity import RoadEval
 
         roads = {r.get("id"): r for r in root.findall("road")}
+        evals: dict[str, RoadEval] = {}
+
+        def ev_of(rid: str) -> RoadEval:
+            if rid not in evals:
+                evals[rid] = RoadEval(roads[rid])
+            return evals[rid]
+
         members_of: dict[str, list[str]] = {}
         for rid, r in roads.items():
             members_of.setdefault(r.get("junction", "-1"), []).append(rid)
@@ -649,7 +681,7 @@ class OpenDriveBuilder:
 
         def poly(rid: str, s_range: Optional[tuple[float, float]] = None):
             if (rid, s_range) not in polys:
-                parts = [Polygon(p).buffer(0) for _, p in lane_polygons(roads[rid], FILL_STEP, s_range)
+                parts = [Polygon(p).buffer(0) for _, p in lane_polygons(ev_of(rid), FILL_STEP, s_range)
                          if len(p) >= 3]
                 polys[(rid, s_range)] = unary_union([p for p in parts if not p.is_empty])
             return polys[(rid, s_range)]
@@ -658,7 +690,7 @@ class OpenDriveBuilder:
             """The stretch of an arm, from each of its ends at the junction, whose reference
             line runs within `area` (the hull grown by the arm's half width): only lanes
             there can reach the hull (B9: sampling whole arms was most of the write time)."""
-            road, ev = roads[rid], RoadEval(roads[rid])
+            road, ev = roads[rid], ev_of(rid)
             offset = max((abs(float(o.get("a"))) for o in road.findall("lanes/laneOffset")), default=0.0)
             reach = area.buffer(offset + max((sum(_lane_width(lane) for lane in sec.findall(f"{side}/lane"))
                                               for sec in road.findall("lanes/laneSection")
@@ -700,7 +732,7 @@ class OpenDriveBuilder:
                     (x, y, float(plane.height(x, y)) if plane is not None else 0.0)
                     for x, y in list(hole.exterior.coords)[:-1]]))
             host = roads[members[0]]
-            x0, y0, h0 = RoadEval(host).reference(0.0)
+            x0, y0, h0 = ev_of(members[0]).reference(0.0)
             objects = host.find("objects")
             if objects is None:
                 objects = ET.Element("objects")

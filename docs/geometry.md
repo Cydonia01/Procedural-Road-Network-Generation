@@ -146,8 +146,11 @@ becomes one OpenDRIVE road.
 ## Fitted roads
 
 `network_alignment(graph)` (`alignment.py`) is the **single source of road
-shape**. It is used by the builder, `align`, the drape, the 3D ground and
-buildings, and the graph plot. For each chain:
+shape**. It is used by the builder, `align`, the drape, the buildings and
+the graph plot (the 3D ground follows the written `.xodr` instead).
+`pipeline` computes it once for the final graph (`cli.final_alignment`, with
+the builder's design, margin and cross-section) and passes it to the graph
+plot, the build and the buildings. For each chain:
 
 1. **Trim.** The polyline through the chain's nodes is trimmed at its
    junction ends. Arms leaving a junction stay straight.

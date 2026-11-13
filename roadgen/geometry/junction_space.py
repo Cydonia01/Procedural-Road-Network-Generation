@@ -97,15 +97,17 @@ def oriented_lanes(edge: Edge) -> tuple[int, int, bool]:
     return edge.lanes_forward, edge.lanes_backward, False
 
 
-def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSectionParams] = None) -> list[Arm]:
+def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSectionParams] = None,
+              incident: Optional[list[Edge]] = None) -> list[Arm]:
     """The roads leaving a junction node as arms; with cross_section, with their
-    left-turn pockets."""
+    left-turn pockets. incident: graph.incident_edges(node_id), if the caller has it."""
     node = graph.nodes[node_id]
-    loops = loop_edges(graph) if cross_section is not None else frozenset()
+    incident = incident if incident is not None else graph.incident_edges(node_id)
+    loops = loop_edges(graph, incident) if cross_section is not None else frozenset()
     pockets = (pocket_ends(graph, node_id, cross_section.turn_lanes)
                if cross_section is not None and cross_section.turn_lanes is not None else frozenset())
     arms = []
-    for e in graph.incident_edges(node_id):
+    for e in incident:
         right, left, reverse = oriented_lanes(e)
         start_node = e.to_node if reverse else e.from_node
         other = graph.nodes[e.to_node if e.from_node == node_id else e.from_node]
@@ -124,20 +126,24 @@ def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSecti
 
 
 def node_trims(graph: RoadGraph, node_id: int, margin: float = DEFAULT_MARGIN,
-               cross_section: Optional[CrossSectionParams] = None) -> dict[int, float]:
-    """Per incident edge: how far from the junction node its road stops [m].
+               cross_section: Optional[CrossSectionParams] = None,
+               incident: Optional[list[Edge]] = None) -> dict[int, float]:
+    """Per incident edge: how far from the junction node its road stops [m]. incident:
+    graph.incident_edges(node_id), if the caller has it (graph.adjacency()).
 
     The result is memoised on the graph, keyed on everything it reads (_trims_key): the
     HD repair asks for every junction's trims after each change, and most of them are
     unchanged (B9)."""
     cache = graph.__dict__.setdefault("_trims_cache", {})
-    key = _trims_key(graph, node_id, margin, cross_section)
+    incident = incident if incident is not None else graph.incident_edges(node_id)
+    key = _trims_key(graph, node_id, margin, cross_section, incident)
     if key not in cache:
-        cache[key] = _node_trims(graph, node_id, margin, cross_section)
+        cache[key] = _node_trims(graph, node_id, margin, cross_section, incident)
     return dict(cache[key])
 
 
-def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Optional[CrossSectionParams]) -> tuple:
+def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Optional[CrossSectionParams],
+               incident: list[Edge]) -> tuple:
     """What node_trims reads with a cross-section: the node, each incident edge with its
     far node's position and loop membership, roundabout entries, the pockets left out
     there, the margin and the parameters."""
@@ -145,7 +151,7 @@ def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Opt
     rings = graph.metadata.get("roundabouts", [])
     loops = [set(r["ring"]) for r in rings] + [set(c["loop"]) for c in graph.metadata.get("culdesacs", [])]
     arms = []
-    for e in graph.incident_edges(node_id):
+    for e in incident:
         other = graph.nodes[e.to_node if e.from_node == node_id else e.from_node]
         arms.append((e.id, e.from_node, e.to_node, other.x, other.y, e.road_class, e.lanes_forward,
                      e.lanes_backward, e.lane_width, e.cross_section,
@@ -158,8 +164,8 @@ def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Opt
 
 
 def _node_trims(graph: RoadGraph, node_id: int, margin: float,
-                cross_section: Optional[CrossSectionParams]) -> dict[int, float]:
-    arms = node_arms(graph, node_id, cross_section)
+                cross_section: Optional[CrossSectionParams], incident: list[Edge]) -> dict[int, float]:
+    arms = node_arms(graph, node_id, cross_section, incident)
     try:
         return junction_trims(arms, margin)
     except ValueError as err:

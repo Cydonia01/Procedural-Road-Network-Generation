@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import json
 import logging
+import multiprocessing
 import os
 import re
 import statistics
@@ -13,9 +15,10 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional, Sequence, Union
+from typing import Callable, Iterator, Optional, Sequence, Union
 
 import yaml
+from lxml import etree
 
 from roadgen.config import DEFAULTS, load_config, section, with_overrides
 from roadgen.generators.base import (
@@ -24,6 +27,7 @@ from roadgen.generators.base import (
     get_generator,
     presets_of,
 )
+from roadgen.geometry.alignment import NetworkAlignment, network_alignment
 from roadgen.geometry.cross_section import PROFILES
 from roadgen.geometry.design import DesignParams
 from roadgen.graph.io import load_json, save_json
@@ -32,17 +36,21 @@ from roadgen.graph.plot import plot_graph
 from roadgen.history import RunStore, diff, load_spec, plain, run_hash
 from roadgen.maps.base import get_map_generator, make_map, map_generator_names
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
-from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.builder import OpenDriveBuilder, sidecar_path
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.sim.esmini import esmini_binary
-from roadgen.validate.clearance import check_body_overlaps, check_clearance
-from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate import stages
-from roadgen.validate.continuity import check_continuity, check_curvature
-from roadgen.validate.dynamics import check_dynamics, check_resultant_grade
-from roadgen.validate.hdmap import check_hdmap
+from roadgen.validate.clearance import check_body_overlaps_tree, check_clearance_tree
+from roadgen.validate.connectivity import check_traffic_connectivity
+from roadgen.validate.continuity import (
+    check_continuity_tree,
+    check_curvature_tree,
+    road_evals,
+)
+from roadgen.validate.dynamics import check_dynamics_tree, check_resultant_grade_tree
+from roadgen.validate.hdmap import check_hdmap_tree
 from roadgen.validate.schema import validate_schema
-from roadgen.validate.topology import check_topology
+from roadgen.validate.topology import check_topology_tree
 
 log = logging.getLogger("roadgen.cli")
 
@@ -127,12 +135,30 @@ def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: flo
                                   hd.active_cross_section)
 
 
+def final_alignment(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: float
+                    ) -> Optional[NetworkAlignment]:
+    """The alignment the builder fits to the final graph (its design, margin and
+    cross-section), computed once for the plot, the build and the scene (P4); None if
+    the graph cannot be fitted (the builder then reports why)."""
+    if graph.validate():
+        return None
+    with timed("alignment"):
+        try:
+            return network_alignment(graph, DesignParams(**section(cfg, "design")), junction_margin,
+                                     cross_section=hd.active_cross_section)
+        except ValueError:
+            return None
+
+
 def build_and_validate(
     graph: RoadGraph, xodr_path: Path, junction_margin: float, xsd: Optional[str],
     cfg: Optional[dict] = None, hd: HdMapParams = HdMapParams(), reports: Optional[list] = None,
-) -> list[str]:
-    """Build and write the .xodr, then run every file validator; return all errors (the
-    stage "xodr" in reports)."""
+    na: Optional[NetworkAlignment] = None,
+) -> tuple[list[str], Optional[tuple[etree._ElementTree, dict]]]:
+    """Build and write the .xodr, then run every file validator. Return all errors (the
+    stage "xodr" in reports) and the written file as the validators parsed it (tree, road
+    evaluators by id; None if not built), for the lane plot and the scene. na: the graph's
+    alignment (final_alignment), if already computed."""
     builder = OpenDriveBuilder(
         name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
         design=DesignParams(**section(cfg or DEFAULTS, "design")),
@@ -140,12 +166,12 @@ def build_and_validate(
     )
     with timed("build xodr"):
         try:
-            builder.build(graph)
+            builder.build(graph, na)
         except ValueError as e:  # e.g. an edge too short for the junctions at its ends
             log.error("build: %s", e)
             if reports is not None:
                 reports.append(stages.StageReport("xodr", [f"build: {e}"]))
-            return [f"build: {e}"]
+            return [f"build: {e}"], None
     with timed("write xodr"):
         sidecar = builder.write(xodr_path)
     log.info(
@@ -157,19 +183,10 @@ def build_and_validate(
         sidecar,
     )
     with timed("validate"):
-        errors = check_topology(xodr_path)
-        errors += check_continuity(xodr_path)
-        curvature_errors, curvature_warnings = check_curvature(xodr_path)
-        errors += curvature_errors
-        a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
-        errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
-        errors += check_resultant_grade(xodr_path, section(cfg or DEFAULTS, "design")["max_resultant_grade"])
-        errors += check_clearance(xodr_path, section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
-        if hd.enabled:
-            errors += check_hdmap(xodr_path)
-        errors += validate_schema(xodr_path, xsd) or []
-        overlaps = check_body_overlaps(xodr_path,
-                                       min_gap=section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
+        tree = etree.parse(str(xodr_path))
+        evals = road_evals(tree)
+        errors, curvature_warnings, overlaps = validate_xodr(xodr_path, xsd, cfg or DEFAULTS, hd.enabled,
+                                                             tree, evals)
     for warning in overlaps[:MAX_LISTED_WARNINGS]:  # the generator's layout, not a broken file
         log.warning("clearance: %s", warning)
     for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
@@ -180,7 +197,29 @@ def build_and_validate(
         log.error("%s", err)
     if reports is not None:  # logged above
         reports.append(stages.StageReport("xodr", list(errors), overlaps + curvature_warnings))
-    return errors
+    return errors, (tree, evals)
+
+
+def validate_xodr(xodr_path: Path, xsd: Optional[str], cfg: dict, hd: bool,
+                  tree: Optional[etree._ElementTree] = None, evals: Optional[dict] = None,
+                  ) -> tuple[list[str], list[str], list[str]]:
+    """(errors, curvature warnings, body overlaps) of every file validator, on one parse of
+    the file (tree, if given) with one road evaluator per road shared by all of them."""
+    tree = tree if tree is not None else etree.parse(str(xodr_path))
+    evals = evals if evals is not None else road_evals(tree)
+    design, gap = section(cfg, "design"), section(cfg, "grade_separation")["clearance"] - DECK
+    errors = check_topology_tree(tree)
+    errors += check_continuity_tree(tree, evals)
+    curvature_errors, curvature_warnings = check_curvature_tree(tree, evals)
+    errors += curvature_errors
+    errors += check_dynamics_tree(tree, design["a_lat_max"], connecting=DYNAMICS_CHECKS_JUNCTIONS, evals=evals)
+    errors += check_resultant_grade_tree(tree, design["max_resultant_grade"], evals=evals)
+    errors += check_clearance_tree(tree, gap, evals)
+    if hd:
+        sidecar = sidecar_path(xodr_path)
+        errors += check_hdmap_tree(tree, json.loads(sidecar.read_text()) if sidecar.exists() else None, evals)
+    errors += validate_schema(xodr_path, xsd, doc=tree) or []
+    return errors, curvature_warnings, check_body_overlaps_tree(tree, min_gap=gap, evals=evals)
 
 
 def cmd_build_xodr(args: argparse.Namespace) -> int:
@@ -189,7 +228,7 @@ def cmd_build_xodr(args: argparse.Namespace) -> int:
     output = artifact(args, args.output, Path(args.input).with_suffix(".xodr"))
     hd = hd_params(args)
     graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
-    errors = build_and_validate(graph, output, args.junction_margin, args.xsd, args.cfg, hd)
+    errors, _ = build_and_validate(graph, output, args.junction_margin, args.xsd, args.cfg, hd)
     return 1 if errors else 0
 
 
@@ -431,27 +470,38 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     report(reports, stages.check_fit(graph))
     errors = [e for r in reports for e in r.errors]
     errors += check_traffic(graph, args.allow_traps)
-    for kind, layer in layers.items():  # PREFIX_<kind>.npz / .png with the roads on top
-        write_map(layer, Path(f"{prefix}_{kind}"), graph)
-    if layers:
-        graph.metadata["maps"] = maps_metadata(layers, prefix)
-    save_json(graph, prefix.with_suffix(".json"))
+    with timed("write maps and graph"):
+        for kind, layer in layers.items():  # PREFIX_<kind>.npz / .png with the roads on top
+            write_map(layer, Path(f"{prefix}_{kind}"), graph)
+        if layers:
+            graph.metadata["maps"] = maps_metadata(layers, prefix)
+        save_json(graph, prefix.with_suffix(".json"))
+    na = final_alignment(graph, args.cfg, hd, args.junction_margin)
     with timed("plot"):
-        plot_graph(graph, prefix.with_suffix(".png"))
+        plot_graph(graph, prefix.with_suffix(".png"), na=na)
     xodr = prefix.with_suffix(".xodr")
-    errors += build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd, reports)
-    if args.lane_plot and hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
+    xodr_errors, parsed = build_and_validate(graph, xodr, args.junction_margin, args.xsd, args.cfg, hd,
+                                             reports, na)
+    errors += xodr_errors
+    tree, evals = parsed if parsed is not None else (None, None)
+
+    # After the .xodr: the lane plot, the scene and the drive-check read only the built
+    # file and the graph, and none needs another's output: they run side by side.
+    def lane_plot() -> list:
         from roadgen.opendrive.plot import plot_xodr
 
         with timed("plot lanes"):
-            plot_xodr(xodr, Path(f"{prefix}_hd.png"))
-    scenegraph = None
-    if args.ground:
-        scenegraph = Path(f"{prefix}_scene.osgt")
-        write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
+            plot_xodr(xodr, Path(f"{prefix}_hd.png"), tree=tree, evals=evals)
+        return []
+
+    def scene() -> list:
+        scene_reports: list = []
+        write_scene(graph, layers, Path(f"{prefix}_scene.osgt"), args.cfg, args.seed, args.buildings,
                     hd.active_cross_section, xodr if xodr.exists() and graph.has_elevation else None,
-                    junction_fills(xodr, fill), reports)
-    elif args.buildings:
+                    junction_fills(xodr, fill), scene_reports, na, tree, evals)
+        return scene_reports
+
+    def buildings() -> list:
         from roadgen.scene.buildings import BuildingParams, building_mesh
         from roadgen.scene.osgt import Mesh, write_osgt
 
@@ -461,17 +511,76 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         with timed("buildings"):
             params = BuildingParams(seed=args.seed, **section(args.cfg, "buildings"))
             tris, normals, n = building_mesh(graph, params, ground, layers.get("terrain"),
-                                             hd.active_cross_section, layers.get("population"))
+                                             hd.active_cross_section, layers.get("population"), na)
             write_osgt(scenegraph, [Mesh("buildings", tris, normals, tuple(params.color)),
                                     *fill_meshes(junction_fills(xodr, fill), args.cfg)])
         log.info("wrote %s (%d buildings)", scenegraph, n)
+        return []
+
+    def drive_check() -> list:
+        with timed("drive-check"):
+            failed = ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
+        return [stages.StageReport("drive-check", failed)]
+
+    tasks = {}
+    if args.lane_plot and hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
+        tasks["lane plot"] = lane_plot
+    if args.ground:
+        tasks["scene"] = scene
+    elif args.buildings:
+        tasks["buildings"] = buildings
     if args.drive_check and not errors:
-        failed = ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
-        reports.append(stages.StageReport("drive-check", failed))
-        errors += failed
+        tasks["drive-check"] = drive_check
+    with timed("after the xodr"):
+        for name, (task_reports, crash) in run_side_by_side(tasks).items():  # in the order of tasks
+            reports += task_reports
+            if name == "drive-check":
+                errors += [e for r in task_reports for e in r.errors]
+            if crash is not None:
+                errors.append(crash)
     log.info("validation: %s", stages.summary(reports))
     log.info("pipeline %s (%s)", "FAILED" if errors else "passed", prefix)
     return 1 if errors else 0
+
+
+def run_side_by_side(tasks: dict[str, Callable[[], list]]) -> dict[str, tuple[list, Optional[str]]]:
+    """Run independent tasks (each returns a list of StageReports) in forked processes at
+    once and return (reports, None) by name, in the order of tasks; ([], error) for a
+    task that raised or died. A forked child shares the parent's memory (parsed .xodr,
+    graph, maps), so nothing is pickled but the reports; one task alone, or a platform
+    without fork, runs here one after another."""
+    if len(tasks) < 2 or "fork" not in multiprocessing.get_all_start_methods():
+        return {name: _guarded(name, task) for name, task in tasks.items()}
+    ctx = multiprocessing.get_context("fork")
+    running = {}
+    for name, task in tasks.items():
+        recv, send = ctx.Pipe(duplex=False)
+        proc = ctx.Process(target=_send_reports, args=(name, task, send), name=name)
+        proc.start()
+        send.close()
+        running[name] = (proc, recv)
+    out = {}
+    for name, (proc, recv) in running.items():
+        try:
+            out[name] = recv.recv()
+        except EOFError:  # the child died without a word (killed, out of memory)
+            out[name] = ([], f"{name}: the process ended without a result (exit code {proc.exitcode})")
+        proc.join()
+    return out
+
+
+def _guarded(name: str, task: Callable[[], list]) -> tuple[list, Optional[str]]:
+    """(task(), None), or ([], the error it raised), logged with its traceback."""
+    try:
+        return task(), None
+    except Exception as err:  # noqa: BLE001 - the pipeline fails with it
+        log.exception("%s failed", name)
+        return [], f"{name}: {err}"
+
+
+def _send_reports(name: str, task: Callable[[], list], send) -> None:
+    send.send(_guarded(name, task))
+    send.close()
 
 
 def outputs(args: argparse.Namespace, elevation: bool) -> None:
@@ -506,11 +615,15 @@ def fill_meshes(fills: list, cfg: dict) -> list:
 
 def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
                 seed: int, buildings: bool, cross_section=None, xodr: Optional[Path] = None,
-                fills: Optional[list] = None, reports: Optional[list] = None) -> None:
+                fills: Optional[list] = None, reports: Optional[list] = None,
+                na: Optional[NetworkAlignment] = None, tree: Optional[etree._ElementTree] = None,
+                evals: Optional[dict] = None) -> None:
     """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile. With the
     built .xodr of a draped network the ground is cut around its roads (and the junction
     fills), and bridges and tunnels get their structures; with a cross-section (HD maps)
-    buildings stand setback behind the roads (medians included)."""
+    buildings stand setback behind the roads (medians included). na: the graph's alignment
+    with the cross-section (final_alignment), if already computed; tree, evals: the written
+    .xodr as validation parsed it (build_and_validate), if at hand."""
     import numpy as np
 
     from roadgen.scene.buildings import BuildingParams, building_mesh
@@ -522,7 +635,8 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
     elevation, terrain = layers["elevation"], layers.get("terrain")
     params = GroundParams(**section(cfg, "ground"))
     with timed("scene"):
-        surfaces = read_surfaces(xodr, fills) if xodr is not None else None
+        source = tree.getroot() if tree is not None else xodr
+        surfaces = read_surfaces(source, fills, evals=evals) if xodr is not None else None
         ground = ground_mesh(elevation, terrain, surfaces, params)
         meshes = [ground.indexed(), *fill_meshes(fills or [], cfg)]
         samples = covered = 0
@@ -544,7 +658,7 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
         if buildings:
             bp = BuildingParams(seed=seed, **section(cfg, "buildings"))
             tris, normals, n = building_mesh(graph, bp, elevation, terrain, cross_section,
-                                             layers.get("population"))
+                                             layers.get("population"), na)
             meshes.append(Mesh("buildings", tris, normals, tuple(bp.color)))
         write_osgt(path, meshes)
     log.info("wrote %s (ground%s)", path, f" + {n} buildings" if buildings else "")

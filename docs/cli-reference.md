@@ -163,7 +163,12 @@ writes the buildings and, when there is an elevation map, the ground
 (`PREFIX_scene.osgt`; without one `PREFIX_buildings.osgt`), and runs the
 drive-check. The config section `pipeline:` (`buildings`, `ground`,
 `lane_plot`, `drive_check`, all `true`) sets these defaults, and each has a
-`--x` / `--no-x` switch below.
+`--x` / `--no-x` switch below. These three read only the built `.xodr` and the
+graph, so they run side by side, each in a forked process
+(`cli.run_side_by_side`; one after another where the platform has no `fork`):
+the run takes as long as the slowest of them, usually the drive-check. Their
+log lines interleave; the step "after the xodr" times the three together, and
+the stage summary at the end gathers their checks.
 
 | Option | Meaning |
 |--------|---------|

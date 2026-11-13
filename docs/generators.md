@@ -147,9 +147,11 @@ edges too short with the driving lanes alone are collapsed or removed, as
 above.
 
 The pass recomputes only what a change touches: junction trims are memoised
-on the graph (keyed on everything they read), pockets are
-tried for all edges of one scan before the network is aligned again, and a
-trial re-checks a stub from its trims (a single-edge road is straight).
+on the graph (keyed on everything they read, and read from the node's own
+arms only), pockets are tried for all edges of one scan before the network is
+aligned again, and a trial re-checks a stub from its trims (a single-edge road
+is straight). Each scan reads the graph's topology from one `adjacency()`
+snapshot.
 
 ## Graph transforms
 

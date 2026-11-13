@@ -14,12 +14,14 @@ the shared clothoid maths of roadgen.geometry.primitives.
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import pairwise
 from pathlib import Path
 from typing import Optional, Union
 
+import numpy as np
 from lxml import etree
 
 from roadgen.geometry.planar import Pose
@@ -48,15 +50,125 @@ def _piecewise(records: list[etree._Element], s: float, key: str) -> Optional[et
     return chosen
 
 
+class Records:
+    """Piecewise cubic records (a, b, c, d after a start attribute), parsed once. The
+    record covering x is the last one starting at or before x (+1e-9), else the first,
+    as _piecewise picks it (records in document order, starts ascending)."""
+
+    __slots__ = ("_arrays", "coef", "elements", "starts")
+
+    def __init__(self, elements: list[etree._Element], key: str) -> None:
+        self.elements = elements
+        self.starts = [float(r.get(key)) for r in elements]
+        self.coef = [tuple(float(r.get(k, 0)) for k in ("a", "b", "c", "d")) for r in elements]
+        self._arrays: Optional[tuple[np.ndarray, np.ndarray]] = None
+
+    def index(self, x: float) -> int:
+        """Index of the record covering x; -1 without records."""
+        if not self.starts:
+            return -1
+        return max(bisect_right(self.starts, x + 1e-9) - 1, 0)
+
+    def value(self, x: float) -> float:
+        """The covering record's cubic at x (0 without records)."""
+        k = self.index(x)
+        if k < 0:
+            return 0.0
+        a, b, c, d = self.coef[k]
+        ds = x - self.starts[k]
+        return a + b * ds + c * ds * ds + d * ds ** 3
+
+    def slope(self, x: float) -> float:
+        """d(value)/dx (0 without records)."""
+        k = self.index(x)
+        if k < 0:
+            return 0.0
+        _, b, c, d = self.coef[k]
+        ds = x - self.starts[k]
+        return b + 2 * c * ds + 3 * d * ds * ds
+
+    def values(self, xs: np.ndarray) -> np.ndarray:
+        """value() at every x of xs."""
+        if not self.starts:
+            return np.zeros(len(xs))
+        a, b, c, d, ds = self._at(xs)
+        return a + b * ds + c * ds * ds + d * ds ** 3
+
+    def slopes(self, xs: np.ndarray) -> np.ndarray:
+        """slope() at every x of xs."""
+        if not self.starts:
+            return np.zeros(len(xs))
+        _, b, c, d, ds = self._at(xs)
+        return b + 2 * c * ds + 3 * d * ds * ds
+
+    def _at(self, xs: np.ndarray) -> tuple[np.ndarray, ...]:
+        """(a, b, c, d, x - start) of the record covering each x."""
+        if self._arrays is None:
+            self._arrays = np.array(self.starts), np.array(self.coef)
+        starts, coef = self._arrays
+        idx = np.maximum(np.searchsorted(starts, xs + 1e-9, side="right") - 1, 0)
+        a, b, c, d = coef[idx].T
+        return a, b, c, d, xs - starts[idx]
+
+
+@dataclass(frozen=True)
+class _Geometry:
+    """One <geometry> record, parsed."""
+
+    s: float
+    x: float
+    y: float
+    hdg: float
+    length: float
+    tag: str
+    k0: float = 0.0  # arc: its curvature; spiral: curvStart
+    k1: float = 0.0  # spiral: curvEnd
+    u: tuple[float, ...] = ()  # paramPoly3: aU..dU
+    v: tuple[float, ...] = ()  # paramPoly3: aV..dV
+    normalized: bool = True  # paramPoly3: pRange
+    piece: Optional[Piece] = None  # spiral
+
+    @staticmethod
+    def parse(g: etree._Element) -> _Geometry:
+        child = g[0]
+        s, x, y, h = (float(g.get(k)) for k in ("s", "x", "y", "hdg"))
+        length = float(g.get("length"))
+        tag = child.tag
+        if tag == "arc":
+            return _Geometry(s, x, y, h, length, tag, float(child.get("curvature")))
+        if tag == "spiral":
+            k0, k1 = float(child.get("curvStart")), float(child.get("curvEnd"))
+            return _Geometry(s, x, y, h, length, tag, k0, k1, piece=Piece(Pose(x, y, h), length, k0, k1))
+        if tag == "paramPoly3":
+            return _Geometry(s, x, y, h, length, tag, u=tuple(float(child.get(f"{c}U")) for c in "abcd"),
+                             v=tuple(float(child.get(f"{c}V")) for c in "abcd"),
+                             normalized=child.get("pRange", "normalized") == "normalized")
+        return _Geometry(s, x, y, h, length, tag)
+
+
 @dataclass
+class _Section:
+    """One <laneSection>, parsed: its start, lane ids and per side the lane widths."""
+
+    s: float
+    ids: frozenset[int]
+    widths: dict[int, Records]  # lane id -> width records (first lane of that id per side)
+
+
 class RoadEval:
-    road: etree._Element
+    """A <road> evaluated from its records: reference line, heights, lane centres.
+
+    The records are parsed once per RoadEval (P3); one RoadEval per road can serve every
+    validator (road_evals)."""
+
+    def __init__(self, road: etree._Element) -> None:
+        self.road = road
 
     @property
     def id(self) -> str:
         return self.road.get("id")
 
-    @property
+    @cached_property
     def length(self) -> float:
         return float(self.road.get("length"))
 
@@ -72,37 +184,113 @@ class RoadEval:
     def offsets(self) -> list[etree._Element]:
         return self.road.findall("lanes/laneOffset")
 
+    @cached_property
+    def _geoms(self) -> list[_Geometry]:
+        return [_Geometry.parse(g) for g in self.geometries]
+
+    @cached_property
+    def _geom_starts(self) -> list[float]:
+        return [g.s for g in self._geoms]
+
+    @cached_property
+    def offset_records(self) -> Records:
+        return Records(self.offsets, "s")
+
+    @cached_property
+    def elevation_records(self) -> Records:
+        return Records(self.road.findall("elevationProfile/elevation"), "s")
+
+    @cached_property
+    def superelevation_records(self) -> Records:
+        return Records(self.road.findall("lateralProfile/superelevation"), "s")
+
+    @cached_property
+    def _section_starts(self) -> list[float]:
+        return [float(sec.get("s")) for sec in self.sections]
+
+    @cached_property
+    def _parsed_sections(self) -> list[_Section]:
+        out = []
+        for sec, s in zip(self.sections, self._section_starts):
+            widths: dict[int, Records] = {}
+            for side in ("right", "left"):
+                for lane in sec.findall(f"{side}/lane"):
+                    widths.setdefault(int(lane.get("id")), Records(lane.findall("width"), "sOffset"))
+            ids = frozenset(int(lane.get("id")) for lane in sec.iter("lane") if lane.get("id") != "0")
+            out.append(_Section(s, ids, widths))
+        return out
+
+    def _geometry_at(self, s: float) -> _Geometry:
+        return self._geoms[max(bisect_right(self._geom_starts, s + 1e-9) - 1, 0)]
+
+    def _section_index(self, s: float) -> int:
+        return max(bisect_right(self._section_starts, s + 1e-9) - 1, 0)
+
     def reference(self, s: float) -> tuple[float, float, float]:
         """(x, y, hdg) of the reference line at s."""
-        g = _piecewise(self.geometries, s, "s")
-        x0, y0, h0 = float(g.get("x")), float(g.get("y")), float(g.get("hdg"))
-        ds = s - float(g.get("s"))
-        child = g[0]
-        if child.tag == "line":
+        if not self._geoms:
+            raise IndexError(f"road {self.id}: no geometry")
+        return self._reference(self._geometry_at(s), s)
+
+    def _reference(self, g: _Geometry, s: float) -> tuple[float, float, float]:
+        x0, y0, h0 = g.x, g.y, g.hdg
+        ds = s - g.s
+        if g.tag == "line":
             return x0 + ds * math.cos(h0), y0 + ds * math.sin(h0), h0
-        if child.tag == "arc":
-            k = float(child.get("curvature"))
+        if g.tag == "arc":
+            k = g.k0
             if abs(k) < 1e-12:
                 return x0 + ds * math.cos(h0), y0 + ds * math.sin(h0), h0
             h = h0 + k * ds
             return x0 + (math.sin(h) - math.sin(h0)) / k, y0 - (math.cos(h) - math.cos(h0)) / k, h
-        if child.tag == "spiral":
-            piece = Piece(Pose(x0, y0, h0), float(g.get("length")),
-                          float(child.get("curvStart")), float(child.get("curvEnd")))
+        if g.tag == "spiral":
+            piece = g.piece
             x, y = piece.xy(min(max(ds, 0.0), piece.length))
             return float(x), float(y), float(piece.heading(ds))
-        if child.tag == "paramPoly3":
-            length = float(g.get("length"))
-            p = ds / length if child.get("pRange", "normalized") == "normalized" else ds
-            u = [float(child.get(f"{c}U")) for c in "abcd"]
-            v = [float(child.get(f"{c}V")) for c in "abcd"]
+        if g.tag == "paramPoly3":
+            p = ds / g.length if g.normalized else ds
+            u, v = g.u, g.v
             pu = u[0] + u[1] * p + u[2] * p * p + u[3] * p ** 3
             pv = v[0] + v[1] * p + v[2] * p * p + v[3] * p ** 3
             du = u[1] + 2 * u[2] * p + 3 * u[3] * p * p
             dv = v[1] + 2 * v[2] * p + 3 * v[3] * p * p
             c, sn = math.cos(h0), math.sin(h0)
             return x0 + pu * c - pv * sn, y0 + pu * sn + pv * c, h0 + math.atan2(dv, du)
-        raise NotImplementedError(f"road {self.id}: geometry <{child.tag}> not supported")
+        raise NotImplementedError(f"road {self.id}: geometry <{g.tag}> not supported")
+
+    def references(self, ss: np.ndarray) -> np.ndarray:
+        """reference() at every station of ss, as an (n, 3) array of x, y, hdg."""
+        ss = np.asarray(ss, dtype=float)
+        out = np.empty((len(ss), 3))
+        if not len(ss):
+            return out
+        idx = np.maximum(np.searchsorted(np.array(self._geom_starts), ss + 1e-9, side="right") - 1, 0)
+        for k in np.unique(idx):
+            at = idx == k
+            g = self._geoms[k]
+            ds = ss[at] - g.s
+            x0, y0, h0 = g.x, g.y, g.hdg
+            if g.tag == "line" or (g.tag == "arc" and abs(g.k0) < 1e-12):
+                out[at] = np.column_stack([x0 + ds * math.cos(h0), y0 + ds * math.sin(h0), np.full(len(ds), h0)])
+            elif g.tag == "arc":
+                h = h0 + g.k0 * ds
+                out[at] = np.column_stack([x0 + (np.sin(h) - math.sin(h0)) / g.k0,
+                                           y0 - (np.cos(h) - math.cos(h0)) / g.k0, h])
+            elif g.tag == "spiral":
+                x, y = g.piece.xy(np.clip(ds, 0.0, g.piece.length))
+                out[at] = np.column_stack([x, y, g.piece.heading(ds)])
+            elif g.tag == "paramPoly3":
+                p = ds / g.length if g.normalized else ds
+                u, v = g.u, g.v
+                pu = u[0] + u[1] * p + u[2] * p * p + u[3] * p ** 3
+                pv = v[0] + v[1] * p + v[2] * p * p + v[3] * p ** 3
+                du = u[1] + 2 * u[2] * p + 3 * u[3] * p * p
+                dv = v[1] + 2 * v[2] * p + 3 * v[3] * p * p
+                c, sn = math.cos(h0), math.sin(h0)
+                out[at] = np.column_stack([x0 + pu * c - pv * sn, y0 + pu * sn + pv * c, h0 + np.arctan2(dv, du)])
+            else:
+                raise NotImplementedError(f"road {self.id}: geometry <{g.tag}> not supported")
+        return out
 
     def curvature(self, s: float, geometry: Optional[etree._Element] = None) -> float:
         """Signed curvature [1/m] of the reference line at s (positive = turning left).
@@ -110,25 +298,27 @@ class RoadEval:
         geometry: evaluate this <geometry> element instead of the one covering s,
         e.g. the previous one at its end, to see both sides of a geometry boundary.
         """
-        g = geometry if geometry is not None else _piecewise(self.geometries, s, "s")
-        ds = s - float(g.get("s"))
-        child = g[0]
-        if child.tag == "line":
+        g = self._geometry_at(s) if geometry is None else self._parsed(geometry)
+        ds = s - g.s
+        if g.tag == "line":
             return 0.0
-        if child.tag == "arc":
-            return float(child.get("curvature"))
-        if child.tag == "spiral":
-            k0, k1 = float(child.get("curvStart")), float(child.get("curvEnd"))
-            return k0 + (k1 - k0) * ds / float(g.get("length"))
-        if child.tag == "paramPoly3":
-            length = float(g.get("length"))
-            p = ds / length if child.get("pRange", "normalized") == "normalized" else ds
-            u = [float(child.get(f"{c}U")) for c in "abcd"]
-            v = [float(child.get(f"{c}V")) for c in "abcd"]
+        if g.tag == "arc":
+            return g.k0
+        if g.tag == "spiral":
+            return g.k0 + (g.k1 - g.k0) * ds / g.length
+        if g.tag == "paramPoly3":
+            p = ds / g.length if g.normalized else ds
+            u, v = g.u, g.v
             du, dv = u[1] + 2 * u[2] * p + 3 * u[3] * p * p, v[1] + 2 * v[2] * p + 3 * v[3] * p * p
             ddu, ddv = 2 * u[2] + 6 * u[3] * p, 2 * v[2] + 6 * v[3] * p
             return (du * ddv - dv * ddu) / math.hypot(du, dv) ** 3
-        raise NotImplementedError(f"road {self.id}: geometry <{child.tag}> not supported")
+        raise NotImplementedError(f"road {self.id}: geometry <{g.tag}> not supported")
+
+    def _parsed(self, geometry: etree._Element) -> _Geometry:
+        for el, g in zip(self.geometries, self._geoms):
+            if el is geometry:
+                return g
+        return _Geometry.parse(geometry)
 
     def lane_curvature(self, lane_id: int, s: float, geometry: Optional[etree._Element] = None) -> float:
         """Signed curvature [1/m] of a lane centre in its RHT travel direction.
@@ -142,25 +332,19 @@ class RoadEval:
 
     def elevation(self, s: float) -> tuple[float, float]:
         """(height [m], dz/ds) of the reference line at s."""
-        rec = _piecewise(self.road.findall("elevationProfile/elevation"), s, "s")
-        if rec is None:
-            return 0.0, 0.0
-        ds = s - float(rec.get("s"))
-        b, c, d = (float(rec.get(k, 0)) for k in ("b", "c", "d"))
-        return _poly(rec, ds), b + 2 * c * ds + 3 * d * ds * ds
+        rec = self.elevation_records
+        return rec.value(s), rec.slope(s)
 
     def superelevation(self, s: float) -> float:
         """Roll angle [rad] of the cross section at s (positive: falls to the right)."""
-        rec = _piecewise(self.road.findall("lateralProfile/superelevation"), s, "s")
-        return 0.0 if rec is None else _poly(rec, s - float(rec.get("s")))
+        return self.superelevation_records.value(s)
 
     def lane_height(self, lane_id: int, s: float) -> float:
         """Height [m] of the lane centre: the reference height plus t sin(roll) cos(pitch)."""
         return self.elevation(s)[0] + self._lane_t(lane_id, s) * self._lateral(s)[2]
 
     def lane_ids(self, s: float) -> set[int]:
-        section = self._section(s)
-        return {int(l.get("id")) for l in section.iter("lane") if l.get("id") != "0"}
+        return set(self._parsed_sections[self._section_index(s)].ids)
 
     def _lateral(self, s: float) -> tuple[float, float, float]:
         """Unit vector across the road surface (heading, left, up components).
@@ -170,7 +354,7 @@ class RoadEval:
         axis (0, 1, 0) rolled about it is (-sin r sin p, cos r, sin r cos p).
         """
         r = self.superelevation(s)
-        p = math.atan(self.elevation(s)[1])
+        p = math.atan(self.elevation_records.slope(s))
         return -math.sin(r) * math.sin(p), math.cos(r), math.sin(r) * math.cos(p)
 
     def lane_center(self, lane_id: int, s: float) -> tuple[float, float]:
@@ -180,6 +364,37 @@ class RoadEval:
         along, left, _ = self._lateral(s)
         return (x + t * (along * math.cos(h) - left * math.sin(h)),
                 y + t * (along * math.sin(h) + left * math.cos(h)))
+
+    def lane_points(self, lane_id: int, ss: np.ndarray) -> np.ndarray:
+        """(x, y, z) of the lane centre at every station of ss, an (n, 3) array: lane_center
+        and lane_height on arrays. KeyError if the lane is missing where asked."""
+        ss = np.asarray(ss, dtype=float)
+        ref = self.references(ss)
+        t = self._lane_ts(lane_id, ss)
+        r = self.superelevation_records.values(ss)
+        p = np.arctan(self.elevation_records.slopes(ss))
+        along, left, up = -np.sin(r) * np.sin(p), np.cos(r), np.sin(r) * np.cos(p)
+        h = ref[:, 2]
+        return np.column_stack([ref[:, 0] + t * (along * np.cos(h) - left * np.sin(h)),
+                                ref[:, 1] + t * (along * np.sin(h) + left * np.cos(h)),
+                                self.elevation_records.values(ss) + t * up])
+
+    def _lane_ts(self, lane_id: int, ss: np.ndarray) -> np.ndarray:
+        """_lane_t at every station of ss."""
+        t = self.offset_records.values(ss)
+        idx = np.maximum(np.searchsorted(np.array(self._section_starts), ss + 1e-9, side="right") - 1, 0)
+        sign = -1 if lane_id < 0 else 1
+        for k in np.unique(idx):
+            at = idx == k
+            section = self._parsed_sections[k]
+            ds = ss[at] - section.s
+            for j in range(1, abs(lane_id) + 1):
+                widths = section.widths.get(sign * j)
+                if widths is None:
+                    raise KeyError(f"road {self.id}: lane {sign * j} not found")
+                w = widths.values(ds)
+                t[at] += sign * (w if j < abs(lane_id) else w / 2)
+        return t
 
     def lane_grade(self, lane_id: int, s: float) -> float:
         """d(lane height)/ds in the lane's RHT travel direction."""
@@ -195,23 +410,30 @@ class RoadEval:
         return hdg if lane_id < 0 else hdg + math.pi
 
     def _section(self, s: float) -> etree._Element:
-        return _piecewise(self.sections, s, "s")
+        return self.sections[self._section_index(s)]
+
+    def parsed_section(self, s: float) -> _Section:
+        """The lane section covering s, parsed (start, lane ids, width records)."""
+        return self._parsed_sections[self._section_index(s)]
 
     def _lane_t(self, lane_id: int, s: float) -> float:
-        rec = _piecewise(self.offsets, s, "s")
-        t = _poly(rec, s - float(rec.get("s"))) if rec is not None else 0.0
-        section = self._section(s)
-        ds_section = s - float(section.get("s"))
-        side = "right" if lane_id < 0 else "left"
-        sign = -1.0 if lane_id < 0 else 1.0
+        t = self.offset_records.value(s)
+        section = self._parsed_sections[self._section_index(s)]
+        ds_section = s - section.s
+        sign = -1 if lane_id < 0 else 1
         for k in range(1, abs(lane_id) + 1):
-            lane = section.find(f"{side}/lane[@id='{int(sign) * k}']")
-            if lane is None:
-                raise KeyError(f"road {self.id}: lane {int(sign) * k} not found")
-            width = _piecewise(lane.findall("width"), ds_section, "sOffset")
-            w = _poly(width, ds_section - float(width.get("sOffset"))) if width is not None else 0.0
+            widths = section.widths.get(sign * k)
+            if widths is None:
+                raise KeyError(f"road {self.id}: lane {sign * k} not found")
+            w = widths.value(ds_section)
             t += sign * (w if k < abs(lane_id) else w / 2)
         return t
+
+
+def road_evals(tree: etree._ElementTree) -> dict[str, RoadEval]:
+    """Road id -> RoadEval of every road of a parsed .xodr. The validators of one file
+    take one such dict (evals=...), so each road's records are parsed once (P2)."""
+    return {r.get("id"): RoadEval(r) for r in tree.getroot().findall("road")}
 
 
 def _angle_diff(a: float, b: float) -> float:
@@ -222,8 +444,8 @@ def check_continuity(xodr_path: PathLike) -> list[str]:
     return check_continuity_tree(etree.parse(str(xodr_path)))
 
 
-def check_continuity_tree(tree: etree._ElementTree) -> list[str]:
-    roads = {r.get("id"): RoadEval(r) for r in tree.getroot().findall("road")}
+def check_continuity_tree(tree: etree._ElementTree, evals: Optional[dict[str, RoadEval]] = None) -> list[str]:
+    roads = evals if evals is not None else road_evals(tree)
     errors: list[str] = []
     for rid, road in sorted(roads.items(), key=lambda kv: int(kv[0])):
         errors += _check_sections(road)
@@ -308,13 +530,14 @@ def check_curvature(xodr_path: PathLike) -> tuple[list[str], list[str]]:
     return check_curvature_tree(etree.parse(str(xodr_path)))
 
 
-def check_curvature_tree(tree: etree._ElementTree) -> tuple[list[str], list[str]]:
+def check_curvature_tree(tree: etree._ElementTree, evals: Optional[dict[str, RoadEval]] = None
+                         ) -> tuple[list[str], list[str]]:
     """(errors, warnings): curvature jumps (G2 breaks) inside roads and across lane links.
 
     Jumps at a paramPoly3 geometry (the fallback for junction turns a
     clothoid could not fit) are warnings; every other jump is an error.
     """
-    roads = {r.get("id"): RoadEval(r) for r in tree.getroot().findall("road")}
+    roads = evals if evals is not None else road_evals(tree)
     errors: list[str] = []
     warnings: list[str] = []
 

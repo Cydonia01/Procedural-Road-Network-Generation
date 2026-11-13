@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Optional
 
 from roadgen.config import DEFAULTS, section
 from roadgen.geometry.planar import wrap_angle
@@ -87,11 +87,14 @@ def _directions(edge: Edge, node_id: int) -> tuple[bool, bool]:
 
 
 def is_mergeable(graph: RoadGraph, node_id: int,
-                 max_deflection_deg: float = _D["max_merge_deflection_deg"]) -> bool:
+                 max_deflection_deg: float = _D["max_merge_deflection_deg"],
+                 adjacency: Optional[dict[int, list[Edge]]] = None) -> bool:
+    """adjacency: graph.adjacency(), if the caller has it (the same for every argument
+    below that takes it)."""
     node = graph.nodes[node_id]
     if node.kind == "junction":
         return False
-    edges = graph.incident_edges(node_id)
+    edges = adjacency[node_id] if adjacency is not None else graph.incident_edges(node_id)
     if len(edges) != 2:
         return False
     a, b = edges
@@ -103,12 +106,13 @@ def is_mergeable(graph: RoadGraph, node_id: int,
     return a_in == b_out and a_out == b_in
 
 
-def _walk(graph: RoadGraph, start: int, edge: Edge, mergeable: set[int]) -> tuple[list[int], list[Edge]]:
+def _walk(adjacency: dict[int, list[Edge]], start: int, edge: Edge,
+          mergeable: set[int]) -> tuple[list[int], list[Edge]]:
     nodes, edges = [start], [edge]
     node = _other(edge, start)
     while node in mergeable and node != start:
         nodes.append(node)
-        nxt = next(e for e in graph.incident_edges(node) if e.id != edges[-1].id)
+        nxt = next(e for e in adjacency[node] if e.id != edges[-1].id)
         edges.append(nxt)
         node = _other(nxt, node)
     nodes.append(node)
@@ -140,9 +144,11 @@ def find_chains(graph: RoadGraph, max_deflection_deg: float = _D["max_merge_defl
     junctions: nodes to keep as junctions even if they could be merged.
     """
     forced = set(junctions)
-    mergeable = {n for n in graph.nodes if n not in forced and is_mergeable(graph, n, max_deflection_deg)}
+    adjacency = graph.adjacency()  # the graph does not change here
+    mergeable = {n for n in graph.nodes
+                 if n not in forced and is_mergeable(graph, n, max_deflection_deg, adjacency)}
     while True:
-        chains = _chains(graph, mergeable)
+        chains = _chains(graph, mergeable, adjacency)
         loops = [c for c in chains if c.start == c.end]
         if not loops:
             return chains
@@ -150,7 +156,7 @@ def find_chains(graph: RoadGraph, max_deflection_deg: float = _D["max_merge_defl
             mergeable.discard(c.nodes[len(c.nodes) // 2])
 
 
-def _chains(graph: RoadGraph, mergeable: set[int]) -> list[Chain]:
+def _chains(graph: RoadGraph, mergeable: set[int], adjacency: dict[int, list[Edge]]) -> list[Chain]:
     """Chains for a given set of mergeable nodes (rings cut at their lowest node)."""
     mergeable = set(mergeable)
     chains: list[Chain] = []
@@ -158,14 +164,14 @@ def _chains(graph: RoadGraph, mergeable: set[int]) -> list[Chain]:
 
     def collect(starts: list[int]) -> None:
         for n in starts:
-            for e in graph.incident_edges(n):
+            for e in adjacency.get(n, []):
                 if e.id in seen:
                     continue
-                nodes, edges = _walk(graph, n, e, mergeable)
+                nodes, edges = _walk(adjacency, n, e, mergeable)
                 seen.update(x.id for x in edges)
                 chains.append(_orient(nodes, edges))
 
-    collect(sorted(n for n in graph.nodes if n not in mergeable and graph.degree(n) > 0))
+    collect(sorted(n for n in graph.nodes if n not in mergeable and adjacency[n]))
     # Whatever is left are rings of mergeable nodes: cut each at its lowest node.
     while len(seen) < len(graph.edges):
         cut = min(n for e in graph.edges.values() if e.id not in seen for n in (e.from_node, e.to_node))
@@ -174,7 +180,9 @@ def _chains(graph: RoadGraph, mergeable: set[int]) -> list[Chain]:
     return sorted(chains, key=lambda c: min(c.edge_ids))
 
 
-def junction_nodes(graph: RoadGraph, chains: list[Chain]) -> list[int]:
+def junction_nodes(graph: RoadGraph, chains: list[Chain],
+                   adjacency: Optional[dict[int, list[Edge]]] = None) -> list[int]:
     """Nodes that become OpenDRIVE junctions: chain ends with two or more roads."""
     ends = {n for c in chains for n in (c.start, c.end)}
-    return sorted(n for n in ends if graph.degree(n) >= 2)
+    adjacency = adjacency if adjacency is not None else graph.adjacency()
+    return sorted(n for n in ends if len(adjacency.get(n, [])) >= 2)

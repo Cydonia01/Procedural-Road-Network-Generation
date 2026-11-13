@@ -271,10 +271,11 @@ def network_alignment(graph: RoadGraph, params: DesignParams = DesignParams(),
         if n.radius_cap is not None:
             caps[n.id] = min(n.radius_cap, caps.get(n.id, math.inf))
     forced: set[int] = set()
+    adjacency = graph.adjacency()  # the graph does not change here
     while True:
         chains = find_chains(graph, params.max_merge_deflection_deg, forced)
-        junctions = junction_nodes(graph, chains)
-        trims = {n: node_trims(graph, n, junction_margin, cross_section) for n in junctions}
+        junctions = junction_nodes(graph, chains, adjacency)
+        trims = {n: node_trims(graph, n, junction_margin, cross_section, adjacency[n]) for n in junctions}
         check = _clearance_check(graph, trims, params.road_clearance, extent)
         fitted = tuple(align_chain(graph, c, trims, params, caps, check, extent) for c in chains)
         # A bend too tight for its innermost lane stays a junction (one lane-centre

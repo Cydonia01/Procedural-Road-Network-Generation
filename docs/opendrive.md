@@ -43,6 +43,11 @@ After writing, the CLI always runs the [validators](validation.md).
   `<bridge>` and `<tunnel>`, only when the graph has heights ([Heights](heights.md#4-in-the-builder-vertical-fit-junction-planes-banking)).
 - **Fixed fields.** The header date is fixed (`1970-01-01T00:00:00`) for
   reproducible output. Road type is `town`.
+- **Numbers.** Every decimal is written with at most 10 significant digits
+  (`builder.XODR_DIGITS`, `round_numbers`); values that rounding leaves equal
+  keep their written form. On a 4 km city this moves esmini's lane positions
+  by under a micrometre (heading 2·10⁻⁶ rad), changes no lane or road esmini
+  finds, and makes the file about 12 % smaller.
 
 **Id scheme.** All road and junction ids are unique across the file:
 
