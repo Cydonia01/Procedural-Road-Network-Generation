@@ -260,9 +260,9 @@ def network_alignment(graph: RoadGraph, params: DesignParams = DesignParams(),
     """Chains, junction trims and fitted reference lines of the whole network.
 
     radius_caps: node id -> largest allowed corner radius [m], on top of
-    Node.radius_cap. cross_section: roads with their side lanes (stage B):
-    wider junction trims with curb returns, and fitted curves kept clear of
-    other roads' sidewalks too.
+    Node.radius_cap. cross_section: roads with their medians and turn pockets
+    (stage B): their junction trims, and fitted curves kept clear of the other
+    roads' full width.
     """
     caps = dict(radius_caps or {})
     extent = (half_width if cross_section is None
@@ -313,7 +313,7 @@ def _clearance_check(graph: RoadGraph, trims: Mapping[int, Mapping[int, float]],
     cross another road's centre line that the straight polyline doesn't cross:
     a polyline passing close by a road would otherwise let the curve cut
     across it (two roads crossing at one height; found by the clearance
-    validator in stage C). extent: an edge's half width for this (side lanes
+    validator in stage C). extent: an edge's half width for this (median
     included with a cross-section).
     """
     ids, bodies, lines = [], [], []

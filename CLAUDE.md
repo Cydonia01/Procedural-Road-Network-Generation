@@ -1,9 +1,83 @@
 # CLAUDE.md
 
-Project rules (architecture, tech stack, OpenDRIVE conventions, coding rules)
-live in the Copilot instructions and apply here too:
+Project: Procedural Road Network Generation for esmini.
 
-@.github/copilot-instructions.md
+We are building a Python pipeline that procedurally generates road networks
+and converts them to ASAM OpenDRIVE (.xodr). The aim is the road network: the
+generated .xodr (with its HD-map content) is the product. Traffic simulation
+and training self-driving cars are not aims of this project. We do NOT use
+OpenStreetMap; all networks are generated.
+
+## Pipeline
+
+```
+Input maps (terrain, elevation, population, style) -> Generator (optional input)
+Generator -> RoadGraph (JSON) -> OpenDRIVE Builder -> .xodr -> Validators, drive-check, metrics
+                                                     -> presentation: scene (ground, buildings),
+                                                        esmini `view` (odrviewer with its own cars)
+```
+
+Everything after the .xodr is for presentation only. When a fix would trade the
+.xodr's correctness for looks, the .xodr wins. Scalability (bigger cities) is
+not a current goal: 4000 x 4000 m networks already work.
+
+## Architecture rules
+
+- Generators only output a RoadGraph. They never touch OpenDRIVE.
+- The OpenDRIVE builder only consumes a RoadGraph. It knows nothing about which generator produced it.
+- Every stage is runnable from the CLI and testable in isolation.
+
+## Tech stack
+
+- Python 3.10+, type hints everywhere, dataclasses for models.
+- numpy, shapely, networkx, matplotlib, lxml, pytest.
+- `scenariogeneration` package (xodr module) for writing OpenDRIVE XML.
+  Wrap it behind our own builder classes so it can be replaced later.
+- esmini binaries (odrviewer, esmini) and its RoadManager library are external
+  tools, used to view networks and to drive-check them; their path comes from
+  env var ESMINI_HOME or a config file. Never hard-code paths.
+
+## Repo layout
+
+```
+  roadgen/        (full module map: docs/architecture.md#module-map)
+    graph/        model.py, io.py, plot.py
+    maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py,
+                  image.py, plot.py, align.py, drape.py, annotate.py
+    generators/   base.py, lsystem.py, patterns.py, hierarchy.py, junction.py, repair.py,
+                  transforms/ (culdesac, stagger, roundabout, interchange)
+    geometry/     planar.py, junction_space.py, design.py, primitives.py, clothoid.py, chains.py,
+                  alignment.py, profiles.py, vertical.py, grade_separation.py, cross_section.py
+    opendrive/    builder.py, lanes.py, junctions.py, marks.py, control.py, furniture.py, lights.py,
+                  hdmap.py, plot.py
+    validate/     stages.py, connectivity.py, topology.py, continuity.py, dynamics.py, clearance.py,
+                  hdmap.py, schema.py
+    metrics/      geometry.py, network.py, hdmap.py, sweep.py
+    sim/          esmini.py, drive_check.py, screenshot.py
+    scene/        surface.py, ground.py, structures.py, buildings.py, parcels.py, junctions.py, osgt.py
+    config.py, history.py, defaults.yaml, presets.yaml
+  cli.py
+  tests/
+  docs/
+  out/            (generated files, git-ignored)
+```
+
+## OpenDRIVE conventions we follow
+
+- Target OpenDRIVE 1.6 (or lower if esmini complains); right-hand traffic.
+- Lane ids: negative = right of reference line, positive = left, 0 = center lane.
+- Roads stop at the junction boundary; junction interiors are covered only by connecting roads.
+- Every road/junction id is unique; links use correct contactPoint (start/end).
+- Units: meters, radians, m/s.
+
+## Coding rules
+
+- Small, pure functions; no global state; deterministic output given a seed.
+- Write pytest tests for every new module.
+- Log with the `logging` module, not print.
+- Don't implement features from later phases unless asked.
+- Don't keep a replaced implementation behind a flag: when a better one
+  replaces it, remove the old path, its parameters and its tests.
 
 ## Running things
 
@@ -31,9 +105,10 @@ live in the Copilot instructions and apply here too:
   to off: `tests/test_lsystem_identity.py` checks the existing presets
   against fingerprints; re-record them (`python -m tests.lsystem_identity`)
   only for an intended change, and say so in the plan.
-- Presets: one per street pattern plus the map cities; other layouts are
-  parameter sets, not new presets.
-- HD maps (side lanes, marks, signs, lights, junction control, turn lanes)
+- Presets: `roadgen/presets.yaml` (keyed like `defaults.yaml`), read with
+  `config.presets()`. One per street pattern plus the map cities; other
+  layouts are parameter sets, not new presets.
+- HD maps (medians, marks, signs, lights, junction control, turn lanes; no side lanes)
   are on by default (`hdmap.enabled`); `--no-hd` gives the plain
   driving-lane network. Tests that build networks without the pipeline
   pass `HdMapParams(enabled=False)` where they assume driving lanes only.
@@ -70,10 +145,10 @@ live in the Copilot instructions and apply here too:
   are the record (quote the numbers there), so scripts nothing uses any
   more are deleted.
 
-## Conventions beyond the Copilot file
+## More conventions
 
 - New pluggable components follow the existing pattern: ABC + `register`
-  decorator, frozen params dataclass with presets, defaults in
-  `defaults.yaml`, deterministic for a seed, CLI subcommand + pipeline flag.
+  decorator, frozen params dataclass with presets (in `presets.yaml`),
+  defaults in `defaults.yaml`, deterministic for a seed, CLI subcommand + pipeline flag.
 - Match the existing style: `Optional[...]`, short comments with units in
   brackets (`[m]`, `[m/s]`), `log` via `logging.getLogger(__name__)`.

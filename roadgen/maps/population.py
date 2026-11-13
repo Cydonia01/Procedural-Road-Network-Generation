@@ -30,7 +30,7 @@ from typing import Any, Literal, Optional
 
 import numpy as np
 
-from roadgen.config import DEFAULTS, section
+from roadgen.config import DEFAULTS, presets, section
 from roadgen.maps import noise
 from roadgen.maps.base import MapGenerator, register_map
 from roadgen.maps.image import grayscale, read_raster, resample
@@ -89,17 +89,7 @@ class CentersPopulationParams:
         return cls(**{**PRESETS[name], **overrides})
 
 
-PRESETS: dict[str, dict[str, Any]] = {
-    # One dense downtown, falling off steadily (a classic monocentric city).
-    "monocentric": {"n_centers": 1, "peak_density": 20000.0, "decay_length": 900.0},
-    # Several comparable centres (e.g. a metropolitan area that grew from towns).
-    "polycentric": {"n_centers": 5, "peak_density": 12000.0, "decay_length": 500.0,
-                    "secondary_weight": (0.5, 0.9), "min_center_distance": 600.0},
-    # Low, uneven density with no clear centre.
-    "sprawl": {"n_centers": 8, "peak_density": 3000.0, "decay_length": 400.0,
-               "profile": "gaussian", "secondary_weight": (0.4, 1.0), "noise_amount": 0.6,
-               "base_density": 300.0, "min_center_distance": 300.0},
-}
+PRESETS: dict[str, dict[str, Any]] = presets("maps", "population", "centers")  # roadgen/presets.yaml
 CentersPopulationParams.PRESETS = PRESETS  # type: ignore[attr-defined]
 
 

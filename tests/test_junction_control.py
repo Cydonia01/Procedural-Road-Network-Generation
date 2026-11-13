@@ -431,8 +431,9 @@ def test_signs_follow_the_road_width_at_their_station(tmp_path):
     from roadgen.validate.hdmap import _outer_edges
 
     right, _ = _outer_edges(RoadEval(road), float(sign.get("s")))
-    # one 3.5 m lane, bike lane 1.5 m and parking 2.4 m there, then 0.5 m: on the sidewalk
-    assert float(sign.get("t")) == pytest.approx(-(3.5 + 1.5 + 2.4 + 0.5)) and right < float(sign.get("t"))
+    # one 3.5 m lane there, then 0.5 m beside it; valid for that lane only
+    assert float(sign.get("t")) == pytest.approx(-(3.5 + 0.5)) and float(sign.get("t")) < right  # beside the road
+    assert sign.find("validity").get("fromLane") == sign.find("validity").get("toLane") == "-1"
 
 
 def test_lines_follow_the_cross_slope_of_a_banked_road_end(tmp_path):

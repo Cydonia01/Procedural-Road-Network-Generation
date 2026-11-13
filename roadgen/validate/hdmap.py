@@ -30,7 +30,7 @@ Lane types (B9):
 - a lane linked to the next lane section, or across a road-to-road link, keeps
   its type;
 - every junction <laneLink> joins two lanes of the same type, so no driving
-  lane leads into a sidewalk or the other way round;
+  lane leads into a non-driving lane or the other way round;
 - with the sidecar: every lane of a movement's connecting road is a driving lane.
 
 Lane use and banned turns (B8), with the sidecar:
@@ -57,7 +57,7 @@ PathLike = Union[str, Path]
 EPS = 1e-6  # [m]
 EDGE_TOL = 0.01  # objects may reach this far past the outer edge [m]
 SIGN_MARGIN = 2.0  # signs may stand this far outside the outer edge [m]
-APPROACH_REACH = 8.0  # stop / yield lines and their signs within this of the road end (behind a crosswalk) [m]
+APPROACH_REACH = 8.0  # stop / yield lines and their signs within this of the road end [m]
 LINE_NAMES = ("stopLine", "yieldLine")
 LIGHT_TYPE = "1000001"
 GREEN = "off;off;on"

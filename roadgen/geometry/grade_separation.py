@@ -218,7 +218,7 @@ def separate(graph: RoadGraph, params: GradeSeparationParams = GradeSeparationPa
 
     design, junction_margin, cross_section: as for the OpenDRIVE builder, so the
     crossings are those of the roads it draws; with a cross-section the flat
-    top spans the lower road's sidewalks and shoulders too.
+    top spans the lower road's median too.
     """
     out = copy.deepcopy(graph)
     crossings = find_crossings(out, fitted(out, design, junction_margin, cross_section))

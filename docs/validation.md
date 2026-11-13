@@ -4,12 +4,14 @@
 
 Independent checks run on the RoadGraph, on the written `.xodr`, and by
 driving the network with esmini's own road logic. `pipeline` and
-`build-xodr` run all of them except drive-check (opt-in), and fail if any
-reports an error.
+`build-xodr` run all of them except drive-check, and fail if any reports
+an error. `pipeline` also runs the drive-check by default
+(`--no-drive-check` leaves it out).
 
 | Check | Runs on | When | Code |
 |-------|---------|------|------|
-| [Graph validity](road-graph.md#roadgraph) | RoadGraph | always | `RoadGraph.validate()` |
+| [Stage checks](#stage-checks) | each map, the RoadGraph after each stage, the scene | after every stage | `validate/stages.py` |
+| [Graph validity](road-graph.md#roadgraph) | RoadGraph | in the generate and fit stage checks | `RoadGraph.validate()` |
 | [Traffic connectivity](#traffic-connectivity) | RoadGraph | always; errors in `pipeline` unless `--allow-traps`, warnings in `build-xodr` | `validate/connectivity.py` |
 | [Topology](#topology) | `.xodr` | always | `validate/topology.py` |
 | [Continuity](#continuity) | `.xodr` | always | `validate/continuity.py` |
@@ -18,7 +20,42 @@ reports an error.
 | [Clearance](#clearance) | `.xodr` | always | `validate/clearance.py` |
 | [HD-map content](#hd-map-content) | `.xodr` | with HD maps on | `validate/hdmap.py` |
 | [XSD schema](#xsd-schema) | `.xodr` | only with `OPENDRIVE_XSD` or `--xsd` | `validate/schema.py` |
-| [Drive-check](#drive-check) | `.xodr` + sidecar | `drive-check`, `pipeline --drive-check` | `sim/drive_check.py` |
+| [Drive-check](#drive-check) | `.xodr` + sidecar | `drive-check`, `pipeline` (default) | `sim/drive_check.py` |
+
+### Stage checks
+
+*Which step broke it?*
+
+Every stage of the [pipeline](architecture.md) is checked right after it
+runs, so a failure names its stage. The checks are cheap: they test what the
+stage promises, on its output (and its input, where the stage must leave
+something unchanged).
+
+| Stage | Errors | Warnings |
+|-------|--------|----------|
+| `map terrain`, `map elevation`, `map population`, `map style` (each as it is built, before the next is built on it) | values not finite; unknown terrain or style classes; a generated elevation map with water above the lowest land (the generator sets water flat at its lowest height); a generated population map with people on water, or negative densities | terrain without land; for a loaded map file (`--map-file`, used as it is) the water rules |
+| `maps` | | the maps on different grids |
+| `generate` | `RoadGraph.validate()`; nodes without a road | nodes outside the maps |
+| `align` | anything changed but `Node.radius_cap`; caps not positive | |
+| `drape` | the plan view changed; heights not finite; bridges or tunnels overlapping or out of order | (steep roads: `drape` warns itself) |
+| `separate` (when roads cross without a junction) | the plan view changed; a crossing less than `grade_separation.clearance` apart in height, where the fitted roads cross | |
+| `annotate` (HD maps, with a population map) | the plan view or heights changed; unknown profiles or junction controls | |
+| `fit` | `RoadGraph.validate()` (edges still too short for their junctions: the repair warns, the build stops) | |
+| `xodr` | the file checks below, from topology to the XSD schema | body overlaps, curvature warnings |
+| `scene` (with the ground) | ground vertices or normals not finite; triangles indexing missing vertices | road surface the ground covers |
+| `drive-check` (`pipeline`, by default) | the drive-check failed | |
+
+A map that fails stops the run there. A graph stage's errors are logged and
+collected; the pipeline still writes its outputs, so the faulty step's result
+can be looked at, and fails at the end. `pipeline` ends with one line naming
+every stage and its errors and warnings:
+
+```
+validation: map terrain ok; map elevation ok; map population ok; maps ok; generate ok; align ok; drape ok; separate ok; annotate ok; fit ok; xodr ok; scene ok
+```
+
+The single-stage commands (`map`, `generate`, `align`, `drape`, `separate`,
+`annotate`) run the same check on their output, and exit with 1 on its errors.
 
 ### Traffic connectivity
 
@@ -88,8 +125,7 @@ contact point within:
 | Grade in the travel direction | 0.01 |
 
 A connecting-road lane without a lane link is an error, unless it is 0 m
-wide at that end (a side lane of a [corner road](opendrive.md#lanes) that only
-one of its arms has).
+wide at that end.
 
 **Inside a road**, across every lane-section boundary:
 
@@ -149,8 +185,7 @@ logged as warnings: they are the generator's layout, not a broken file.
 *Is the HD-map content consistent?* Runs in `pipeline` and `build-xodr`
 with HD maps on.
 
-- **No marks inside junctions:** a connecting road (corner roads included)
-  has no `<roadMark>`.
+- **No marks inside junctions:** a connecting road has no `<roadMark>`.
 - **Mark records in order:** within each lane of a lane section, the road
   marks' `sOffset`s lie inside the section and strictly ascend, so every
   stretch of the lane has exactly one mark.
@@ -161,11 +196,11 @@ with HD maps on.
 - **Lane types along links:** a lane linked to the next lane section, or
   across a road-to-road link (a connecting road's ends too), keeps its type;
   every junction `<laneLink>` joins two lanes of the same type, so no
-  driving lane leads into a sidewalk or the other way round; and (sidecar)
+  driving lane leads into a non-driving lane or the other way round; and (sidecar)
   every lane of a movement's connecting road is a driving lane.
 - **Controlled approaches** (from the sidecar's `junctions`): every `stop`,
   `yield` or `signal` approach with incoming lanes has a stop or yield line
-  within 8 m of the road end (behind a crosswalk), and every `stop` and
+  within 8 m of the road end, and every `stop` and
   `yield` approach a 206 / 205 sign there, facing its traffic.
 - **Priority records** name two connecting roads of their own junction.
 - **Lights and controllers:** every light is in exactly one `<controller>`,

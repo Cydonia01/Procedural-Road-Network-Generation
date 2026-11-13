@@ -16,12 +16,7 @@ records in one lane section (sOffset).
 - Lane lines between driving lanes: broken, solid with laneChange="none"
   over the last no_change_length of each approach to a junction of three or
   more roads (the no-lane-change zone, also on the centre line).
-- Edge line: solid on the outermost driving lane, whatever lies outside it
-  (a bike lane's line on its driving side is this edge line).
-- Side lanes have no marks of their own. No `curb` mark on curb lanes:
-  esmini's OSI ground truth turns it into a solid white line, not a curb
-  boundary (B4, plans/2026-10-29-stage-b-implementation.md); the curb lane and its
-  <height> describe the curb.
+- Edge line: solid on the outermost driving lane.
 
 Connecting roads have no marks (junction interiors are unmarked).
 """
@@ -202,7 +197,7 @@ def lane_marks(rm: RoadMarks, sec: LaneSection, side: str, position: int,
             return ("solid", rm.width(s)) if _in(zones, s) else rm.broken(s)
         cuts = rm.cuts()
     else:
-        return []
+        raise ValueError(f"unknown lane kind {kind!r}")
     return _to_marks(_runs(sec.s0, sec.s1, cuts, spec), sec.s0)
 
 

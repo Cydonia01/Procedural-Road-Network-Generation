@@ -1,0 +1,210 @@
+# Named parameter presets (`--preset NAME`), one section per params class, keyed as in
+# defaults.yaml. A preset lists only what differs from the defaults; `--set` and
+# `--params` go on top of it. Lists become tuples (roadgen/config.py, presets()).
+
+generators:
+  lsystem:
+    # One preset per street pattern (grid, radial, organic, contour, suburb, skew) plus the
+    # cities for input maps. Any other layout is a parameter set (--set / --params).
+
+    # Midtown Manhattan (grid): 10 avenues ~250 m apart and 30 streets ~80 m apart, rotated
+    # ~29 deg from true north, both alternating one-way (avenues 4 lanes, streets 2)
+    # at the 25 mph city limit, with a two-way ring road around the grid.
+    manhattan_like:
+      extent: [2250.0, 2320.0]  # 9 x 250 m, 29 x 80 m
+      start: [0.0, 0.0]
+      block_size: [250.0, 80.0]
+      branch_prob: 1.0
+      rotation_deg: 29.0
+      major_lanes: [4, 0]
+      minor_lanes: [2, 0]
+      major_speed: 11.2
+      minor_speed: 11.2
+      oneway_pattern: [alternating, alternating]
+      boundary: ring
+
+    # Hill town for input maps (contour, field goal): streets follow the terrain's contours
+    # (San Francisco rule) everywhere, not in style-map districts.
+    hill_town:
+      global_goal: field
+      style_map: false
+      pattern_weights: [0.0, 0.0, 0.0, 1.0, 0.0]
+      extent: [3000.0, 2400.0]
+      detour_ratio: 2.5
+      start: [0.5, 0.5]
+      block_size: [180.0, 100.0]
+      branch_prob: 0.85
+      length_jitter: 0.1
+      snap_radius: 20.0
+      min_segment_length: 40.0
+      min_angle_deg: 40.0
+      curve_tortuosity: 1.02
+
+    # Paris (radial, field goal): a star of avenues and rings around the centre, a grid outside.
+    paris:
+      global_goal: field
+      extent: [2000.0, 1600.0]
+      start: [0.5, 0.5]
+      block_size: [200.0, 120.0]
+      branch_prob: 0.9
+      snap_radius: 20.0
+      min_segment_length: 40.0
+      min_angle_deg: 30.0
+      pattern_weights: [0.25, 1.0, 0.0, 0.0, 0.0]
+      radial_radius: 600.0
+      radial_spokes: 6
+      max_degree: 7
+
+    # Organic town (field goal): the grid bent by smooth noise, snapping only where nearly straight.
+    organic_town:
+      global_goal: field
+      extent: [1500.0, 1200.0]
+      start: [0.5, 0.5]
+      block_size: [200.0, 110.0]
+      branch_prob: 0.85
+      length_jitter: 0.1
+      snap_radius: 20.0
+      min_segment_length: 40.0
+      min_angle_deg: 35.0
+      organic: 0.8
+      stagger_prob: 0.3
+      roundabout_prob: 0.1
+
+    # Skewed grid (field goal): streets cross the avenues at 60-90 deg, in patches.
+    skewed_grid:
+      global_goal: field
+      extent: [1500.0, 1200.0]
+      start: [0.5, 0.5]
+      block_size: [200.0, 110.0]
+      branch_prob: 0.95
+      snap_radius: 20.0
+      min_segment_length: 40.0
+      min_angle_deg: 30.0
+      skew_deg: 30.0
+      skew_scale: 2500.0
+
+    # A city-sized area for use with input maps (pipeline --maps): highways
+    # between population centres, noisy grid streets in between.
+    city:
+      extent: [3000.0, 2400.0]
+      detour_ratio: 2.5
+      start: [0.5, 0.5]
+      block_size: [180.0, 100.0]
+      branch_prob: 0.9
+      angle_jitter_deg: 3.0
+      length_jitter: 0.1
+      snap_radius: 20.0
+      min_segment_length: 40.0
+      min_angle_deg: 40.0
+
+    # Suburb (field goal): curvy, sparsely branching streets, few loops, turn-around
+    # bulbs at most dead ends (Teng & Bidarra's suburban patches).
+    suburb:
+      global_goal: field
+      extent: [1500.0, 1200.0]
+      start: [0.5, 0.5]
+      snap_radius: 20.0
+      min_segment_length: 30.0
+      min_angle_deg: 50.0
+      pattern_weights: [0.0, 0.0, 0.0, 0.0, 1.0]
+      suburb_culdesac_prob: 0.9
+      minor_speed: 8.3
+      roundabout_prob: 0.15
+
+    # Freeway corridor (input maps): grade-separated highways reached through diamond
+    # interchanges, with lane adds and drops; streets as in city.
+    highway_corridor:
+      extent: [3000.0, 2400.0]
+      detour_ratio: 2.5
+      start: [0.5, 0.5]
+      block_size: [180.0, 100.0]
+      branch_prob: 0.9
+      angle_jitter_deg: 3.0
+      length_jitter: 0.1
+      snap_radius: 20.0
+      min_segment_length: 40.0
+      min_angle_deg: 40.0
+      highway_crossings: separated
+      interchanges: true
+      interchange_spacing: 1000.0
+      highway_lane_change_prob: 0.1
+      highway_max_turn_deg: 6.0  # freeways run straight
+      highway_rays: 5
+      highway_branch_prob: 0.04
+
+    # A mixed city for input maps (pipeline --maps, field goal): districts of grid, radial,
+    # organic, contour and suburb streets from the style map, each grid at its own angle;
+    # highways between population centres.
+    mixed_city:
+      global_goal: field
+      extent: [3000.0, 2400.0]
+      start: [0.5, 0.5]
+      block_size: [180.0, 100.0]
+      branch_prob: 0.9
+      length_jitter: 0.1
+      snap_radius: 20.0
+      min_segment_length: 40.0
+      min_angle_deg: 35.0
+      pattern_weights: [0.5, 0.0, 0.3, 0.0, 0.2]  # without a style map
+      stagger_prob: 0.15
+      detour_ratio: 2.5
+      max_degree: 7
+      roundabout_prob: 0.08
+
+  junction:
+    t: {angles_deg: [0.0, 90.0, 180.0], skew_deg: 0.0}
+    y: {angles_deg: [90.0, 210.0, 330.0], skew_deg: 0.0}
+    skewed_cross: {angles_deg: [0.0, 60.0, 180.0, 240.0], skew_deg: 0.0}
+    k: {angles_deg: [90.0, 270.0, 30.0, 330.0], skew_deg: 0.0}  # a through road with two diagonals leaving one side
+    five_way: {legs: 5, skew_deg: 8.0}
+    six_way: {legs: 6, skew_deg: 5.0}
+    offset_t: {pair: true, skew_deg: 10.0}
+    roundabout: {legs: 4, skew_deg: 10.0, min_angle_deg: 55.0, roundabout: true}
+    roundabout_5: {legs: 5, skew_deg: 5.0, min_angle_deg: 55.0, roundabout: true}
+    diamond: {interchange: diamond}
+    cloverleaf: {interchange: cloverleaf}
+    random: {}
+
+maps:
+  terrain:
+    noise:
+      inland: {water_fraction: 0.0, rivers: 0, vegetation_fraction: 0.12}  # dry land, some parks
+      lakes: {water_fraction: 0.15, coast_strength: 0.0, rivers: 0}  # a few lakes scattered over the map
+      coastal: {water_fraction: 0.3, coast_strength: 0.8, rivers: 0, warp: 0.4}  # sea along one side
+      # One wide river through land, no lakes (e.g. a Paris- or London-like site).
+      river_city: {water_fraction: 0.0, rivers: 1, river_width: 80.0, river_meander: 250.0,
+                   vegetation_fraction: 0.1}
+
+  elevation:
+    fbm:
+      flat: {max_elevation: 5.0, octaves: 3, erosion_iterations: 0}  # a few metres of relief
+      rolling: {max_elevation: 40.0, scale: 2000.0, exponent: 1.2}  # gentle hills, a lowland city
+      # Pronounced hills and valleys (e.g. a San Francisco-like site).
+      hilly: {max_elevation: 150.0, scale: 1200.0, gain: 0.55, ridge: 0.3, erosion_iterations: 30}
+      # Ridges and steep valleys; most roads will have to follow the contours.
+      mountainous: {max_elevation: 600.0, scale: 2500.0, gain: 0.55, ridge: 0.8, exponent: 1.6,
+                    erosion_iterations: 50, talus_deg: 35.0}
+
+  population:
+    centers:
+      # One dense downtown, falling off steadily (a classic monocentric city).
+      monocentric: {n_centers: 1, peak_density: 20000.0, decay_length: 900.0}
+      # Several comparable centres (e.g. a metropolitan area that grew from towns).
+      polycentric: {n_centers: 5, peak_density: 12000.0, decay_length: 500.0,
+                    secondary_weight: [0.5, 0.9], min_center_distance: 600.0}
+      # Low, uneven density with no clear centre.
+      sprawl: {n_centers: 8, peak_density: 3000.0, decay_length: 400.0, profile: gaussian,
+               secondary_weight: [0.4, 1.0], noise_amount: 0.6, base_density: 300.0,
+               min_center_distance: 300.0}
+
+  style:
+    zones:
+      # One grid orientation everywhere, organic and suburban edges: a planned American city.
+      planned: {angle_spread_deg: 0.0, organic_share: 0.15, radial_radius: 0.0}
+      # An old European centre: a radial core, organic middle, many orientations.
+      old_town: {radial_radius: 900.0, organic_share: 0.7, angle_spread_deg: 35.0}
+
+junction_control:
+  default: {}
+  dense: {signal_density: 4000.0, stop_share: 0.05}  # more lights, fewer stops
+  rural: {right_before_left: false, stop_share: 0.3, stop_speed: 13.9}  # signed priority everywhere

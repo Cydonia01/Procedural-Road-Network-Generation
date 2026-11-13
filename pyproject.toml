@@ -30,11 +30,12 @@ py-modules = ["cli"]
 include = ["roadgen*"]
 
 [tool.setuptools.package-data]
-roadgen = ["defaults.yaml"]
+roadgen = ["defaults.yaml", "presets.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["pipeline_defaults: run with the pipeline's real default outputs (tests/conftest.py turns them off)"]
 # matplotlib's mathtext (log-axis tick labels) calls deprecated pyparsing APIs.
 filterwarnings = [
     "ignore::DeprecationWarning:matplotlib.*",

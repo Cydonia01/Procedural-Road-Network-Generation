@@ -38,6 +38,6 @@ def test_pipeline_default_is_hd_and_no_hd_is_plain(tmp_path):
     assert main([*base, "--no-hd", "-o", str(off)]) == 0
     assert json.loads(on.with_suffix(".roadmap.json").read_text())["hdmap_version"] == HDMAP_VERSION
     assert "hdmap_version" not in json.loads(off.with_suffix(".roadmap.json").read_text())
-    assert 'type="sidewalk"' in on.with_suffix(".xodr").read_text()
-    assert 'type="sidewalk"' not in off.with_suffix(".xodr").read_text()
+    assert "<signal " in on.with_suffix(".xodr").read_text()  # signs and lights
+    assert "<signal " not in off.with_suffix(".xodr").read_text()
     assert (tmp_path / "on_hd.png").is_file() and not (tmp_path / "off_hd.png").exists()

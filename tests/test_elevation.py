@@ -10,7 +10,9 @@ import re
 
 import numpy as np
 import pytest
+import shapely
 from lxml import etree
+from scipy.spatial import cKDTree
 
 from cli import main
 from roadgen.geometry.alignment import network_alignment
@@ -28,8 +30,16 @@ from roadgen.scene.buildings import (
     building_mesh,
     footprints,
 )
-from roadgen.scene.ground import GroundParams, ground_heights, ground_mesh
+from roadgen.scene.ground import (
+    GroundParams,
+    ground_heights,
+    ground_mesh,
+    poke_through,
+    water_area,
+)
 from roadgen.scene.osgt import write_osgt
+from roadgen.scene.structures import structure_mesh
+from roadgen.scene.surface import read_surfaces
 from roadgen.validate.continuity import RoadEval, check_continuity
 from roadgen.validate.topology import check_topology
 from tests.grids import ON_MAPS, grid_cli
@@ -252,35 +262,101 @@ def test_esmini_reads_the_heights(tmp_path):
 # --- 3D scene ------------------------------------------------------------------------------------------
 
 
-def test_ground_is_levelled_under_roads_and_keeps_water_low():
+def _surfaces(g: RoadGraph, tmp_path):
+    _, tree = build(g, tmp_path)
+    return read_surfaces(tree.getroot())
+
+
+def test_ground_meets_road_edges_with_side_slopes_and_keeps_water_low(tmp_path):
     t = terrain(RIVER)
     g = drape(network(), VALLEY, t)
+    surfaces = _surfaces(g, tmp_path)
     p = GroundParams(cell_size=10.0)
-    x, y, z = ground_heights(VALLEY, g, p, t)
+    x, y, z = ground_heights(VALLEY, surfaces, p, t)
     x0, y0, plain = ground_heights(VALLEY, None, p)
     assert np.array_equal(x, x0) and np.array_equal(y, y0)
-    # Edge 1, dry and past its corner at node 1 (which takes at most 125 m of it).
-    on_road = (np.abs(y - 100.0) < 3.0) & (x > 250.0) & (x < 400.0)
-    road_z = np.interp(x[on_road], *(100.0 + np.array(g.edge_profile(1)[0]), g.edge_profile(1)[1]))
-    assert np.allclose(z[on_road], road_z - p.below_road, atol=0.25)
-    far = (np.abs(y - 100.0) > 60.0) & (np.abs(y - 350.0) > 60.0)
-    far &= (np.abs(x - 100.0) > 60.0) & (np.abs(x - 500.0) > 60.0) & (np.abs(x - 900.0) > 60.0)
-    assert np.array_equal(z[far], plain[far])
+    # Within the slope's reach the ground lies within side_slope x distance of the nearest edge.
+    d, j = cKDTree(surfaces.edges[:, :2]).query(np.column_stack([x.ravel(), y.ravel()]))
+    near = (d < p.slope_reach).reshape(z.shape)
+    ze = surfaces.edges[j, 2].reshape(z.shape) - p.below_road
     wet = t.sample(x, y) == WATER
+    dry = near & ~wet & np.isinf(_bridge_distance(surfaces, x, y))
+    assert np.all(np.abs(z[dry] - ze[dry]) <= p.side_slope * d.reshape(z.shape)[dry] + 1e-6)
+    far = ~near & np.isinf(_bridge_distance(surfaces, x, y))
+    assert np.array_equal(z[far], plain[far])
     assert np.all(z[wet] <= plain[wet] + 1e-9)
 
 
+def _bridge_distance(surfaces, x, y):
+    d = np.full(x.shape, np.inf)
+    for sp in surfaces.spans:
+        dd, _ = cKDTree(sp.centre[:, :2]).query(np.column_stack([x.ravel(), y.ravel()]),
+                                                  distance_upper_bound=sp.half_width + 60.0)
+        d = np.minimum(d, dd.reshape(x.shape))
+    return d
+
+
 def test_ground_mesh_and_osgt(tmp_path):
-    mesh = ground_mesh(VALLEY, terrain(RIVER), params=GroundParams(cell_size=50.0))
+    mesh = ground_mesh(VALLEY, params=GroundParams(cell_size=50.0))  # no water, no roads: a plain grid
     rows, cols = 15, 25  # 700 / 50 + 1, 1200 / 50 + 1
     assert len(mesh.vertices) == len(mesh.normals) == len(mesh.colors) == rows * cols
-    assert len(mesh.indices) == 6 * (rows - 1) * (cols - 1)
-    assert all(n[2] > 0 for n in mesh.normals)
-    write_osgt(tmp_path / "s.osgt", [mesh])
+    assert len(mesh.triangles) == 2 * (rows - 1) * (cols - 1)
+    assert np.all(mesh.normals[:, 2] > 0)
+    write_osgt(tmp_path / "s.osgt", [mesh.indexed()])
     text = (tmp_path / "s.osgt").read_text()
     assert "osg::DrawElementsUInt" in text and "Drawables 1 {" in text
     ids = re.findall(r"UniqueID (\d+)", text)
     assert len(ids) == len(set(ids))
+
+
+def test_ground_is_cut_around_the_roads(tmp_path):
+    t = terrain(RIVER)
+    g = drape(network(), VALLEY, t)
+    surfaces = _surfaces(g, tmp_path)
+    mesh = ground_mesh(VALLEY, t, surfaces, GroundParams(cell_size=20.0))
+    v = mesh.vertices[mesh.triangles]
+    a, b = v[:, 1, :2] - v[:, 0, :2], v[:, 2, :2] - v[:, 0, :2]
+    cross = a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]
+    assert np.all(cross > 0)  # all counter-clockwise from above
+    p = GroundParams()
+    # No triangle reaches further in under a road than under_road (beyond float noise).
+    footprint = shapely.union_all(surfaces.parts)
+    tris = shapely.polygons(v[:, :, :2])
+    assert not shapely.intersects(footprint.buffer(-p.under_road - 0.01), tris).any()
+    # The vertices round each road lie under_road inside its outer edge, at the edge's height
+    # less below_road.
+    d, j = cKDTree(surfaces.edges[:, :2]).query(mesh.vertices[:, :2])
+    rim = shapely.dwithin(footprint.boundary, shapely.points(mesh.vertices[:, :2]), p.under_road + 0.01)
+    assert rim.sum() > 100
+    assert np.all(d[rim] <= p.under_road + 1.0)  # within a sample spacing of the edge
+    assert np.allclose(mesh.vertices[rim, 2], surfaces.edges[j[rim], 2] - p.below_road, atol=0.05)
+    # The ground covers the map's area apart from the roads (and bridges, under which it stays).
+    area = cross.sum() / 2
+    inner = footprint.buffer(-p.under_road, quad_segs=2).area
+    assert area == pytest.approx(1200.0 * 700.0 - inner, rel=1e-3)
+
+
+def test_shoreline_is_a_smooth_line_between_water_and_land(tmp_path):
+    # A river at 30 degrees: on the 10 m raster its banks are stair-stepped.
+    lake = np.abs((Y - 250.0) - 0.577 * (X - 500.0)) < 40.0
+    t = terrain(lake)
+    w = water_area(t, 1.0)
+    assert w is not None and w.area == pytest.approx(lake.sum() * 100.0, rel=0.1)
+    edge = shapely.LineString([(-100.0, 250.0 - 0.577 * 600.0 + 40.0), (1100.0, 250.0 + 0.577 * 600.0 + 40.0)])
+    # The bank stays within a third of a raster cell of the straight line (the raw steps reach 5 m).
+    bank = [p for p in shapely.get_coordinates(w.boundary)
+            if 0 < p[0] < 1000 and 0 < p[1] < 500 and edge.distance(shapely.Point(p)) < 8.0]
+    assert bank and max(edge.distance(shapely.Point(p)) for p in bank) < 3.5
+    mesh = ground_mesh(elevation(1.0), t, params=GroundParams(cell_size=20.0))
+    water, land = np.array(TERRAIN_COLORS[WATER]), np.array(TERRAIN_COLORS[LAND])
+    is_water = np.all(np.isclose(mesh.colors, water), axis=1)
+    assert np.all(is_water | np.all(np.isclose(mesh.colors, land), axis=1))  # no blend at the shore
+    # Each triangle is all water or all land, and water triangles lie in the water area.
+    tri_water = is_water[mesh.triangles]
+    assert np.all(tri_water.all(axis=1) | ~tri_water.any(axis=1))
+    centres = mesh.vertices[mesh.triangles].mean(axis=1)
+    inside = shapely.contains_xy(w.buffer(1e-6), centres[:, 0], centres[:, 1])
+    assert np.array_equal(inside, tri_water.all(axis=1))
 
 
 def test_buildings_stand_on_the_ground_and_not_on_water():
@@ -319,7 +395,7 @@ def test_cli_pipeline_drapes_and_writes_the_scene(tmp_path, caplog):
     assert not load_json(flat.with_suffix(".json")).has_elevation
 
 
-def test_cli_drape_and_ground_commands(tmp_path):
+def test_cli_drape_and_ground_commands(tmp_path, caplog):
     prefix = tmp_path / "net"
     assert main(["pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps", "--flat",
                  "-o", str(prefix)]) == 0
@@ -334,6 +410,16 @@ def test_cli_drape_and_ground_commands(tmp_path):
     assert main(["ground", str(out), *files, "--graph", str(tmp_path / "net.draped.json"),
                  "--buildings"]) == 0
     assert 'Name "buildings"' in out.read_text()
+    # With the built .xodr the ground is cut around its roads.
+    xodr = tmp_path / "net.draped.xodr"
+    assert main(["build-xodr", str(tmp_path / "net.draped.json"), str(xodr)]) == 0
+    cut = tmp_path / "cut.osgt"
+    caplog.set_level(logging.INFO, logger="roadgen.scene.ground")
+    assert main(["ground", str(cut), *files, "--xodr", str(xodr)]) == 0
+    (msg,) = [r.getMessage() for r in caplog.records if "cells cut" in r.getMessage()]
+    assert int(re.search(r"(\d+) of \d+ cells cut", msg).group(1)) > 0
+    with pytest.raises(SystemExit, match="--graph"):
+        main(["ground", str(cut), *files, "--buildings"])
     with pytest.raises(SystemExit, match="elevation"):
         main(["drape", str(prefix.with_suffix(".json")), files[0]])
 
@@ -347,47 +433,64 @@ def test_cli_ground_needs_an_elevation_map(tmp_path):
 # --- ground under the roads (stage R4) ------------------------------------------------------------
 
 
-def test_mesh_height_is_exact_on_a_plane():
-    from roadgen.scene.ground import mesh_height
+def test_grid_surface_is_exact_on_a_plane():
+    from roadgen.scene.ground import grid_surface
 
-    x, y = np.meshgrid(np.linspace(0, 100, 6), np.linspace(0, 60, 4))
+    xs, ys = np.linspace(0, 100, 6), np.linspace(0, 60, 4)
+    x, y = np.meshgrid(xs, ys)
     z = 1.0 + 0.02 * x - 0.03 * y
     px, py = np.array([3.0, 55.5, 99.0, 12.0]), np.array([1.0, 30.2, 59.0, 47.0])
-    assert np.allclose(mesh_height(x, y, z, px, py), 1.0 + 0.02 * px - 0.03 * py)
-
-
-def test_terrain_colors_blend_at_a_shore():
-    from roadgen.scene.ground import vertex_colors
-
-    t = terrain(RIVER)
-    x, y = np.meshgrid(np.array([300.0, 482.0, 700.0]), np.array([100.0]))
-    c = vertex_colors(t, x, y, 20.0)
-    land, water = np.array(TERRAIN_COLORS[LAND]), np.array(TERRAIN_COLORS[WATER])
-    assert np.allclose(c[0, 0], land) and np.allclose(c[0, 2], land)
-    assert not np.allclose(c[0, 1], land) and not np.allclose(c[0, 1], water)  # mixed at the shore
+    assert np.allclose(grid_surface(xs, ys, z, px, py), 1.0 + 0.02 * px - 0.03 * py)
+    # The mesh lookup agrees with it on an uncut mesh.
+    mesh = ground_mesh(SLOPE, params=GroundParams(cell_size=50.0))
+    qx, qy = np.array([10.0, 333.3, 1050.0]), np.array([20.0, 400.0, 555.0])
+    assert np.allclose(mesh.height(qx, qy), 0.05 * qx, atol=0.3)
 
 
 @pytest.mark.parametrize("cell", [10.0, 20.0, 40.0])
-def test_ground_never_covers_a_road(cell):
-    from roadgen.scene.ground import poke_through
-
+def test_ground_never_covers_a_road(cell, tmp_path):
     t = terrain(RIVER)
     g = drape(network(), VALLEY, t)
-    x, y, z = ground_heights(VALLEY, g, GroundParams(cell_size=cell), t)
-    samples, covered, _ = poke_through(x, y, z, g)
+    surfaces = _surfaces(g, tmp_path)
+    mesh = ground_mesh(VALLEY, t, surfaces, GroundParams(cell_size=cell))
+    samples, covered, _ = poke_through(mesh, surfaces)
     assert samples > 1000 and covered == 0
+    assert np.isnan(mesh.height(surfaces.samples[:, 0], surfaces.samples[:, 1])).all()  # cut out
 
 
-def test_land_under_a_bridge_stays_below_the_deck():
+def test_land_under_a_bridge_stays_below_the_deck_and_the_bridge_has_a_deck(tmp_path):
     # A land strip in the middle of the river, as high as the banks.
     island = (X > 484.0) & (X < 496.0)  # under edge 1, which ends at x = 500
     t = terrain(RIVER & ~island)
     valley = elevation(np.where(RIVER & ~island, 0.0, 2.0 + 0.04 * np.abs(X - 510.0)))
     g = drape(network(), valley, t)
+    surfaces = _surfaces(g, tmp_path)
+    assert [sp.kind for sp in surfaces.spans].count("bridge") >= 1
     p = GroundParams(cell_size=5.0)
-    x, y, z = ground_heights(valley, g, p, t)
-    deck = [g.edges[e] for e in g.edges if g.edges[e].bridges]
-    assert deck
-    strip = (x > 486.0) & (x < 494.0) & (np.abs(y - 100.0) < 3.0)
-    road_z = np.interp(x[strip], *(100.0 + np.array(g.edge_profile(1)[0]), g.edge_profile(1)[1]))
-    assert np.all(z[strip] <= road_z - p.under_bridge + 0.05)
+    x, y, z = ground_heights(valley, surfaces, p, t)
+    for sp in (sp for sp in surfaces.spans if sp.kind == "bridge"):
+        d, k = cKDTree(sp.centre[:, :2]).query(np.column_stack([x.ravel(), y.ravel()]))
+        under = d <= sp.half_width
+        assert under.any()
+        assert np.all(z.ravel()[under] <= sp.centre[k[under], 2] - p.under_bridge + 1e-6)
+    mesh, counts = structure_mesh(surfaces, lambda px, py: valley.sample(px, py))
+    assert counts["decks"] == sum(sp.kind == "bridge" for sp in surfaces.spans) and mesh.tris
+    deck = next(sp for sp in surfaces.spans if sp.kind == "bridge")
+    lowest = min(pt[2] for t_ in mesh.tris for pt in t_ if abs(pt[1] - deck.centre[0, 1]) < 20.0)
+    assert lowest < deck.centre[:, 2].min()  # the deck hangs below the road
+
+
+def test_tunnel_portals_frame_the_road():
+    from roadgen.scene.surface import RoadSurfaces, Span
+
+    s = np.linspace(0.0, 100.0, 21)
+    centre = np.column_stack([s, np.zeros_like(s), np.full_like(s, 10.0)])
+    left, right = centre + [0.0, 5.0, 0.0], centre - [0.0, 5.0, 0.0]
+    surfaces = RoadSurfaces(spans=[Span("tunnel", "1", centre, left, right, np.zeros_like(s))])
+    mesh, counts = structure_mesh(surfaces, lambda px, py: np.zeros_like(px))
+    assert counts == {"decks": 0, "piers": 0, "portals": 2}
+    pts = np.array([pt for t_ in mesh.tris for pt in t_])
+    # Nothing over the road below the clearance: the opening is free.
+    over = (np.abs(pts[:, 1]) < 5.0 - 1e-6) & (pts[:, 2] > 10.0) & (pts[:, 2] < 15.0 - 1e-6)
+    assert not over.any()
+    assert pts[:, 2].max() == pytest.approx(16.0)

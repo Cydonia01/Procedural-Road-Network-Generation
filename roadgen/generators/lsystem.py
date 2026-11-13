@@ -106,7 +106,7 @@ from typing import Any, Iterator, Literal, Optional
 
 import numpy as np
 
-from roadgen.config import DEFAULTS, section
+from roadgen.config import DEFAULTS, presets, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
 from roadgen.generators.hierarchy import (
     ARTERIAL,
@@ -173,7 +173,7 @@ EPS = 1e-9
 STREET_X, AVENUE_Y, HIGHWAY, RING = 0, 1, 2, 3
 SEED_RAYS = 16  # directions tried for the first two highways
 GRADE_BASELINE = 25.0  # [m] grade is measured over this distance; roads smooth out smaller bumps
-HIGHWAY_SIDE = 3.0  # [m] shoulder assumed beside highways while growing (body check)
+HIGHWAY_SIDE = 3.0  # [m] room assumed beside highways while growing (body check)
 
 _D = section(DEFAULTS, "generators", "lsystem")
 
@@ -209,7 +209,7 @@ class LSystemParams:
     betweenness_samples: int = _D["betweenness_samples"]  # sampled source nodes; 0 = exact
     # --- width-aware growth (stage R2) ----------------------------------------------------
     body_check: bool = _D["body_check"]  # keep road bodies apart while growing
-    side_width: float = _D["side_width"]  # [m] side lanes assumed beside non-highway roads
+    side_width: float = _D["side_width"]  # [m] room assumed beside non-highway roads
     min_block_depth: float = _D["min_block_depth"]  # [m] extra gap between near-parallel roads
     parallel_deg: float = _D["parallel_deg"]  # roads closer than this in heading are near-parallel
     # --- dead ends (stage R3) ----------------------------------------------------------------
@@ -373,154 +373,7 @@ class LSystemParams:
         return cls(**{**PRESETS[name], **overrides})
 
 
-PRESETS: dict[str, dict[str, Any]] = {
-    # One preset per street pattern (grid, radial, organic, contour, suburb, skew) plus the
-    # cities for input maps. Any other layout is a parameter set (--set / --params).
-    # Midtown Manhattan (grid): 10 avenues ~250 m apart and 30 streets ~80 m apart, rotated
-    # ~29 deg from true north, both alternating one-way (avenues 4 lanes, streets 2)
-    # at the 25 mph city limit, with a two-way ring road around the grid.
-    "manhattan_like": {
-        "extent": (9 * 250.0, 29 * 80.0),
-        "start": (0.0, 0.0),
-        "block_size": (250.0, 80.0),
-        "branch_prob": 1.0,
-        "rotation_deg": 29.0,
-        "major_lanes": (4, 0),
-        "minor_lanes": (2, 0),
-        "major_speed": 11.2,
-        "minor_speed": 11.2,
-        "oneway_pattern": ("alternating", "alternating"),
-        "boundary": "ring",
-    },
-    # Hill town for input maps (contour, field goal): streets follow the terrain's contours
-    # (San Francisco rule) everywhere, not in style-map districts.
-    "hill_town": {
-        "global_goal": "field",
-        "style_map": False,
-        "pattern_weights": (0.0, 0.0, 0.0, 1.0, 0.0),
-        "extent": (3000.0, 2400.0),
-        "detour_ratio": 2.5,
-        "start": (0.5, 0.5),
-        "block_size": (180.0, 100.0),
-        "branch_prob": 0.85,
-        "length_jitter": 0.1,
-        "snap_radius": 20.0,
-        "min_segment_length": 40.0,
-        "min_angle_deg": 40.0,
-        "curve_tortuosity": 1.02,
-    },
-    # Paris (radial, field goal): a star of avenues and rings around the centre, a grid outside.
-    "paris": {
-        "global_goal": "field",
-        "extent": (2000.0, 1600.0),
-        "start": (0.5, 0.5),
-        "block_size": (200.0, 120.0),
-        "branch_prob": 0.9,
-        "snap_radius": 20.0,
-        "min_segment_length": 40.0,
-        "min_angle_deg": 30.0,
-        "pattern_weights": (0.25, 1.0, 0.0, 0.0, 0.0),
-        "radial_radius": 600.0,
-        "radial_spokes": 6,
-        "max_degree": 7,
-    },
-    # Organic town (field goal): the grid bent by smooth noise, snapping only where nearly straight.
-    "organic_town": {
-        "global_goal": "field",
-        "extent": (1500.0, 1200.0),
-        "start": (0.5, 0.5),
-        "block_size": (200.0, 110.0),
-        "branch_prob": 0.85,
-        "length_jitter": 0.1,
-        "snap_radius": 20.0,
-        "min_segment_length": 40.0,
-        "min_angle_deg": 35.0,
-        "organic": 0.8,
-        "stagger_prob": 0.3,
-        "roundabout_prob": 0.1,
-    },
-    # Skewed grid (field goal): streets cross the avenues at 60-90 deg, in patches.
-    "skewed_grid": {
-        "global_goal": "field",
-        "extent": (1500.0, 1200.0),
-        "start": (0.5, 0.5),
-        "block_size": (200.0, 110.0),
-        "branch_prob": 0.95,
-        "snap_radius": 20.0,
-        "min_segment_length": 40.0,
-        "min_angle_deg": 30.0,
-        "skew_deg": 30.0,
-        "skew_scale": 2500.0,
-    },
-    # A city-sized area for use with input maps (pipeline --maps): highways
-    # between population centres, noisy grid streets in between.
-    "city": {
-        "extent": (3000.0, 2400.0),
-        "detour_ratio": 2.5,
-        "start": (0.5, 0.5),
-        "block_size": (180.0, 100.0),
-        "branch_prob": 0.9,
-        "angle_jitter_deg": 3.0,
-        "length_jitter": 0.1,
-        "snap_radius": 20.0,
-        "min_segment_length": 40.0,
-        "min_angle_deg": 40.0,
-    },
-    # Suburb (field goal): curvy, sparsely branching streets, few loops, turn-around
-    # bulbs at most dead ends (Teng & Bidarra's suburban patches).
-    "suburb": {
-        "global_goal": "field",
-        "extent": (1500.0, 1200.0),
-        "start": (0.5, 0.5),
-        "snap_radius": 20.0,
-        "min_segment_length": 30.0,
-        "min_angle_deg": 50.0,
-        "pattern_weights": (0.0, 0.0, 0.0, 0.0, 1.0),
-        "suburb_culdesac_prob": 0.9,
-        "minor_speed": 8.3,
-        "roundabout_prob": 0.15,
-    },
-    # Freeway corridor (input maps): grade-separated highways reached through diamond
-    # interchanges, with lane adds and drops; streets as in city.
-    "highway_corridor": {
-        "extent": (3000.0, 2400.0),
-        "detour_ratio": 2.5,
-        "start": (0.5, 0.5),
-        "block_size": (180.0, 100.0),
-        "branch_prob": 0.9,
-        "angle_jitter_deg": 3.0,
-        "length_jitter": 0.1,
-        "snap_radius": 20.0,
-        "min_segment_length": 40.0,
-        "min_angle_deg": 40.0,
-        "highway_crossings": "separated",
-        "interchanges": True,
-        "interchange_spacing": 1000.0,
-        "highway_lane_change_prob": 0.1,
-        "highway_max_turn_deg": 6.0,  # freeways run straight
-        "highway_rays": 5,
-        "highway_branch_prob": 0.04,
-    },
-    # A mixed city for input maps (pipeline --maps, field goal): districts of grid, radial,
-    # organic, contour and suburb streets from the style map, each grid at its own angle;
-    # highways between population centres.
-    "mixed_city": {
-        "global_goal": "field",
-        "extent": (3000.0, 2400.0),
-        "start": (0.5, 0.5),
-        "block_size": (180.0, 100.0),
-        "branch_prob": 0.9,
-        "length_jitter": 0.1,
-        "snap_radius": 20.0,
-        "min_segment_length": 40.0,
-        "min_angle_deg": 35.0,
-        "pattern_weights": (0.5, 0.0, 0.3, 0.0, 0.2),  # without a style map
-        "stagger_prob": 0.15,
-        "detour_ratio": 2.5,
-        "max_degree": 7,
-        "roundabout_prob": 0.08,
-    },
-}
+PRESETS: dict[str, dict[str, Any]] = presets("generators", "lsystem")  # roadgen/presets.yaml
 LSystemParams.PRESETS = PRESETS  # type: ignore[attr-defined]
 
 
@@ -653,7 +506,7 @@ class _Growth:
         self.slots: list[tuple[Point, int]] = []  # interchange crossing point, crossing avenue edge
         self.fixed: set[int] = set()  # edges no later pass may change (crossing avenues)
         # Body half widths while growing [m]: classes come later (hierarchy), so every road
-        # but a highway or the ring is assumed a local road with side lanes.
+        # but a highway or the ring is assumed a local road with room beside it.
         street = sum(p.minor_lanes)
         self.half_width = {STREET_X: street * p.lane_width / 2 + p.side_width,
                            HIGHWAY: sum(p.highway_lanes) * p.lane_width / 2 + HIGHWAY_SIDE,

@@ -191,8 +191,8 @@ def _full_width_run(road: etree._Element, lane: int, at_exit: bool = True) -> fl
     leaves (at_exit; s = length for right lanes, 0 for left lanes) or enters:
     an approach must start, and a drive on must end, within that stretch,
     not in a taper or where the lane does not exist. A lane id that is not a
-    driving lane in a section (a side lane outside a driving lane that has not
-    started yet) ends the stretch too."""
+    driving lane in a section (a median or pocket where it has not started yet)
+    ends the stretch too."""
     length = float(road.get("length"))
     sections = road.findall("lanes/laneSection")
     bounds = [float(sec.get("s")) for sec in sections] + [length]

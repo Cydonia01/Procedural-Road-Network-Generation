@@ -25,7 +25,7 @@ from typing import Any, Optional
 import numpy as np
 from scipy.spatial import cKDTree
 
-from roadgen.config import DEFAULTS, section
+from roadgen.config import DEFAULTS, presets, section
 from roadgen.maps import noise
 from roadgen.maps.base import MapGenerator, register_map
 from roadgen.maps.image import read_raster, resample
@@ -82,12 +82,7 @@ class ZonesStyleParams:
         return cls(**{**PRESETS[name], **overrides})
 
 
-PRESETS: dict[str, dict[str, Any]] = {
-    # One grid orientation everywhere, organic and suburban edges: a planned American city.
-    "planned": {"angle_spread_deg": 0.0, "organic_share": 0.15, "radial_radius": 0.0},
-    # An old European centre: a radial core, organic middle, many orientations.
-    "old_town": {"radial_radius": 900.0, "organic_share": 0.7, "angle_spread_deg": 35.0},
-}
+PRESETS: dict[str, dict[str, Any]] = presets("maps", "style", "zones")  # roadgen/presets.yaml
 ZonesStyleParams.PRESETS = PRESETS  # type: ignore[attr-defined]
 
 

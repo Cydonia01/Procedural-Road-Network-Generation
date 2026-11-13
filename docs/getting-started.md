@@ -44,9 +44,8 @@ pytest                                     # is everything installed?
 python -m cli generators                   # generators, presets and parameters
 
 # Generate a small grid, plot it, build the .xodr, validate it,
-# and drive every junction movement
-python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 \
-    --drive-check -o first
+# drive every junction movement, and draw its lanes and buildings
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 -o first
 ```
 
 A passing run ends with `INFO roadgen.cli: run <hash>: out/<hash>`. That
@@ -58,6 +57,8 @@ folder holds:
 | `first.png` | Top-down plot of the graph |
 | `first.xodr` | OpenDRIVE road network |
 | `first.roadmap.json` | Graph id → OpenDRIVE id mapping, every junction movement |
+| `first_hd.png` | The built lanes coloured by type, with their marks |
+| `first_buildings.osgt` | Buildings for the esmini view (no elevation map, so no ground) |
 | `run.yaml` | The command and its non-default parameters, enough to rerun it |
 
 Every output file is listed in
@@ -85,6 +86,6 @@ docker compose run --rm gui-mac python -m cli view out/<hash>/first.xodr   # mac
 ## Next
 
 - More example commands: [Example runs](../runs/README.md)
-- Grow a city on terrain: `python -m cli pipeline lsystem --preset city --maps --allow-traps --ground --buildings`,
+- Grow a city on terrain: `python -m cli pipeline lsystem --preset city --maps --allow-traps` (ground and buildings by default),
   explained in [lsystem](lsystem.md) and [Input maps](maps.md)
 - How the pipeline fits together: [Architecture](architecture.md)

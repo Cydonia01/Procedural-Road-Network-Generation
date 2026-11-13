@@ -198,7 +198,7 @@ def add_roundabouts(graph: RoadGraph, rng: np.random.Generator, prob: Callable[[
     """Turn junctions into roundabouts, each with probability prob(node); returns how many.
 
     With a cross-section, the roads must keep MIN_ROAD_LENGTH between the junction
-    trims that their side lanes widen (HD maps), not only between the bare ones.
+    trims that their turn pockets widen (HD maps), not only between the bare ones.
 
     One random draw per candidate (3 to 5 roads) in node-id order, so the
     outcome depends only on rng. Ring edges are one-way at speed [m/s].

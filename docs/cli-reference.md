@@ -10,7 +10,7 @@ check or simulation failed.
 | **Generate** | |
 | [`generators`](#generators-maps) | List generators, presets and parameters |
 | [`generate`](#generate) | Generator → RoadGraph JSON |
-| [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate, plus optional maps, scene, drive-check and simulation |
+| [`pipeline`](#pipeline) | Generate → plot → `.xodr` → validate → lane plot, scene and drive-check, plus optional maps |
 | **Input maps** | |
 | [`maps`](#generators-maps) | List map generators, presets and parameters |
 | [`map`](#map) | One input map (`.npz` + `.png`) |
@@ -54,12 +54,14 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
 `maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
-`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scene`, `ground`, `buildings`, `esmini`.
+`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `pipeline`, `scene`, `ground`, `structures`, `buildings`, `esmini`.
 
 Parameters are layered. Each layer overrides the one before it:
 
 1. `defaults.yaml`;
-2. the preset (`--preset NAME`, or `preset:` in a params or config file);
+2. the preset (`--preset NAME`, or `preset:` in a params or config file); every
+   preset lives in [`roadgen/presets.yaml`](../roadgen/presets.yaml), keyed like
+   `defaults.yaml`, and lists only what differs from the defaults;
 3. the `--config FILE` given before the command;
 4. the `--params FILE.yaml` given to a generator or map;
 5. command-line flags, `--set KEY=VALUE` and `--map-set KIND.KEY=VALUE`.
@@ -134,7 +136,7 @@ python -m cli generate <lsystem|junction> [options] [-o OUT.json]     # default:
 | `--set KEY=VALUE` | Override one parameter (repeatable) |
 | `--map-file KIND=FILE.npz` | Input map to grow on (`terrain`, `elevation`, `population`, `style`). Repeatable. Only `lsystem` reads maps |
 | `--flat` | No heights, even with an elevation map |
-| `--hd`, `--no-hd` | Drape and grade-separate with the roads' HD widths, side lanes included (default `hdmap.enabled`, on), as `pipeline` does; `--no-hd` uses the driving lanes only |
+| `--hd`, `--no-hd` | Drape and grade-separate with the roads' HD widths, medians included (default `hdmap.enabled`, on), as `pipeline` does; `--no-hd` uses the driving lanes only |
 
 Generator parameters have no flags of their own. Use `--set`, e.g. `--set
 extent=[500,240] --set boundary=ring`. The parameters are listed in
@@ -156,22 +158,28 @@ Takes every `generate` option. It writes `PREFIX.json`, `.png`, `.xodr` and
 `.roadmap.json`, runs all [validators](validation.md), and logs the time of
 each stage. Default prefix: `<name>[_<preset>]_s<seed>`.
 
+By default it also draws the lane plot (`PREFIX_hd.png`, HD maps only),
+writes the buildings and, when there is an elevation map, the ground
+(`PREFIX_scene.osgt`; without one `PREFIX_buildings.osgt`), and runs the
+drive-check. The config section `pipeline:` (`buildings`, `ground`,
+`lane_plot`, `drive_check`, all `true`) sets these defaults, and each has a
+`--x` / `--no-x` switch below.
+
 | Option | Meaning |
 |--------|---------|
 | `--allow-traps` | Report traffic traps and unreachable roads as warnings, not errors |
 | `--xsd FILE` | OpenDRIVE XSD (default `$OPENDRIVE_XSD`) |
 | `--junction-margin M` | Extra junction clearance [m] (default 2) |
-| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, on; `--no-hd` writes the plain driving-lane network, byte for byte what the builder wrote before HD maps): roads get [side lanes](geometry.md#cross-sections) (`cross_section` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are fixed before the build: turn pockets that would make them too short are left out, and road ends whose side lanes would are made bare ([repair](generators.md#repair-edges-too-short-for-their-junctions)). With `--lane-plot` also writes `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr)) |
-| `--cross-section PROFILE` | Default profile with HD maps: `urban`, `suburban`, `rural` or `none` (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
-| `--no-corner-roads` | With HD maps, leave out the [corner roads](opendrive.md#lanes) (the side lanes around junction corners; `cross_section.corner_roads: false`). esmini loads them slowly (on `city` 57 s instead of 31 s), so this is for throughput benchmarks; the corners' side lanes are then missing from the map |
+| `--hd`, `--no-hd` | HD-map content on or off (default `hdmap.enabled`, on; `--no-hd` writes the plain driving-lane network, byte for byte what the builder wrote before HD maps): roads get [medians](geometry.md#cross-sections) (`cross_section` section) and [left-turn pockets](opendrive.md#lane-use-pockets-and-banned-turns-hd-maps) (`turn_lanes` section), [HD road marks](opendrive.md#road-marks-hd-maps) (`road_marks` section) and [junction control](opendrive.md#junction-control-and-right-of-way-hd-maps) with signs and stop lines (`junction_control` section) and [traffic lights](opendrive.md#traffic-lights-and-controllers-hd-maps) (`traffic_lights` section); with maps, [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets profiles and control first; and edges too short for the wider junctions are fixed before the build: turn pockets that would make them too short are left out ([repair](generators.md#repair-edges-too-short-for-their-junctions)) |
+| `--cross-section PROFILE` | Default profile (area type) with HD maps: `urban`, `suburban`, `rural` or `none` (no medians) (default `cross_section.profile`, `urban`); edges with their own `cross_section` keep it |
 | `--maps` | Build all map kinds the generator reads, with the generators named in `maps.pipeline`, and grow on them. Writes `PREFIX_<kind>.npz` / `.png` |
 | `--terrain`, `--elevation`, `--population`, `--style NAME` | Build one kind with generator `NAME` (overrides `--maps` for that kind) |
 | `--map-set KIND.KEY=VALUE` | Override one map parameter, e.g. `--map-set terrain.rivers=2`. Repeatable |
 | `--map-file KIND=FILE.npz` | Load one kind from a file; wins over a generator for that kind |
-| `--buildings` | Also write `PREFIX_buildings.osgt` ([scene](scene.md)) |
-| `--ground` | Also write `PREFIX_scene.osgt`: ground plus buildings. Needs an elevation map |
-| `--drive-check` | Also run [drive-check](#drive-check), if there are no errors so far |
-| `--lane-plot` | With HD maps, also draw the built lanes to `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr); about 5 s on a city) |
+| `--buildings`, `--no-buildings` | Buildings ([scene](scene.md)): in `PREFIX_scene.osgt` with the ground, else in `PREFIX_buildings.osgt` (default `pipeline.buildings`, on) |
+| `--ground`, `--no-ground` | `PREFIX_scene.osgt`: the ground cut around the roads, bridges and tunnels, plus the buildings (default `pipeline.ground`, on when there is an elevation map; asking `--ground` without one is an error) |
+| `--drive-check`, `--no-drive-check` | Run [drive-check](#drive-check), if there are no errors so far (default `pipeline.drive_check`, on) |
+| `--lane-plot`, `--no-lane-plot` | With HD maps, draw the built lanes to `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr); about 5 s on a city) (default `pipeline.lane_plot`, on) |
 
 ## map
 
@@ -222,10 +230,10 @@ are the config sections `align:`, `drape:` and `grade_separation:`.
 ## build-xodr
 
 ```bash
-python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd] [--cross-section PROFILE] [--no-corner-roads]   # default: <input>.xodr
+python -m cli build-xodr INPUT.json [OUTPUT.xodr] [--xsd FILE] [--junction-margin M] [--hd | --no-hd] [--cross-section PROFILE]   # default: <input>.xodr
 ```
 
-`--hd` / `--no-hd`, `--cross-section` and `--no-corner-roads` as for [pipeline](#pipeline).
+`--hd` / `--no-hd` and `--cross-section` as for [pipeline](#pipeline).
 
 Builds and validates. Traffic connectivity problems are only warnings here,
 since hand-made test graphs often have dead ends.
@@ -266,12 +274,13 @@ metrics are explained in
 
 ```bash
 python -m cli ground [OUT.osgt] --map-file elevation=E.npz [--map-file terrain=T.npz] \
-    [--graph NET.json [--buildings]] [--seed N] [--junction-margin M]          # default: scene.osgt
+    [--xodr NET.xodr] [--graph NET.json --buildings] [--seed N]               # default: scene.osgt
 ```
 
-A ground mesh from the maps. `--graph` (a draped network) levels it under the
-roads, and `--buildings` adds that network's buildings. `--junction-margin`
-must match the `.xodr`. Parameters go in `ground:`. See [3D scene](scene.md).
+A ground mesh from the maps. `--xodr` (built from a draped network) cuts the
+ground around its roads and its sidecar's junction fills, and adds bridge
+decks, piers and tunnel portals; `--buildings` adds the `--graph`'s
+buildings. Parameters go in `ground:` and `structures:`. See [3D scene](scene.md).
 
 ## view
 

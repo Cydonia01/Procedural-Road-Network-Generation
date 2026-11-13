@@ -27,7 +27,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from roadgen.config import DEFAULTS, section
+from roadgen.config import DEFAULTS, presets, section
 from roadgen.maps import noise
 from roadgen.maps.base import MapGenerator, register_map
 from roadgen.maps.image import read_raster, resample
@@ -92,17 +92,7 @@ class NoiseTerrainParams:
         return cls(**{**PRESETS[name], **overrides})
 
 
-PRESETS: dict[str, dict[str, Any]] = {
-    # Dry land: no water at all, some parks.
-    "inland": {"water_fraction": 0.0, "rivers": 0, "vegetation_fraction": 0.12},
-    # A few lakes scattered over the map.
-    "lakes": {"water_fraction": 0.15, "coast_strength": 0.0, "rivers": 0},
-    # Sea along one side, ragged coastline.
-    "coastal": {"water_fraction": 0.3, "coast_strength": 0.8, "rivers": 0, "warp": 0.4},
-    # One wide river through land, no lakes (e.g. a Paris- or London-like site).
-    "river_city": {"water_fraction": 0.0, "rivers": 1, "river_width": 80.0,
-                   "river_meander": 250.0, "vegetation_fraction": 0.1},
-}
+PRESETS: dict[str, dict[str, Any]] = presets("maps", "terrain", "noise")  # roadgen/presets.yaml
 NoiseTerrainParams.PRESETS = PRESETS  # type: ignore[attr-defined]
 
 

@@ -271,7 +271,7 @@ def test_pockets_stay_out_of_curves(tmp_path):
                     assert bounds[k + 1] <= c["s_start"] + 1e-6 or bounds[k] >= c["s_end"] - 1e-6
 
 
-def _short_block(length: float = 32.0) -> RoadGraph:
+def _short_block(length: float = 25.0) -> RoadGraph:
     """An avenue cross whose east arm is a block of `length` m to a street junction: it
     keeps enough road between its trims without the other arms' pockets, too little with
     them (a stub road, repair.MIN_ROAD_LENGTH)."""
