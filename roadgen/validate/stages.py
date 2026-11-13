@@ -3,8 +3,7 @@
 Each check is cheap and tests what its stage promises, on the stage's output
 (and its input, where the stage must leave something unchanged):
 
-- map (each input map, in the order they are built): the data has the grid's
-  shape and finite values; terrain and style hold known classes; a generated
+- map (each input map, in the order they are built): finite values; terrain and style hold known classes; a generated
   elevation map has its water at the bottom (the generator sets water flat at
   its lowest height, land above it) and a generated population map is 0 on
   water. A loaded map file only gets warnings for these two (it is used as it
@@ -14,14 +13,14 @@ Each check is cheap and tests what its stage promises, on the stage's output
   without a road, and lies on the maps (a warning per node outside them).
 - align: only Node.radius_cap changed, and every cap is positive.
 - drape: the plan view is unchanged; every height is finite; bridges and
-  tunnels lie within their edge, sorted, without overlap; grades over the
-  drape limit are warnings (drape logs them too).
+  tunnels are sorted, without overlap (RoadGraph.validate: within their
+  edge). Steep roads: drape warns about them itself.
 - separate: the plan view is unchanged, and at every crossing without a
   junction the upper road is at least `clearance` above the lower one.
 - annotate: the plan view and heights are unchanged; profiles and junction
   controls are known values.
-- fit: the RoadGraph is well formed and no edge is too short for its
-  junctions with the HD widths (the builder would stop on it).
+- fit: the RoadGraph is well formed (edges still too short for their
+  junctions: the repair warns about each, the build stops on the first).
 - xodr: the file validators (roadgen.validate.*), run by the CLI's
   build_and_validate.
 - scene: the ground mesh is finite and its triangles index real vertices;
@@ -87,10 +86,7 @@ def summary(reports: list[StageReport]) -> str:
 def check_map(layer: MapLayer, upstream: Optional[dict[str, MapLayer]] = None) -> StageReport:
     """One input map, with the maps built before it (see the module docstring)."""
     r = StageReport(f"map {layer.kind}")
-    data = layer.data
-    if data.shape != layer.grid.shape:
-        r.errors.append(f"data shape {data.shape} != grid shape {layer.grid.shape}")
-        return r
+    data = layer.data  # its shape is the grid's (MapLayer checks that)
     if not np.isfinite(data.astype(float)).all():
         r.errors.append(f"{int((~np.isfinite(data.astype(float))).sum())} cells are not finite")
         return r
@@ -148,17 +144,12 @@ def check_align(before: RoadGraph, after: RoadGraph) -> StageReport:
     return r
 
 
-def check_drape(before: RoadGraph, after: RoadGraph, max_grade: float = 0.0, grade_length: float = 25.0
-                ) -> StageReport:
+def check_drape(before: RoadGraph, after: RoadGraph) -> StageReport:
+    """(Roads steeper than drape.max_grade: drape warns about them itself.)"""
     r = StageReport("drape")
     r.errors += _plan_changes(before, after, heights=False)
     r.errors += _heights(after)
     r.errors += _structures(after)
-    if max_grade > 0 and not r.errors:
-        steep = [eid for eid in sorted(after.edges) if _steepest(after, eid, grade_length) > max_grade + 1e-9]
-        if steep:
-            r.warnings.append(f"{len(steep)} edges steeper than {max_grade:.0%} over {grade_length:g} m "
-                              f"(e.g. {steep[:5]})")
     return r
 
 
@@ -197,15 +188,10 @@ def check_annotate(before: RoadGraph, after: RoadGraph) -> StageReport:
     return r
 
 
-def check_fit(graph: RoadGraph, design, junction_margin: float, cross_section) -> StageReport:
-    from roadgen.generators.repair import short_edges
-
-    r = _graph_report("fit", graph)
-    if not r.errors and cross_section is not None:
-        short = short_edges(graph, design, junction_margin, cross_section)
-        if short:
-            r.errors.append(f"edges too short for their junctions with the HD widths: {short[:10]}")
-    return r
+def check_fit(graph: RoadGraph) -> StageReport:
+    """(Edges still too short for their junctions: the repair warns about each, and the
+    build stops on the first.)"""
+    return _graph_report("fit", graph)
 
 
 def check_scene(mesh, covered: int = 0, samples: int = 0, worst: float = 0.0) -> StageReport:
@@ -281,16 +267,3 @@ def _structures(graph: RoadGraph) -> list[str]:
 def _height(graph: RoadGraph, eid: int, d: float) -> float:
     ds, zs = graph.edge_profile(eid)
     return float(np.interp(d, ds, zs))
-
-
-def _steepest(graph: RoadGraph, eid: int, length: float) -> float:
-    """Steepest rise / run over length [m] along an edge's straight profile."""
-    ds, zs = graph.edge_profile(eid)
-    if ds[-1] <= 0:
-        return 0.0
-    step = min(length, ds[-1])
-    s = np.arange(0.0, ds[-1] - step + 1e-9, max(step / 2, 1.0))
-    if not len(s):
-        return 0.0
-    rise = np.abs(np.interp(s + step, ds, zs) - np.interp(s, ds, zs))
-    return float(rise.max() / step)

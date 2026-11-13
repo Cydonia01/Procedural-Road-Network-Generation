@@ -276,8 +276,7 @@ def generate_graph(args: argparse.Namespace, reports: Optional[list] = None
     cross_section = hd_params(args).active_cross_section
     if "elevation" in layers and not args.flat:
         before, graph = graph, drape_graph(graph, layers, args.cfg, cross_section)
-        drape_cfg = section(args.cfg, "drape")
-        report(reports, stages.check_drape(before, graph, drape_cfg["max_grade"], drape_cfg["grade_length"]))
+        report(reports, stages.check_drape(before, graph))
     before, graph = graph, separate_graph(graph, args.cfg, cross_section)
     if graph is not before:
         report(reports, stages.check_separate(before, graph, section(args.cfg, "grade_separation")["clearance"],
@@ -429,8 +428,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         if graph is not before:
             report(reports, stages.check_annotate(before, graph))
     graph = fit_graph(graph, args.cfg, hd, args.junction_margin)
-    report(reports, stages.check_fit(graph, DesignParams(**section(args.cfg, "design")), args.junction_margin,
-                                     hd.active_cross_section))
+    report(reports, stages.check_fit(graph))
     errors = [e for r in reports for e in r.errors]
     errors += check_traffic(graph, args.allow_traps)
     for kind, layer in layers.items():  # PREFIX_<kind>.npz / .png with the roads on top
@@ -587,8 +585,7 @@ def cmd_drape(args: argparse.Namespace) -> int:
         raise SystemExit("error: drape needs --map-file elevation=FILE.npz")
     before = load_json(args.input)
     graph = drape_graph(before, layers, args.cfg)
-    drape_cfg = section(args.cfg, "drape")
-    errors = report(None, stages.check_drape(before, graph, drape_cfg["max_grade"], drape_cfg["grade_length"]))
+    errors = report(None, stages.check_drape(before, graph))
     output = artifact(args, args.output, Path(args.input).with_suffix(".draped.json"))
     save_json(graph, output)
     log.info("wrote %s", output)

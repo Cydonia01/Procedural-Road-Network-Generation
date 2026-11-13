@@ -104,9 +104,8 @@ def test_align_may_only_add_radius_caps():
 def test_drape_check():
     before = _graph()
     after = copy.deepcopy(before)
-    after.nodes[3].z = 30.0  # 30 m over the 100 m edge 2: 30 %
-    r = stages.check_drape(before, after, max_grade=0.15)
-    assert r.ok and any("steeper than 15%" in w for w in r.warnings)
+    after.nodes[3].z = 30.0
+    assert stages.check_drape(before, after).ok
     after.edges[1].bridges = [(10.0, 40.0), (30.0, 60.0)]
     assert any("overlap" in e for e in stages.check_drape(before, after).errors)
     after = copy.deepcopy(before)
@@ -148,14 +147,13 @@ def test_annotate_check():
     assert any("profiles" in e for e in errors) and any("controls" in e for e in errors)
 
 
-def test_fit_check_finds_edges_too_short_for_their_junctions():
-    from roadgen.geometry.cross_section import CrossSectionParams
-    from roadgen.geometry.design import DesignParams
+def test_fit_check():
     from tests.test_repair import two_junctions
 
-    assert stages.check_fit(two_junctions(60.0), DesignParams(), 2.0, CrossSectionParams()).ok
-    r = stages.check_fit(two_junctions(6.0), DesignParams(), 2.0, CrossSectionParams())
-    assert any("too short" in e for e in r.errors)
+    g = two_junctions(60.0)
+    assert stages.check_fit(g).ok
+    g.add_node(Node(99, 0.0, 500.0))
+    assert any("nodes without a road" in e for e in stages.check_fit(g).errors)
 
 
 def test_summary():

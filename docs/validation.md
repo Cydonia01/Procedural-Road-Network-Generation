@@ -33,14 +33,14 @@ something unchanged).
 
 | Stage | Errors | Warnings |
 |-------|--------|----------|
-| `map terrain`, `map elevation`, `map population`, `map style` (each as it is built, before the next is built on it) | data not of the grid's shape or not finite; unknown terrain or style classes; a generated elevation map with water above the lowest land (the generator sets water flat at its lowest height); a generated population map with people on water, or negative densities | terrain without land; for a loaded map file (`--map-file`, used as it is) the water rules |
+| `map terrain`, `map elevation`, `map population`, `map style` (each as it is built, before the next is built on it) | values not finite; unknown terrain or style classes; a generated elevation map with water above the lowest land (the generator sets water flat at its lowest height); a generated population map with people on water, or negative densities | terrain without land; for a loaded map file (`--map-file`, used as it is) the water rules |
 | `maps` | | the maps on different grids |
 | `generate` | `RoadGraph.validate()`; nodes without a road | nodes outside the maps |
 | `align` | anything changed but `Node.radius_cap`; caps not positive | |
-| `drape` | the plan view changed; heights not finite; bridges or tunnels overlapping or out of order | edges steeper than `drape.max_grade` over `drape.grade_length` |
+| `drape` | the plan view changed; heights not finite; bridges or tunnels overlapping or out of order | (steep roads: `drape` warns itself) |
 | `separate` (when roads cross without a junction) | the plan view changed; a crossing less than `grade_separation.clearance` apart in height, where the fitted roads cross | |
 | `annotate` (HD maps, with a population map) | the plan view or heights changed; unknown profiles or junction controls | |
-| `fit` | `RoadGraph.validate()`; edges too short for their junctions with the HD widths | |
+| `fit` | `RoadGraph.validate()` (edges still too short for their junctions: the repair warns, the build stops) | |
 | `xodr` | the file checks below, from topology to the XSD schema | body overlaps, curvature warnings |
 | `scene` (with the ground) | ground vertices or normals not finite; triangles indexing missing vertices | road surface the ground covers |
 | `drive-check` (`pipeline`, by default) | the drive-check failed | |
