@@ -52,7 +52,8 @@ view() {
     for entry in "${EXAMPLES[@]}"; do
         IFS='|' read -r name _ _ <<< "$entry"
         local dir
-        dir=$(ls -d out/*/ | while read -r d; do [ -f "$d/$name.xodr" ] && echo "${d%/}"; done | head -1)
+        # the newest run of this example (ls -t: by time; names are hashes)
+        dir=$(ls -dt out/*/ | while read -r d; do [ -f "$d/$name.xodr" ] && echo "${d%/}"; done | head -1)
         [ -z "$dir" ] && { echo "no run for $name"; continue; }
         local scene=()
         for s in _scene.osgt _buildings.osgt; do
