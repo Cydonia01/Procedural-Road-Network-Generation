@@ -6,7 +6,10 @@ Independent checks run on the RoadGraph, on the written `.xodr`, and by
 driving the network with esmini's own road logic. `pipeline` and
 `build-xodr` run all of them except drive-check, and fail if any reports
 an error. `pipeline` also runs the drive-check by default
-(`--no-drive-check` leaves it out).
+(`--no-drive-check` leaves it out). The `.xodr` checks parse the file once
+(`cli.validate_xodr`): each takes the parsed tree and one shared road
+evaluator per road (`continuity.road_evals`, `RoadEval`), which reads each
+road's records once.
 
 | Check | Runs on | When | Code |
 |-------|---------|------|------|

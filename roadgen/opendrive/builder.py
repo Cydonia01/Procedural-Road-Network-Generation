@@ -642,6 +642,13 @@ class OpenDriveBuilder:
         from roadgen.validate.continuity import RoadEval
 
         roads = {r.get("id"): r for r in root.findall("road")}
+        evals: dict[str, RoadEval] = {}
+
+        def ev_of(rid: str) -> RoadEval:
+            if rid not in evals:
+                evals[rid] = RoadEval(roads[rid])
+            return evals[rid]
+
         members_of: dict[str, list[str]] = {}
         for rid, r in roads.items():
             members_of.setdefault(r.get("junction", "-1"), []).append(rid)
@@ -649,7 +656,7 @@ class OpenDriveBuilder:
 
         def poly(rid: str, s_range: Optional[tuple[float, float]] = None):
             if (rid, s_range) not in polys:
-                parts = [Polygon(p).buffer(0) for _, p in lane_polygons(roads[rid], FILL_STEP, s_range)
+                parts = [Polygon(p).buffer(0) for _, p in lane_polygons(ev_of(rid), FILL_STEP, s_range)
                          if len(p) >= 3]
                 polys[(rid, s_range)] = unary_union([p for p in parts if not p.is_empty])
             return polys[(rid, s_range)]
@@ -658,7 +665,7 @@ class OpenDriveBuilder:
             """The stretch of an arm, from each of its ends at the junction, whose reference
             line runs within `area` (the hull grown by the arm's half width): only lanes
             there can reach the hull (B9: sampling whole arms was most of the write time)."""
-            road, ev = roads[rid], RoadEval(roads[rid])
+            road, ev = roads[rid], ev_of(rid)
             offset = max((abs(float(o.get("a"))) for o in road.findall("lanes/laneOffset")), default=0.0)
             reach = area.buffer(offset + max((sum(_lane_width(lane) for lane in sec.findall(f"{side}/lane"))
                                               for sec in road.findall("lanes/laneSection")
@@ -700,7 +707,7 @@ class OpenDriveBuilder:
                     (x, y, float(plane.height(x, y)) if plane is not None else 0.0)
                     for x, y in list(hole.exterior.coords)[:-1]]))
             host = roads[members[0]]
-            x0, y0, h0 = RoadEval(host).reference(0.0)
+            x0, y0, h0 = ev_of(members[0]).reference(0.0)
             objects = host.find("objects")
             if objects is None:
                 objects = ET.Element("objects")

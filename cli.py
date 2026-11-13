@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import json
 import logging
 import os
 import re
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Iterator, Optional, Sequence, Union
 
 import yaml
+from lxml import etree
 
 from roadgen.config import DEFAULTS, load_config, section, with_overrides
 from roadgen.generators.base import (
@@ -32,17 +34,21 @@ from roadgen.graph.plot import plot_graph
 from roadgen.history import RunStore, diff, load_spec, plain, run_hash
 from roadgen.maps.base import get_map_generator, make_map, map_generator_names
 from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
-from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.builder import OpenDriveBuilder, sidecar_path
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.sim.esmini import esmini_binary
-from roadgen.validate.clearance import check_body_overlaps, check_clearance
-from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate import stages
-from roadgen.validate.continuity import check_continuity, check_curvature
-from roadgen.validate.dynamics import check_dynamics, check_resultant_grade
-from roadgen.validate.hdmap import check_hdmap
+from roadgen.validate.clearance import check_body_overlaps_tree, check_clearance_tree
+from roadgen.validate.connectivity import check_traffic_connectivity
+from roadgen.validate.continuity import (
+    check_continuity_tree,
+    check_curvature_tree,
+    road_evals,
+)
+from roadgen.validate.dynamics import check_dynamics_tree, check_resultant_grade_tree
+from roadgen.validate.hdmap import check_hdmap_tree
 from roadgen.validate.schema import validate_schema
-from roadgen.validate.topology import check_topology
+from roadgen.validate.topology import check_topology_tree
 
 log = logging.getLogger("roadgen.cli")
 
@@ -157,19 +163,7 @@ def build_and_validate(
         sidecar,
     )
     with timed("validate"):
-        errors = check_topology(xodr_path)
-        errors += check_continuity(xodr_path)
-        curvature_errors, curvature_warnings = check_curvature(xodr_path)
-        errors += curvature_errors
-        a_lat_max = section(cfg or DEFAULTS, "design")["a_lat_max"]
-        errors += check_dynamics(xodr_path, a_lat_max, connecting=DYNAMICS_CHECKS_JUNCTIONS)
-        errors += check_resultant_grade(xodr_path, section(cfg or DEFAULTS, "design")["max_resultant_grade"])
-        errors += check_clearance(xodr_path, section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
-        if hd.enabled:
-            errors += check_hdmap(xodr_path)
-        errors += validate_schema(xodr_path, xsd) or []
-        overlaps = check_body_overlaps(xodr_path,
-                                       min_gap=section(cfg or DEFAULTS, "grade_separation")["clearance"] - DECK)
+        errors, curvature_warnings, overlaps = validate_xodr(xodr_path, xsd, cfg or DEFAULTS, hd.enabled)
     for warning in overlaps[:MAX_LISTED_WARNINGS]:  # the generator's layout, not a broken file
         log.warning("clearance: %s", warning)
     for warning in curvature_warnings[:MAX_LISTED_WARNINGS]:
@@ -181,6 +175,27 @@ def build_and_validate(
     if reports is not None:  # logged above
         reports.append(stages.StageReport("xodr", list(errors), overlaps + curvature_warnings))
     return errors
+
+
+def validate_xodr(xodr_path: Path, xsd: Optional[str], cfg: dict, hd: bool
+                  ) -> tuple[list[str], list[str], list[str]]:
+    """(errors, curvature warnings, body overlaps) of every file validator, on one parse of
+    the file with one road evaluator per road shared by all of them."""
+    tree = etree.parse(str(xodr_path))
+    evals = road_evals(tree)
+    design, gap = section(cfg, "design"), section(cfg, "grade_separation")["clearance"] - DECK
+    errors = check_topology_tree(tree)
+    errors += check_continuity_tree(tree, evals)
+    curvature_errors, curvature_warnings = check_curvature_tree(tree, evals)
+    errors += curvature_errors
+    errors += check_dynamics_tree(tree, design["a_lat_max"], connecting=DYNAMICS_CHECKS_JUNCTIONS, evals=evals)
+    errors += check_resultant_grade_tree(tree, design["max_resultant_grade"], evals=evals)
+    errors += check_clearance_tree(tree, gap, evals)
+    if hd:
+        sidecar = sidecar_path(xodr_path)
+        errors += check_hdmap_tree(tree, json.loads(sidecar.read_text()) if sidecar.exists() else None, evals)
+    errors += validate_schema(xodr_path, xsd, doc=tree) or []
+    return errors, curvature_warnings, check_body_overlaps_tree(tree, min_gap=gap, evals=evals)
 
 
 def cmd_build_xodr(args: argparse.Namespace) -> int:

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 from lxml import etree
@@ -28,7 +28,7 @@ from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
-from roadgen.validate.continuity import RoadEval
+from roadgen.validate.continuity import RoadEval, road_evals
 
 PathLike = Union[str, Path]
 MIN_GAP = 5.0  # [m] vertical clearance between the surfaces of crossing roads
@@ -40,13 +40,12 @@ def check_clearance(xodr_path: PathLike, min_gap: float = MIN_GAP) -> list[str]:
     return check_clearance_tree(etree.parse(str(xodr_path)), min_gap)
 
 
-def check_clearance_tree(tree: etree._ElementTree, min_gap: float = MIN_GAP) -> list[str]:
+def check_clearance_tree(tree: etree._ElementTree, min_gap: float = MIN_GAP,
+                         evals: Optional[dict[str, RoadEval]] = None) -> list[str]:
     """Errors for roads crossing outside junctions with less than min_gap between them."""
-    roads = [RoadEval(r) for r in tree.getroot().findall("road") if r.get("junction", "-1") == "-1"]
-    lines = []
-    for road in roads:
-        s = np.linspace(0.0, road.length, max(2, math.ceil(road.length / SAMPLE_STEP) + 1))
-        lines.append(LineString([road.reference(float(v))[:2] for v in s]))
+    evals = evals if evals is not None else road_evals(tree)
+    roads = [evals[r.get("id")] for r in tree.getroot().findall("road") if r.get("junction", "-1") == "-1"]
+    lines = [_reference_line(road) for road in roads]
     tree_ = STRtree(lines)
     errors = []
     for i, road in enumerate(roads):
@@ -88,17 +87,19 @@ def check_body_overlaps(xodr_path: PathLike, min_area: float = 1.0, min_gap: flo
 
 
 def check_body_overlaps_tree(tree: etree._ElementTree, min_area: float = 1.0,
-                             min_gap: float = MIN_GAP) -> list[str]:
+                             min_gap: float = MIN_GAP, evals: Optional[dict[str, RoadEval]] = None) -> list[str]:
     """Pairs of normal roads whose driving lanes overlap by more than min_area [m^2]
     without meeting, each as one message."""
     from roadgen.opendrive.plot import (
         lane_polygons,  # plot imports the validators' evaluator
     )
 
+    evals = evals if evals is not None else road_evals(tree)
     roads = [r for r in tree.getroot().findall("road") if r.get("junction", "-1") == "-1"]
     bodies, owners = [], []
     for road in roads:
-        parts = [Polygon(pts) for kind, pts in lane_polygons(road, step=SAMPLE_STEP) if kind == "driving"]
+        parts = [Polygon(pts) for kind, pts in lane_polygons(evals[road.get("id")], step=SAMPLE_STEP)
+                 if kind == "driving"]
         parts = [p if p.is_valid else p.buffer(0) for p in parts if len(p.exterior.coords) >= 4]
         if parts:
             bodies.append(unary_union(parts))
@@ -106,7 +107,6 @@ def check_body_overlaps_tree(tree: etree._ElementTree, min_area: float = 1.0,
     if len(bodies) < 2:  # nothing can overlap (and shapely rejects an empty query)
         return []
     links = [_neighbours(r) for r in owners]
-    evals: dict[int, RoadEval] = {}
     index = STRtree(bodies)
     errors = []
     for i, j in zip(*index.query(bodies, predicate="intersects")):
@@ -121,8 +121,7 @@ def check_body_overlaps_tree(tree: etree._ElementTree, min_area: float = 1.0,
             continue
         # An overpass: the two roads are min_gap apart in height over the overlap.
         pt = overlap.representative_point()
-        ea = evals.setdefault(i, RoadEval(a))
-        eb = evals.setdefault(j, RoadEval(b))
+        ea, eb = evals[a.get("id")], evals[b.get("id")]
         sa = _project_s(ea, bodies[i], pt)
         sb = _project_s(eb, bodies[j], pt)
         if abs(ea.elevation(sa)[0] - eb.elevation(sb)[0]) >= min_gap - 1e-6:
@@ -134,6 +133,10 @@ def check_body_overlaps_tree(tree: etree._ElementTree, min_area: float = 1.0,
 
 def _project_s(road: RoadEval, body, pt) -> float:
     """s of the reference-line point nearest pt."""
+    return float(min(road.length, _reference_line(road).project(pt)))
+
+
+def _reference_line(road: RoadEval) -> LineString:
+    """The reference line sampled every SAMPLE_STEP."""
     s = np.linspace(0.0, road.length, max(2, math.ceil(road.length / SAMPLE_STEP) + 1))
-    line = LineString([road.reference(float(v))[:2] for v in s])
-    return float(min(road.length, line.project(pt)))
+    return LineString(road.references(s)[:, :2])

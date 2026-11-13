@@ -21,15 +21,16 @@ PathLike = Union[str, Path]
 
 
 def validate_schema(
-    xodr_path: PathLike, xsd_path: Optional[PathLike] = None
+    xodr_path: PathLike, xsd_path: Optional[PathLike] = None, doc: Optional[etree._ElementTree] = None,
 ) -> Optional[list[str]]:
-    """Return schema errors (empty list if valid), or None if no XSD is configured."""
+    """Return schema errors (empty list if valid), or None if no XSD is configured.
+    doc: the file already parsed."""
     xsd_path = xsd_path or os.environ.get(XSD_ENV_VAR)
     if not xsd_path:
         log.warning("no OpenDRIVE XSD configured (set %s); skipping schema check", XSD_ENV_VAR)
         return None
     schema = etree.XMLSchema(etree.parse(str(xsd_path)))
-    doc = etree.parse(str(xodr_path))
+    doc = doc if doc is not None else etree.parse(str(xodr_path))
     if schema.validate(doc):
         return []
     return [f"line {e.line}: {e.message}" for e in schema.error_log]

@@ -16,14 +16,14 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 from lxml import etree
 
 from roadgen.config import DEFAULTS
 from roadgen.metrics.geometry import road_peak
-from roadgen.validate.continuity import RoadEval
+from roadgen.validate.continuity import RoadEval, road_evals
 
 A_LAT_MAX = DEFAULTS["design"]["a_lat_max"]  # [m/s^2]
 MAX_RESULTANT = DEFAULTS["design"]["max_resultant_grade"]  # rise / run
@@ -41,12 +41,13 @@ def check_dynamics(xodr_path: PathLike, a_lat_max: float = A_LAT_MAX,
 
 
 def check_dynamics_tree(tree: etree._ElementTree, a_lat_max: float = A_LAT_MAX,
-                        connecting: bool = True) -> list[str]:
+                        connecting: bool = True, evals: Optional[dict[str, RoadEval]] = None) -> list[str]:
     errors = []
+    evals = evals if evals is not None else road_evals(tree)
     for r in tree.getroot().findall("road"):
         if not connecting and r.get("junction", "-1") != "-1":
             continue
-        road = RoadEval(r)
+        road = evals[r.get("id")]
         _, a = road_peak(road, SAMPLE_STEP)
         if a > a_lat_max + TOLERANCE:
             errors.append(f"road {road.id}: needs {a:.2f} m/s^2 of lateral acceleration at its posted "
@@ -60,17 +61,18 @@ def check_resultant_grade(xodr_path: PathLike, max_resultant: float = MAX_RESULT
 
 
 def check_resultant_grade_tree(tree: etree._ElementTree, max_resultant: float = MAX_RESULTANT,
-                               step: float = 1.0) -> list[str]:
+                               step: float = 1.0, evals: Optional[dict[str, RoadEval]] = None) -> list[str]:
     """Normal roads whose banking makes the resultant slope sqrt(grade^2 + e^2)
     steeper than max_resultant, or than the grade alone where that is steeper:
     the builder banks a curve on a grade only as far as the resultant allows.
     The bank_ramp_length next to a junction end is left out: there the road's
     cross slope blends into the junction plane's (at most junction_max_grade)."""
     errors = []
+    evals = evals if evals is not None else road_evals(tree)
     for r in tree.getroot().findall("road"):
         if r.get("junction", "-1") != "-1" or r.find("lateralProfile/superelevation") is None:
             continue
-        road = RoadEval(r)
+        road = evals[r.get("id")]
         lo = BANK_RAMP if _at_junction(r, "predecessor") else 0.0
         hi = road.length - (BANK_RAMP if _at_junction(r, "successor") else 0.0)
         worst = None
