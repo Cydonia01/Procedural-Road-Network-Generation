@@ -133,7 +133,7 @@ def test_pipeline_writes_lane_plot_and_only_driven_lanes(tmp_path):
 
 
 def test_lane_step_follows_the_lane_on_curves():
-    from roadgen.sim.drive_check import STEP, _lane_step
+    from roadgen.sim.drive_check import STEP, _lane_steps
 
     xml = ('<road id="1" length="100" junction="-1"><planView><geometry s="0" x="0" y="0" hdg="0" length="100">'
            '<arc curvature="0.05"/></geometry></planView><lanes><laneSection s="0"><left><lane id="1" '
@@ -141,11 +141,12 @@ def test_lane_step_follows_the_lane_on_curves():
            'type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3.5" b="0" c="0" '
            'd="0"/></lane></right></laneSection></lanes></road>')
     evals = {1: RoadEval(etree.fromstring(xml))}
-    inner = _lane_step(evals, (1, 1, 10.0), (1, 1, 10.0 + STEP))  # left lane: inside of a left curve
-    outer = _lane_step(evals, (1, -1, 10.0), (1, -1, 10.0 + STEP))
+    (inner,) = _lane_steps(evals, [(1, 1, 10.0), (1, 1, 10.0 + STEP)])  # left lane: inside of a left curve
+    (outer,) = _lane_steps(evals, [(1, -1, 10.0), (1, -1, 10.0 + STEP)])
     assert inner == pytest.approx(STEP * (1 - 0.05 * 1.75), rel=1e-3)
     assert outer == pytest.approx(STEP * (1 + 0.05 * 1.75), rel=1e-3)
-    assert _lane_step(None, (1, 1, 0.0), (1, 1, STEP)) == STEP
+    assert _lane_steps(None, [(1, 1, 0.0), (1, 1, STEP)]) == [STEP]
+    assert _lane_steps(evals, [(1, 1, 0.0), (1, 5, STEP)]) == [STEP]  # a lane the road does not have
 
 
 @pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")

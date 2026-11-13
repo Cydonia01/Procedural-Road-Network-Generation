@@ -6,6 +6,7 @@ import argparse
 import dataclasses
 import json
 import logging
+import multiprocessing
 import os
 import re
 import statistics
@@ -14,7 +15,7 @@ import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional, Sequence, Union
+from typing import Callable, Iterator, Optional, Sequence, Union
 
 import yaml
 from lxml import etree
@@ -483,18 +484,24 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
                                              reports, na)
     errors += xodr_errors
     tree, evals = parsed if parsed is not None else (None, None)
-    if args.lane_plot and hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
+
+    # After the .xodr: the lane plot, the scene and the drive-check read only the built
+    # file and the graph, and none needs another's output: they run side by side.
+    def lane_plot() -> list:
         from roadgen.opendrive.plot import plot_xodr
 
         with timed("plot lanes"):
             plot_xodr(xodr, Path(f"{prefix}_hd.png"), tree=tree, evals=evals)
-    scenegraph = None
-    if args.ground:
-        scenegraph = Path(f"{prefix}_scene.osgt")
-        write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
+        return []
+
+    def scene() -> list:
+        scene_reports: list = []
+        write_scene(graph, layers, Path(f"{prefix}_scene.osgt"), args.cfg, args.seed, args.buildings,
                     hd.active_cross_section, xodr if xodr.exists() and graph.has_elevation else None,
-                    junction_fills(xodr, fill), reports, na, tree, evals)
-    elif args.buildings:
+                    junction_fills(xodr, fill), scene_reports, na, tree, evals)
+        return scene_reports
+
+    def buildings() -> list:
         from roadgen.scene.buildings import BuildingParams, building_mesh
         from roadgen.scene.osgt import Mesh, write_osgt
 
@@ -508,14 +515,72 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
             write_osgt(scenegraph, [Mesh("buildings", tris, normals, tuple(params.color)),
                                     *fill_meshes(junction_fills(xodr, fill), args.cfg)])
         log.info("wrote %s (%d buildings)", scenegraph, n)
-    if args.drive_check and not errors:
+        return []
+
+    def drive_check() -> list:
         with timed("drive-check"):
             failed = ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
-        reports.append(stages.StageReport("drive-check", failed))
-        errors += failed
+        return [stages.StageReport("drive-check", failed)]
+
+    tasks = {}
+    if args.lane_plot and hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
+        tasks["lane plot"] = lane_plot
+    if args.ground:
+        tasks["scene"] = scene
+    elif args.buildings:
+        tasks["buildings"] = buildings
+    if args.drive_check and not errors:
+        tasks["drive-check"] = drive_check
+    with timed("after the xodr"):
+        for name, (task_reports, crash) in run_side_by_side(tasks).items():  # in the order of tasks
+            reports += task_reports
+            if name == "drive-check":
+                errors += [e for r in task_reports for e in r.errors]
+            if crash is not None:
+                errors.append(crash)
     log.info("validation: %s", stages.summary(reports))
     log.info("pipeline %s (%s)", "FAILED" if errors else "passed", prefix)
     return 1 if errors else 0
+
+
+def run_side_by_side(tasks: dict[str, Callable[[], list]]) -> dict[str, tuple[list, Optional[str]]]:
+    """Run independent tasks (each returns a list of StageReports) in forked processes at
+    once and return (reports, None) by name, in the order of tasks; ([], error) for a
+    task that raised or died. A forked child shares the parent's memory (parsed .xodr,
+    graph, maps), so nothing is pickled but the reports; one task alone, or a platform
+    without fork, runs here one after another."""
+    if len(tasks) < 2 or "fork" not in multiprocessing.get_all_start_methods():
+        return {name: _guarded(name, task) for name, task in tasks.items()}
+    ctx = multiprocessing.get_context("fork")
+    running = {}
+    for name, task in tasks.items():
+        recv, send = ctx.Pipe(duplex=False)
+        proc = ctx.Process(target=_send_reports, args=(name, task, send), name=name)
+        proc.start()
+        send.close()
+        running[name] = (proc, recv)
+    out = {}
+    for name, (proc, recv) in running.items():
+        try:
+            out[name] = recv.recv()
+        except EOFError:  # the child died without a word (killed, out of memory)
+            out[name] = ([], f"{name}: the process ended without a result (exit code {proc.exitcode})")
+        proc.join()
+    return out
+
+
+def _guarded(name: str, task: Callable[[], list]) -> tuple[list, Optional[str]]:
+    """(task(), None), or ([], the error it raised), logged with its traceback."""
+    try:
+        return task(), None
+    except Exception as err:  # noqa: BLE001 - the pipeline fails with it
+        log.exception("%s failed", name)
+        return [], f"{name}: {err}"
+
+
+def _send_reports(name: str, task: Callable[[], list], send) -> None:
+    send.send(_guarded(name, task))
+    send.close()
 
 
 def outputs(args: argparse.Namespace, elevation: bool) -> None:

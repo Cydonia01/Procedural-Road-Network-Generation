@@ -91,13 +91,24 @@ class Records:
         """value() at every x of xs."""
         if not self.starts:
             return np.zeros(len(xs))
+        a, b, c, d, ds = self._at(xs)
+        return a + b * ds + c * ds * ds + d * ds ** 3
+
+    def slopes(self, xs: np.ndarray) -> np.ndarray:
+        """slope() at every x of xs."""
+        if not self.starts:
+            return np.zeros(len(xs))
+        _, b, c, d, ds = self._at(xs)
+        return b + 2 * c * ds + 3 * d * ds * ds
+
+    def _at(self, xs: np.ndarray) -> tuple[np.ndarray, ...]:
+        """(a, b, c, d, x - start) of the record covering each x."""
         if self._arrays is None:
             self._arrays = np.array(self.starts), np.array(self.coef)
         starts, coef = self._arrays
         idx = np.maximum(np.searchsorted(starts, xs + 1e-9, side="right") - 1, 0)
-        ds = xs - starts[idx]
         a, b, c, d = coef[idx].T
-        return a + b * ds + c * ds * ds + d * ds ** 3
+        return a, b, c, d, xs - starts[idx]
 
 
 @dataclass(frozen=True)
@@ -353,6 +364,37 @@ class RoadEval:
         along, left, _ = self._lateral(s)
         return (x + t * (along * math.cos(h) - left * math.sin(h)),
                 y + t * (along * math.sin(h) + left * math.cos(h)))
+
+    def lane_points(self, lane_id: int, ss: np.ndarray) -> np.ndarray:
+        """(x, y, z) of the lane centre at every station of ss, an (n, 3) array: lane_center
+        and lane_height on arrays. KeyError if the lane is missing where asked."""
+        ss = np.asarray(ss, dtype=float)
+        ref = self.references(ss)
+        t = self._lane_ts(lane_id, ss)
+        r = self.superelevation_records.values(ss)
+        p = np.arctan(self.elevation_records.slopes(ss))
+        along, left, up = -np.sin(r) * np.sin(p), np.cos(r), np.sin(r) * np.cos(p)
+        h = ref[:, 2]
+        return np.column_stack([ref[:, 0] + t * (along * np.cos(h) - left * np.sin(h)),
+                                ref[:, 1] + t * (along * np.sin(h) + left * np.cos(h)),
+                                self.elevation_records.values(ss) + t * up])
+
+    def _lane_ts(self, lane_id: int, ss: np.ndarray) -> np.ndarray:
+        """_lane_t at every station of ss."""
+        t = self.offset_records.values(ss)
+        idx = np.maximum(np.searchsorted(np.array(self._section_starts), ss + 1e-9, side="right") - 1, 0)
+        sign = -1 if lane_id < 0 else 1
+        for k in np.unique(idx):
+            at = idx == k
+            section = self._parsed_sections[k]
+            ds = ss[at] - section.s
+            for j in range(1, abs(lane_id) + 1):
+                widths = section.widths.get(sign * j)
+                if widths is None:
+                    raise KeyError(f"road {self.id}: lane {sign * j} not found")
+                w = widths.values(ds)
+                t[at] += sign * (w if j < abs(lane_id) else w / 2)
+        return t
 
     def lane_grade(self, lane_id: int, s: float) -> float:
         """d(lane height)/ds in the lane's RHT travel direction."""

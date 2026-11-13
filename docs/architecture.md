@@ -35,7 +35,9 @@ flowchart LR
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
 | Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
-`python -m cli pipeline` runs the stages in this order. Every stage also has
+`python -m cli pipeline` runs the stages in this order; the lane plot, the scene
+and the drive-check, which read only the built `.xodr` and the graph, run side by
+side ([pipeline](cli-reference.md#pipeline)). Every stage also has
 its own command ([CLI reference](cli-reference.md)), and is checked right after
 it runs ([stage checks](validation.md#stage-checks)).
 

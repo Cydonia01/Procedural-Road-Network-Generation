@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional, Union
 
+import numpy as np
 from lxml import etree
 
 from roadgen.opendrive.builder import sidecar_path
@@ -166,24 +167,54 @@ def _movements(lib: ctypes.CDLL, xodr_path: Path) -> list[DriveResult]:
     return results
 
 
-def _lane_step(evals: Optional[dict], before: tuple[int, int, float], after: tuple[int, int, float]) -> float:
-    """Length of the lane-centre path between two positions (road, lane, s), by our
-    evaluation of the .xodr: a chord on one road and lane; onto the next road, the chord
-    to where the first lane ends (right lanes travel along +s) plus the chord from where
-    the next one starts. STEP without an evaluation."""
-    if evals is None or before[0] not in evals or after[0] not in evals:
-        return STEP
-    try:
+def _lane_steps(evals: Optional[dict], where: list[tuple[int, int, float]]) -> list[float]:
+    """Length of the lane-centre path between each two consecutive positions (road, lane,
+    s) of where, by our evaluation of the .xodr: a chord on one road and lane; onto the
+    next road, the chord to where the first lane ends (right lanes travel along +s) plus
+    the chord from where the next one starts. STEP without an evaluation. The lane
+    centres are evaluated per road and lane on arrays (RoadEval.lane_points)."""
+    pairs = list(zip(where, where[1:]))
+    if evals is None:
+        return [STEP] * len(pairs)
+    asked: dict[tuple[int, int], set[float]] = {}
+    chords = []
+    for before, after in pairs:
+        if before[0] not in evals or after[0] not in evals:
+            chords.append(None)
+            continue
         if before[:2] == after[:2]:
-            return math.dist(evals[before[0]].lane_center(before[1], before[2]),
-                             evals[after[0]].lane_center(after[1], after[2]))
-        a, b = evals[before[0]], evals[after[0]]
-        exit_s = a.length if before[1] < 0 else 0.0
-        entry_s = 0.0 if after[1] < 0 else b.length
-        return (math.dist(a.lane_center(before[1], before[2]), a.lane_center(before[1], exit_s))
-                + math.dist(b.lane_center(after[1], entry_s), b.lane_center(after[1], after[2])))
+            ends = [(before, after)]
+        else:
+            exit_s = evals[before[0]].length if before[1] < 0 else 0.0
+            entry_s = 0.0 if after[1] < 0 else evals[after[0]].length
+            ends = [(before, (*before[:2], exit_s)), ((*after[:2], entry_s), after)]
+        for p, q in ends:
+            asked.setdefault(p[:2], set()).update((p[2], q[2]))
+        chords.append(ends)
+    centres = {key: _centres(evals[key[0]], key[1], sorted(ss)) for key, ss in asked.items()}
+    out = []
+    for ends in chords:
+        try:
+            out.append(STEP if ends is None else sum(
+                math.dist(centres[p[:2]][p[2]], centres[q[:2]][q[2]]) for p, q in ends))
+        except KeyError:  # the lane is missing there
+            out.append(STEP)
+    return out
+
+
+def _centres(road: RoadEval, lane: int, ss: list[float]) -> dict[float, tuple[float, float]]:
+    """s -> (x, y) of the lane centre, on one array; one s at a time if the lane is
+    missing somewhere (those s are left out)."""
+    try:
+        return dict(zip(ss, map(tuple, road.lane_points(lane, np.array(ss))[:, :2].tolist())))
     except (KeyError, ValueError):
-        return STEP
+        out = {}
+        for s in ss:
+            try:
+                out[s] = road.lane_center(lane, s)
+            except (KeyError, ValueError):
+                pass
+        return out
 
 
 def _full_width_run(road: etree._Element, lane: int, at_exit: bool = True) -> float:
@@ -228,9 +259,10 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: flo
     lib.RM_SetLanePosition(handle, m["from_road"], m["from_lane"], 0.0, s0, True)
     data = _PositionData()
     lib.RM_GetPositionData(handle, ctypes.byref(data))
-    route, prev = [data.roadId], (data.x, data.y)
-    where = (data.roadId, data.laneId, data.s)
-    max_jump, min_rc = 0.0, 0
+    route = [data.roadId]
+    where = [(data.roadId, data.laneId, data.s)]  # esmini's positions, start included
+    xy = [(data.x, data.y)]
+    min_rc = 0
     entry_lane = None
     # Through the junction however long its connecting road is, then a bit further.
     drive_on = DRIVE_ON if target_run is None else max(STEP, min(DRIVE_ON, target_run - STEP))
@@ -241,16 +273,17 @@ def _drive(lib: ctypes.CDLL, m: dict, road_length: float, connecting_length: flo
             break  # the target road is a short dead end: the movement is done
         min_rc = min(min_rc, rc)
         lib.RM_GetPositionData(handle, ctypes.byref(data))
-        expected = _lane_step(evals, where, (data.roadId, data.laneId, data.s))
-        max_jump = max(max_jump, abs(math.hypot(data.x - prev[0], data.y - prev[1]) - expected))
-        where = (data.roadId, data.laneId, data.s)
+        where.append((data.roadId, data.laneId, data.s))
+        xy.append((data.x, data.y))
         if data.roadId != route[-1]:
             route.append(data.roadId)
             # The target road may be short (e.g. a ring spur), so read the lane
             # on entry rather than after the full drive distance.
             if len(route) == 3:
                 entry_lane = data.laneId
-        prev = (data.x, data.y)
+    # Each step against the lane's own path length between the two positions.
+    expected = _lane_steps(evals, where)
+    max_jump = max((abs(math.dist(p, q) - e) for p, q, e in zip(xy, xy[1:], expected)), default=0.0)
     return DriveResult(m, route, entry_lane, max_jump, min_rc)
 
 
@@ -314,7 +347,8 @@ def _drive_lane(lib: ctypes.CDLL, road, lane: int) -> LaneDriveResult:
     handle = lib.RM_CreatePosition()
     lib.RM_SetLanePosition(handle, rid, lane, 0.0, s0, True)
     data = _PositionData()
-    max_dev, left, min_rc = 0.0, False, 0
+    left, min_rc = False, 0
+    seen = []  # esmini's (s, x, y, z) on the lane
     # esmini moves along the lane centre, which is shorter or longer than the
     # reference line on curves: stop by s, a step before the road's end.
     for k in range(4 * math.ceil(road.length / LANE_STEP) + 4):
@@ -325,10 +359,13 @@ def _drive_lane(lib: ctypes.CDLL, road, lane: int) -> LaneDriveResult:
         if data.roadId != rid or data.laneId != lane:
             left = True
             break
-        x, y = road.lane_center(lane, data.s)
-        z = road.lane_height(lane, data.s)
-        max_dev = max(max_dev, math.hypot(data.x - x, data.y - y), abs(data.z - z))
+        seen.append((data.s, data.x, data.y, data.z))
         remaining = road.length - data.s if forward else data.s
         if remaining < 2 * LANE_STEP:
             break
+    max_dev = 0.0
+    if seen:  # against our lane centre at the same s, on one array
+        got = np.array(seen)
+        ours = road.lane_points(lane, got[:, 0])
+        max_dev = float(max(np.hypot(*(got[:, 1:3] - ours[:, :2]).T).max(), np.abs(got[:, 3] - ours[:, 2]).max()))
     return LaneDriveResult(rid, lane, road.length, max_dev, left, min_rc)
