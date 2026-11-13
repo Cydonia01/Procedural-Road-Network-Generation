@@ -54,7 +54,7 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
 `maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
-`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scene`, `ground`, `buildings`, `esmini`.
+`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `scene`, `ground`, `structures`, `buildings`, `esmini`.
 
 Parameters are layered. Each layer overrides the one before it:
 
@@ -266,12 +266,13 @@ metrics are explained in
 
 ```bash
 python -m cli ground [OUT.osgt] --map-file elevation=E.npz [--map-file terrain=T.npz] \
-    [--graph NET.json [--buildings]] [--seed N] [--junction-margin M]          # default: scene.osgt
+    [--xodr NET.xodr] [--graph NET.json --buildings] [--seed N]               # default: scene.osgt
 ```
 
-A ground mesh from the maps. `--graph` (a draped network) levels it under the
-roads, and `--buildings` adds that network's buildings. `--junction-margin`
-must match the `.xodr`. Parameters go in `ground:`. See [3D scene](scene.md).
+A ground mesh from the maps. `--xodr` (built from a draped network) cuts the
+ground around its roads and its sidecar's junction fills, and adds bridge
+decks, piers and tunnel portals; `--buildings` adds the `--graph`'s
+buildings. Parameters go in `ground:` and `structures:`. See [3D scene](scene.md).
 
 ## view
 

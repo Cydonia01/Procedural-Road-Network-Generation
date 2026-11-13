@@ -1,10 +1,11 @@
 # 3D scene
 
-esmini draws only the roads. `roadgen/scene/` adds the ground and simple
-buildings around them, as an OpenSceneGraph file esmini loads as its
-`SceneGraphFile`. All of it uses the same [fitted roads](geometry.md#fitted-roads),
-junction trims and [heights](heights.md) as the builder, so nothing covers or
-floats over a road.
+esmini draws only the roads. `roadgen/scene/` adds the ground, bridge and
+tunnel structures and simple buildings around them, as an OpenSceneGraph
+file esmini loads as its `SceneGraphFile`. The ground and the structures
+follow the built `.xodr` itself (what esmini draws), the buildings the
+[fitted roads](geometry.md#fitted-roads), so nothing covers or floats over a
+road.
 
 ```bash
 python -m cli pipeline lsystem --set start=[0,0] --set extent=[1000,320] --buildings -o city
@@ -15,43 +16,64 @@ python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osg
 | Option | Writes | Contents |
 |--------|--------|----------|
 | `pipeline --buildings` | `PREFIX_buildings.osgt` | Buildings only |
-| `pipeline --ground` (needs an elevation map) | `PREFIX_scene.osgt` | Ground, plus the buildings with `--buildings` |
-| `ground` command | `scene.osgt` | The same, from map files and a draped graph ([CLI](cli-reference.md#ground)) |
+| `pipeline --ground` (needs an elevation map) | `PREFIX_scene.osgt` | Ground, bridges and tunnels, plus the buildings with `--buildings` |
+| `ground` command | `scene.osgt` | The same, from map files and a built `.xodr` ([CLI](cli-reference.md#ground)) |
 
 esmini takes a single SceneGraphFile, so ground and buildings share one
 file. `view --scenegraph` shows it with the roads.
 
 ## Ground
 
-`ground.py`, parameters under `ground:`.
+`ground.py` and `surface.py`, parameters under `ground:`.
 
-- **Mesh.** The elevation map becomes a triangle mesh every `cell_size`
-  (20 m), coloured by terrain class, each vertex the mean over a 3 × 3 patch
-  of samples, so shores blend instead of stepping cell by cell.
-- **Levelling.** The mesh is levelled `below_road` (0.3 m) under every road
-  and junction area. It follows the same fitted roads, junction trims,
-  junction planes and profile fit as the builder; a KD-tree finds the
-  nearest point of each road.
-  - Every vertex of a triangle that touches a road is levelled: out to
-    `road_margin` (2 m) beyond the edge plus a cell diagonal.
-  - Banking is followed across the road only; beyond the edge the ground
-    stays at the edge's height.
-  - On sag curves a vertex goes down by as much as the road dips below the
-    chord to the next vertex along it.
-  - Last, every triangle that still covers a sample of a road surface (every
-    `cell_size` / 8 along each road, at five offsets across it, and on each
-    junction plane) has its corners pressed down below it.
+- **Road surfaces.** `surface.py` reads the built `.xodr`: for every road
+  and connecting road, its outer edges every 2 m, with their heights from
+  the elevation profile, the superelevation and the lane `<height>` that
+  raises curbs and sidewalks. The strips between the edges (outside bridges
+  and tunnels) and the junction fills make up the footprint.
+- **Mesh.** The elevation map becomes a grid every `cell_size` (20 m). A
+  cell a road or the shoreline crosses is triangulated again (constrained
+  Delaunay) over the part outside the roads; the other cells keep their two
+  triangles. Points of a cell shared with its neighbour get one vertex.
+- **Footprint cut.** No triangle lies over a road. The ground meets each road
+  along its outer edge, `below_road` (0.03 m) below the edge's height, and
+  reaches `under_road` (0.2 m) in under it, so no gap shows where esmini
+  draws a curved edge as chords. Sidewalks meet the ground at their top;
+  esmini draws the curb face between them and the lanes.
+- **Side slopes.** Within `slope_reach` (40 m) of a road edge the ground
+  stays within `side_slope` (0.5, i.e. 1:2) times the distance of the edge's
+  height: an embankment where the road runs above the land, a cut where it
+  runs below. Water is only ever lowered.
 - **Bridges.** Land under a bridge is lowered to `under_bridge` (2 m) below
-  the deck, never raised. The ground over tunnels is left alone.
-- **Check.** The pipeline logs how many road-surface samples the ground
-  covers (`poke_through`); a warning if any.
-- **With HD maps** (the default; not with `--no-hd`) the levelling reaches the roads' outer
-  edges, sidewalks and shoulders included, and uses the same wider junction
-  trims as the build. Curbs and sidewalks are raised in the `.xodr` itself
-  (`<height>`), which esmini draws.
+  the deck, never raised. The ground over tunnels is left alone. Neither is
+  cut out.
+- **Shoreline.** The water area is the union of the terrain map's water
+  cells, rounded by a closing and an opening `shore_smoothing` cells wide,
+  simplified and corner-cut, so the raster's stair steps become a smooth
+  line. Cells it crosses are split along it: water colour on one side, land
+  colour on the other. Land and vegetation still blend over a cell.
+- **Check.** The pipeline logs how many samples of the driven surface (every
+  2 m along each road, at a quarter, half and three quarters across) the
+  ground covers (`poke_through`); a warning if any. A test holds it at 0.
+- **Without HD maps** (`--no-hd`) the outer edges are the driving lanes'.
+- The `ground` command needs the `.xodr` (`--xodr`) to cut the ground;
+  without it the mesh follows the elevation map only.
 
-The junction trims must match the `.xodr`, so pass `ground` the same
-`--junction-margin` as the build.
+## Structures
+
+`structures.py`, parameters under `structures:` (`enabled: false` leaves
+them out). esmini draws a bridge as a road surface in the air and a tunnel as
+a road under the ground.
+
+- **Decks.** Under each `<objects><bridge>` stretch, a deck `deck_depth`
+  (1 m) thick, its sides rising `parapet` (1 m) above the road's outer edges.
+- **Piers.** Every `pier_spacing` (30 m) along a longer bridge, a pier
+  `pier_size` (1.5 m) thick and half the deck wide, from below the ground to
+  the deck; none on another road, none where the deck is less than 1 m above
+  the ground.
+- **Tunnel portals.** At both ends of each `<tunnel>` stretch, two walls
+  beside the road and a lintel `portal_clearance` (5 m) above it, each
+  `portal_frame` (1 m) thick.
 
 ## Junction surface
 

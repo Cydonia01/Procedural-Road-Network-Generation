@@ -415,7 +415,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
             raise SystemExit("error: --ground needs an elevation map (--maps, --elevation or --map-file)")
         scenegraph = Path(f"{prefix}_scene.osgt")
         write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
-                    args.junction_margin, hd.active_cross_section, fills=junction_fills(xodr, fill))
+                    hd.active_cross_section, xodr if xodr.exists() and graph.has_elevation else None,
+                    junction_fills(xodr, fill))
     elif args.buildings:
         from roadgen.scene.buildings import BuildingParams, building_mesh
         from roadgen.scene.osgt import Mesh, write_osgt
@@ -453,38 +454,43 @@ def fill_meshes(fills: list, cfg: dict) -> list:
 
 
 def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
-                seed: int, buildings: bool, junction_margin: float, cross_section=None,
+                seed: int, buildings: bool, cross_section=None, xodr: Optional[Path] = None,
                 fills: Optional[list] = None) -> None:
-    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile; with a
-    cross-section (HD maps) levelled under the side lanes, buildings behind them."""
+    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile. With the
+    built .xodr of a draped network the ground is cut around its roads (and the junction
+    fills), and bridges and tunnels get their structures; with a cross-section (HD maps)
+    buildings stand behind the side lanes."""
+    import numpy as np
+
     from roadgen.scene.buildings import BuildingParams, building_mesh
-    from roadgen.scene.ground import (
-        GroundParams,
-        ground_heights,
-        mesh_from_heights,
-        poke_through,
-    )
+    from roadgen.scene.ground import GroundParams, ground_mesh, poke_through
     from roadgen.scene.osgt import Mesh, write_osgt
+    from roadgen.scene.structures import StructureParams, structure_mesh
+    from roadgen.scene.surface import read_surfaces
 
     elevation, terrain = layers["elevation"], layers.get("terrain")
-    ground, design = GroundParams(**section(cfg, "ground")), DesignParams(**section(cfg, "design"))
+    params = GroundParams(**section(cfg, "ground"))
     with timed("scene"):
-        x, y, z = ground_heights(elevation, graph, ground, terrain, junction_margin, design, cross_section)
-        if graph.has_elevation:
-            try:
-                samples, covered, worst = poke_through(x, y, z, graph, junction_margin, design, cross_section)
-                (log.warning if covered else log.info)(
-                    "ground: %d of %d road-surface samples under the ground (worst %.2f m)",
-                    covered, samples, worst)
-            except ValueError as err:
-                log.warning("ground: poke-through not checked (%s)", err)
-        meshes = [mesh_from_heights(x, y, z, terrain, ground.cell_size), *fill_meshes(fills or [], cfg)]
+        surfaces = read_surfaces(xodr, fills) if xodr is not None else None
+        ground = ground_mesh(elevation, terrain, surfaces, params)
+        meshes = [ground.indexed(), *fill_meshes(fills or [], cfg)]
+        if surfaces is not None:
+            samples, covered, worst = poke_through(ground, surfaces, params)
+            (log.warning if covered else log.info)(
+                "ground: %d of %d road-surface samples under the ground (worst %.2f m)", covered, samples, worst)
+            structures = StructureParams(**section(cfg, "structures"))
+            if structures.enabled and surfaces.spans:
+                def heights(px: np.ndarray, py: np.ndarray) -> np.ndarray:
+                    h = ground.height(px, py)
+                    return np.where(np.isnan(h), elevation.sample(px, py), h)
+
+                meshes.append(structure_mesh(surfaces, heights, structures)[0])
         n = 0
         if buildings:
-            params = BuildingParams(seed=seed, **section(cfg, "buildings"))
-            tris, normals, n = building_mesh(graph, params, elevation, terrain, cross_section,
+            bp = BuildingParams(seed=seed, **section(cfg, "buildings"))
+            tris, normals, n = building_mesh(graph, bp, elevation, terrain, cross_section,
                                              layers.get("population"))
-            meshes.append(Mesh("buildings", tris, normals, tuple(params.color)))
+            meshes.append(Mesh("buildings", tris, normals, tuple(bp.color)))
         write_osgt(path, meshes)
     log.info("wrote %s (ground%s)", path, f" + {n} buildings" if buildings else "")
 
@@ -550,9 +556,13 @@ def cmd_ground(args: argparse.Namespace) -> int:
     layers = load_layers(args.map_file)
     if "elevation" not in layers:
         raise SystemExit("error: ground needs --map-file elevation=FILE.npz")
+    if args.buildings and not args.graph:
+        raise SystemExit("error: ground --buildings needs --graph")
     graph = load_json(args.graph) if args.graph else RoadGraph()
+    xodr = Path(args.xodr) if args.xodr else None
     write_scene(graph, layers, artifact(args, args.output, Path("out") / "scene.osgt"), args.cfg, args.seed,
-                args.buildings and bool(graph.edges), args.junction_margin)
+                args.buildings and bool(graph.edges), xodr=xodr,
+                fills=junction_fills(xodr, section(args.cfg, "scene")["junction_fill"]) if xodr else None)
     return 0
 
 
@@ -925,17 +935,15 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("-o", "--output", help="output RoadGraph JSON (default: <input>.annotated.json)")
     p.set_defaults(func=cmd_annotate)
 
-    p = sub.add_parser("ground", help="3D ground mesh (.osgt) from maps, levelled under a network")
+    p = sub.add_parser("ground", help="3D ground mesh (.osgt) from maps, cut around a network's roads")
     p.add_argument("output", nargs="?", help="output .osgt (default: scene.osgt)")
     p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz", required=True,
                    help="elevation map (required) and terrain map (colors), repeatable")
-    p.add_argument("--graph", help="draped RoadGraph JSON: ground is levelled under its roads")
+    p.add_argument("--xodr", help="built .xodr of a draped network: the ground is cut around its roads "
+                                  "(and its sidecar's junction fills), with bridge and tunnel structures")
+    p.add_argument("--graph", help="RoadGraph JSON, for --buildings")
     p.add_argument("--buildings", action="store_true", help="add the --graph's buildings")
     p.add_argument("--seed", type=int, default=cfg["seed"], help="building heights (default %(default)s)")
-    p.add_argument(
-        "--junction-margin", type=float, default=margin,
-        help="as used for the .xodr [m] (default %(default)s)",
-    )
     p.set_defaults(func=cmd_ground)
 
     p = sub.add_parser("maps", help="list map generators (terrain, elevation, population)")

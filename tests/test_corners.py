@@ -17,10 +17,12 @@ from roadgen.geometry.grade_separation import find_crossings, separate
 from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.maps.drape import drape
+from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.plot import lane_polygons
 from roadgen.scene.buildings import BuildingParams, footprints
-from roadgen.scene.ground import GroundParams, ground_heights
+from roadgen.scene.ground import GroundParams, ground_mesh
+from roadgen.scene.surface import read_surfaces
 from tests.grids import GRID_CLI
 from tests.test_elevation import GRID, elevation, terrain
 from tests.test_grade_separation import crossing_graph
@@ -99,17 +101,23 @@ def _street(cross_section=None, y: float = 100.0) -> RoadGraph:
     return g
 
 
-def test_ground_is_levelled_under_the_sidewalks():
+def test_ground_meets_the_sidewalks_at_their_top(tmp_path):
     g = _street()
     hills = elevation(5.0)
-    p = GroundParams(cell_size=1.0, road_margin=0.0)
-    x, y, plain = ground_heights(hills, g, p)
-    _, _, wide = ground_heights(hills, g, p, cross_section=CS)
-    # 9 m off the centre line: beyond the driving lanes (3.5 m + 1 m cell), on the
-    # sidewalk band (3.5 + 2.2 parking + 0.15 curb + 2.0 sidewalk = 7.85 m + 1 m cell)
-    band = (np.abs(y - 100.0 - 8.5) < 0.5) & (x > 200.0) & (x < 400.0)
-    assert np.all(plain[band] == 5.0)
-    assert np.all(wide[band] < 1.0)
+    b = OpenDriveBuilder(hd=HdMapParams(enabled=True))
+    b.build(g)
+    b.write(tmp_path / "s.xodr")
+    surfaces = read_surfaces(tmp_path / "s.xodr")
+    mesh = ground_mesh(hills, surfaces=surfaces, params=GroundParams(cell_size=10.0))
+    # The cut reaches past the driving lanes, parking and curb to the sidewalk's outer edge
+    # (3.5 + 2.2 + 0.15 + 2.0 = 7.85 m off the centre line), less under_road.
+    p = GroundParams()
+    assert np.isnan(mesh.height(np.array([300.0]), np.array([100.0 + 7.6 - p.under_road]))).all()
+    assert np.isfinite(mesh.height(np.array([300.0]), np.array([100.0 + 7.9]))).all()
+    # There the ground meets the sidewalk's top: the road's 1 m plus 0.15 m, less below_road.
+    edge = mesh.vertices[np.abs(mesh.vertices[:, 1] - (107.85 - p.under_road)) < 0.05]
+    edge = edge[(edge[:, 0] > 200.0) & (edge[:, 0] < 400.0)]
+    assert len(edge) and np.allclose(edge[:, 2], 1.15 - p.below_road, atol=0.01)
 
 
 def test_bridges_span_the_whole_width():

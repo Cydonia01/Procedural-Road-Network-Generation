@@ -45,7 +45,7 @@ Repo layout:
                   schema.py
     metrics/      geometry.py, network.py, hdmap.py, sweep.py
     sim/          esmini.py, drive_check.py, screenshot.py
-    scene/        ground.py, buildings.py, parcels.py, junctions.py, osgt.py
+    scene/        surface.py, ground.py, structures.py, buildings.py, parcels.py, junctions.py, osgt.py
     config.py, history.py, defaults.yaml
   cli.py
   tests/

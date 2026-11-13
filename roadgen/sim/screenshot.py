@@ -108,6 +108,8 @@ def screenshot(png: PathLike, xodr: Optional[PathLike] = None, xosc: Optional[Pa
         cmd = [str(esmini_binary("esmini")), "--osc", str(scenario), "--window", "0", "0", *map(str, size),
                "--fixed_timestep", str(TIMESTEP), "--camera_mode", "custom",
                "--custom_fixed_camera", ",".join(f"{v:.3f}" for v in camera), "--capture_screen"]
+        if scenegraph is not None:  # esmini otherwise draws the scene file instead of the roads
+            cmd.append("--enforce_generate_model")
         if not os.environ.get("DISPLAY"):
             if not shutil.which("xvfb-run"):
                 raise RuntimeError("no DISPLAY and no xvfb-run: cannot render a screenshot")

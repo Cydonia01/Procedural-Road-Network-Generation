@@ -23,6 +23,7 @@ from roadgen.opendrive.lights import TrafficLightParams
 from roadgen.opendrive.marks import RoadMarkParams
 from roadgen.scene.buildings import BuildingParams
 from roadgen.scene.ground import GroundParams
+from roadgen.scene.structures import StructureParams
 
 
 @pytest.mark.parametrize("params_type, keys", [
@@ -30,6 +31,7 @@ from roadgen.scene.ground import GroundParams
     (BuildingParams, ("buildings",)),
     (DrapeParams, ("drape",)),
     (GroundParams, ("ground",)),
+    (StructureParams, ("structures",)),
     (GeometryMetricsParams, ("metrics",)),
     (NetworkMetricsParams, ("network_metrics",)),
     (DesignParams, ("design",)),

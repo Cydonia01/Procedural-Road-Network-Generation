@@ -265,11 +265,24 @@ scene:  # what the scene file (.osgt) draws besides ground and buildings (roadge
   asphalt_color: [0.317, 0.317, 0.317]  # mean of esmini's resources/models/asphalt.jpg
   fill_below: 0.02          # the fill sits this far under the lanes [m]
 
-ground:  # 3D ground mesh from the maps for esmini (`pipeline --ground`, `ground`)
+ground:  # 3D ground mesh from the maps for esmini, cut around the roads (`pipeline --ground`, `ground`)
   cell_size: 20.0          # mesh resolution [m]
-  road_margin: 2.0         # ground levelled this far beyond each road's edge [m]
-  below_road: 0.3          # ground under roads and junctions sits this far down [m]
+  below_road: 0.03         # the ground meets the roads' outer edges this far down [m]
+  under_road: 0.2          # ... and reaches this far in under them (esmini draws curves as chords) [m]
+  side_slope: 0.5          # steepest embankment or cut beside a road (rise / run; 0.5 = 1:2)
+  slope_reach: 40.0        # ... within this distance of a road edge [m]
   under_bridge: 2.0        # land under a bridge stays this far below its deck [m]
+  shore_smoothing: 1.0     # shoreline rounded with a radius of this many terrain cells
+
+structures:  # bridge decks, piers and tunnel portals in the scene (roadgen/scene/structures.py)
+  enabled: true
+  deck_depth: 1.0          # deck below the road surface [m] (grade_separation clearance: 5 m + 1 m deck)
+  parapet: 1.0             # deck sides above the road's outer edges [m]
+  pier_spacing: 30.0       # distance between piers along a bridge [m]
+  pier_size: 1.5           # pier thickness along the bridge [m]
+  portal_clearance: 5.0    # lintel above the road at a tunnel portal [m]
+  portal_frame: 1.0        # thickness of a portal's walls and lintel [m]
+  color: [0.62, 0.62, 0.6] # concrete, RGB in [0, 1]
 
 opendrive:
   junction_margin: 2.0  # extra clearance between junction center region and roads [m]

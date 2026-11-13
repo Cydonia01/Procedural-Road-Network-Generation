@@ -33,7 +33,7 @@ flowchart LR
 | Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` (shape from `roadgen/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
 | Validate | `RoadGraph` / `.xodr` → errors | `roadgen/validate/` | [Validation](validation.md) |
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
-| Scene | `RoadGraph` + maps → ground, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
+| Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
 
 `python -m cli pipeline` runs the stages in this order. Every stage also has
 its own command ([CLI reference](cli-reference.md)).
@@ -173,7 +173,9 @@ roadgen/
     drive_check.py         driving every movement and lane with esmini's RoadManager
     screenshot.py          still images rendered by esmini (view --screenshot), headless via xvfb-run
   scene/
-    ground.py              ground mesh from the maps, levelled under the roads
+    surface.py             road surfaces of the built .xodr (outer edges with heights, bridges, tunnels)
+    ground.py              ground mesh from the maps, cut around the road surfaces, smooth shoreline
+    structures.py          bridge decks, piers and tunnel portals
     buildings.py           extruded building blocks
     junctions.py           junction surface no lane covers, drawn in asphalt
     parcels.py             blocks split into parcels, one building each, heights from population
@@ -199,5 +201,5 @@ per successful command
 | `net_hd.png` | `pipeline --lane-plot` (HD maps on), `plot-xodr` | The built lanes coloured by type, with their marks ([plot-xodr](cli-reference.md#plot-map-plot-graph-plot-xodr)) |
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
 | `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
-| `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh plus buildings |
+| `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh, bridge and tunnel structures, junction surface, buildings |
 | `run.yaml` | every recorded command | The command and every parameter that differs from the defaults |
