@@ -4,8 +4,9 @@
 
 Independent checks run on the RoadGraph, on the written `.xodr`, and by
 driving the network with esmini's own road logic. `pipeline` and
-`build-xodr` run all of them except drive-check (opt-in), and fail if any
-reports an error.
+`build-xodr` run all of them except drive-check, and fail if any reports
+an error. `pipeline` also runs the drive-check by default
+(`--no-drive-check` leaves it out).
 
 | Check | Runs on | When | Code |
 |-------|---------|------|------|
@@ -18,7 +19,7 @@ reports an error.
 | [Clearance](#clearance) | `.xodr` | always | `validate/clearance.py` |
 | [HD-map content](#hd-map-content) | `.xodr` | with HD maps on | `validate/hdmap.py` |
 | [XSD schema](#xsd-schema) | `.xodr` | only with `OPENDRIVE_XSD` or `--xsd` | `validate/schema.py` |
-| [Drive-check](#drive-check) | `.xodr` + sidecar | `drive-check`, `pipeline --drive-check` | `sim/drive_check.py` |
+| [Drive-check](#drive-check) | `.xodr` + sidecar | `drive-check`, `pipeline` (default) | `sim/drive_check.py` |
 
 ### Traffic connectivity
 
@@ -88,8 +89,7 @@ contact point within:
 | Grade in the travel direction | 0.01 |
 
 A connecting-road lane without a lane link is an error, unless it is 0 m
-wide at that end (a side lane of a [corner road](opendrive.md#lanes) that only
-one of its arms has).
+wide at that end.
 
 **Inside a road**, across every lane-section boundary:
 
@@ -149,8 +149,7 @@ logged as warnings: they are the generator's layout, not a broken file.
 *Is the HD-map content consistent?* Runs in `pipeline` and `build-xodr`
 with HD maps on.
 
-- **No marks inside junctions:** a connecting road (corner roads included)
-  has no `<roadMark>`.
+- **No marks inside junctions:** a connecting road has no `<roadMark>`.
 - **Mark records in order:** within each lane of a lane section, the road
   marks' `sOffset`s lie inside the section and strictly ascend, so every
   stretch of the lane has exactly one mark.
@@ -161,11 +160,11 @@ with HD maps on.
 - **Lane types along links:** a lane linked to the next lane section, or
   across a road-to-road link (a connecting road's ends too), keeps its type;
   every junction `<laneLink>` joins two lanes of the same type, so no
-  driving lane leads into a sidewalk or the other way round; and (sidecar)
+  driving lane leads into a non-driving lane or the other way round; and (sidecar)
   every lane of a movement's connecting road is a driving lane.
 - **Controlled approaches** (from the sidecar's `junctions`): every `stop`,
   `yield` or `signal` approach with incoming lanes has a stop or yield line
-  within 8 m of the road end (behind a crosswalk), and every `stop` and
+  within 8 m of the road end, and every `stop` and
   `yield` approach a 206 / 205 sign there, facing its traffic.
 - **Priority records** name two connecting roads of their own junction.
 - **Lights and controllers:** every light is in exactly one `<controller>`,

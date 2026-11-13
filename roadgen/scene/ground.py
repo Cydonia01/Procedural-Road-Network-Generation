@@ -9,8 +9,8 @@ the road surfaces of the built .xodr (roadgen.scene.surface):
   the roads, so the ground meets each road along its outer edge, at the
   edge's height less ``below_road``, reaching ``under_road`` in under the
   edge (esmini draws curved edges as chords; no gap shows between them and
-  the ground): sidewalks (raised by <height> in the .xodr) meet the ground at
-  their top, and no triangle lies over a road.
+  the ground), and no triangle lies over a road. A lane raised by <height>
+  would meet the ground at its top.
 - **Side slopes.** Within ``slope_reach`` of a road edge the ground is held
   between the edge's height plus and minus ``side_slope`` times the distance
   (embankment where the road runs above the land, cut where it runs below),

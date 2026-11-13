@@ -120,7 +120,7 @@ points (`roadgen/generators/hierarchy.py`, step `hierarchy: strokes`):
 
 Every edge of a stroke gets its class, lanes and speed, so lane counts change
 only at junctions with three or more roads. Arterials and collectors are
-`avenue` edges (side lanes, pockets, priority), local roads `street` edges.
+`avenue` edges (pockets, priority), local roads `street` edges.
 One-way edges (`oneway_pattern`) keep their direction with all lanes forward,
 and asymmetric lane tuples are oriented along the stroke.
 
@@ -247,7 +247,7 @@ a clean-up of dead ends after growth (Parish & Müller's "extend" rule).
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
 | `body_check` | true | Keep road bodies apart while growing |
-| `side_width` | 2.5 | Side lanes assumed beside each non-highway road [m] |
+| `side_width` | 2.5 | Room assumed beside each non-highway road's driving lanes while growing [m] |
 | `min_block_depth` | 15 | Extra gap between near-parallel roads [m] |
 | `parallel_deg` | 20 | Roads closer than this in heading are near-parallel [deg] |
 | `dead_ends` | true | Extend, trim or bulb the dead ends after growth |
@@ -256,7 +256,7 @@ a clean-up of dead ends after growth (Parish & Müller's "extend" rule).
 
 - **Bodies.** While growing, classes are not known yet, so every road but a
   highway or the ring is taken as a local road: half width = its driving
-  lanes plus `side_width`; highways get their lanes plus a 3 m shoulder.
+  lanes plus `side_width`; highways get their lanes plus 3 m.
   - A proposal passing within `snap_radius` of an existing node ends at that
     node (before a later crossing), so no road passes a dead end at a few
     centimetres.
@@ -490,5 +490,5 @@ python -m cli pipeline lsystem --preset city --maps \
 ```bash
 python -m cli pipeline lsystem --preset city --maps --set highway_crossings=separated
 python -m cli pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 \
-    --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 --ground
+    --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5
 ```

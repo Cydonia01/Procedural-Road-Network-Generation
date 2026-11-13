@@ -126,3 +126,26 @@ def test_cli_precedence_preset_config_params_set(tmp_path):
     assert p["angle_jitter_deg"] == 2.0  # --params beats --config
     assert p["lane_width"] == 3.75  # --set beats --params
     assert p["boundary"] == "ring"  # from the preset
+
+
+def test_every_preset_in_presets_yaml_builds_its_params():
+    """Polish N2: the presets live in roadgen/presets.yaml; each names fields of its
+    params class (keyed as in defaults.yaml) and builds."""
+    from roadgen.config import presets
+    from roadgen.generators.junction import JunctionLayoutParams
+    from roadgen.maps.elevation import FbmElevationParams
+    from roadgen.maps.population import CentersPopulationParams
+    from roadgen.maps.style import ZonesStyleParams
+    from roadgen.maps.terrain import NoiseTerrainParams
+    from roadgen.opendrive.control import JunctionControlParams
+
+    classes = {("generators", "lsystem"): LSystemParams, ("generators", "junction"): JunctionLayoutParams,
+               ("maps", "terrain", "noise"): NoiseTerrainParams, ("maps", "elevation", "fbm"): FbmElevationParams,
+               ("maps", "population", "centers"): CentersPopulationParams,
+               ("maps", "style", "zones"): ZonesStyleParams, ("junction_control",): JunctionControlParams}
+    for keys, cls in classes.items():
+        named = presets(*keys)
+        assert named and named == cls.PRESETS, keys
+        for name in named:
+            cls.preset(name)
+    assert presets("no", "such", "section") == {}

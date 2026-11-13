@@ -5,16 +5,6 @@ road's speed profile, records of what stands or is painted where: road,
 station s, offset t, orientation, catalogue code. The builder turns them into
 OpenDRIVE <signal> and <object> elements and numbers them.
 
-Crosswalks (B7): at the junction end of a road with sidewalks on both sides
-there, CROSSWALK_GAP before the road end, from curb to curb, 3 m deep on
-streets and 4 m on avenues and highways (CROSSWALK_DEPTH). At lights a
-Fussgaengerfurt on every arm: two solid lines 0.3 m wide along the
-crosswalk's edges, no sign. Without lights a zebra (Z 293: 0.5 m stripes and
-gaps) with sign 350-10 facing each direction of travel, only where
-JunctionControlParams.zebra allows it (by default avenue arms in the urban
-profile). Skipped where the road has too little room (CROSSWALK_ROOM), and
-at junctions without control.
-
 Per approach (a road end with incoming lanes), by its role:
 - stop: a stop line (roadMark object "stopLine": a solid white marking
   0.5 m deep across the approach lanes) and sign 206;
@@ -28,8 +18,8 @@ Per approach (a road end with incoming lanes), by its role:
 - major: sign 301 (priority at the next junction), PRIORITY_SIGN_DISTANCE
   before the road end (at most half the road), except on roundabout rings
   (the builder replaces it with 306 / 307 along runs of priority roads).
-The lines stand LINE_SETBACK before the road end, or STOP_GAP behind a
-crosswalk. Right before left and uncontrolled approaches get nothing.
+The lines stand LINE_SETBACK before the road end. Right before left and
+uncontrolled approaches get nothing.
 
 Along a road (B7), per direction of travel, except on roundabout rings and
 cul-de-sac loops:
@@ -43,10 +33,9 @@ cul-de-sac loops:
   deceleration lead before the corner (at least WARNING_MIN_LEAD), on the
   post above a 274 standing there.
 
-Lines and crosswalks are objects with an open outline across the road and
-<marking>s along it (the encoding esmini draws as paint, B0). Signs stand
-SIGN_OFFSET outside the carriageway edge (driving, parking, bike and shoulder
-lanes) at their station, facing their traffic, with a <validity> over its
+Lines and arrows are objects with an open outline and <marking>s along it
+(the encoding esmini draws as paint, B0). Signs stand SIGN_OFFSET outside the
+carriageway edge (driving lanes, pockets and medians) at their station, facing their traffic, with a <validity> over its
 lanes. German codes, country DE: subtype "-1" for codes without a DE
 subtype; 103, 105, 350 with theirs; 274 with an empty subtype and its value
 (esmini looks signs up as type[.subtype][-value], B0).
@@ -61,12 +50,6 @@ from typing import Callable, Optional
 from roadgen.opendrive.control import Control
 
 LINE_SETBACK = 1.0  # stop and yield lines this far before the road end [m]
-STOP_GAP = 1.0  # ... or this far behind a crosswalk [m]
-CROSSWALK_GAP = 0.5  # crosswalks this far before the road end [m]
-CROSSWALK_DEPTH = {"street": 3.0, "avenue": 4.0, "highway": 4.0}  # along the road [m]
-ZEBRA = 0.5  # stripes and gaps of a zebra (Z 293) [m]
-FURT_LINE = 0.3  # the two edge lines of a crossing at lights [m]
-CROSSWALK_ROOM = 2.0  # a crosswalk needs this much road beyond it and its stop line [m]
 SIGN_OFFSET = 0.5  # signs this far outside the carriageway edge [m]
 PRIORITY_SIGN_DISTANCE = 30.0  # sign 301 this far before the junction (towns) [m]
 SIGN_SIZE = 0.6  # sign face [m]
@@ -74,7 +57,7 @@ LIGHT_Z, OVERHEAD_Z = 3.0, 5.5  # light heads above the road: roadside and over 
 LIGHT_SIZE = (0.8, 0.3)  # light head height and width [m]
 LIGHT_TYPE = "1000001"  # OpenDRIVE three-lamp vehicle light (country "OpenDRIVE")
 STACK = 0.7  # a second sign on the same post sits this much higher [m]
-CARRIAGEWAY = frozenset({"driving", "pocket", "parking", "biking", "shoulder", "median"})
+CARRIAGEWAY = frozenset({"driving", "pocket", "median"})
 SPEED_AFTER_JUNCTION = 10.0  # speed sign this far after a junction [m]
 SPEED_SIGN_MIN_ROAD = 100.0  # ... on roads at least this long [m]
 SPEED_SIGN_SPACING = 20.0  # no speed sign after a junction this close to a change sign [m]
@@ -111,15 +94,13 @@ class ObjectRecord:
     road: int
     s: float  # [m]
     t: float  # [m], the object's centre
-    name: str  # stopLine | yieldLine | crosswalk
+    name: str  # stopLine | yieldLine | arrow
     half_span: float  # it reaches half_span either side of t [m]
     depth: float  # along the road [m]
     line: float  # dash length [m]; 0 = solid
     space: float  # gap [m]
     validity: Optional[tuple[int, int]]
     junction: int
-    type: str = "roadMark"  # OpenDRIVE object type: roadMark | crosswalk
-    edges: bool = False  # crosswalk at lights: two edge lines instead of zebra stripes
     segments: tuple = ()  # an arrow: polylines, each ((u, v), ...) in the object frame [m]
     hdg: float = 0.0  # object heading relative to the road (pi: for traffic against s) [rad]
 
@@ -137,6 +118,18 @@ class EndGeometry:
     carriageway_edge: Callable[[float], float]  # s -> |t| of the carriageway's outer edge, incoming side [m]
     setback: float = LINE_SETBACK  # stop and yield lines this far before the road end [m]
     pockets: tuple[int, ...] = ()  # incoming left-turn pocket lanes
+    lanes_at: Optional[Callable[[float], list]] = None  # the road's LaneLayout.lanes_at
+
+    def validity_at(self, s: float) -> tuple[int, int]:
+        """(innermost, outermost) incoming driving lane at station s (a lane added on the
+        approach may not exist yet); the road end's without lanes_at."""
+        lanes = list(self.in_lanes)
+        if self.lanes_at is not None:
+            side = 1 if lanes[0] > 0 else -1
+            here = [lid for lid, kind, t0, t1 in self.lanes_at(s)
+                    if kind == "driving" and (lid > 0) == (side > 0) and abs(t1 - t0) > 1e-6]
+            lanes = here or lanes
+        return min(lanes, key=abs), max(lanes, key=abs)
 
     @property
     def sign(self) -> int:
@@ -152,7 +145,7 @@ class EndGeometry:
 def carriageway_edge(lanes_at: Callable[[float], list], side: int) -> Callable[[float], float]:
     """s -> |t| of the carriageway's outer edge on one side (+1 left, -1 right) [m]."""
     def edge(s: float) -> float:
-        return max((abs(t1) for lid, kind, t0, t1, _ in lanes_at(s)
+        return max((abs(t1) for lid, kind, t0, t1 in lanes_at(s)
                     if (lid > 0) == (side > 0) and kind in CARRIAGEWAY and abs(t1 - t0) > 1e-9), default=0.0)
     return edge
 
@@ -160,87 +153,19 @@ def carriageway_edge(lanes_at: Callable[[float], list], side: int) -> Callable[[
 def end_geometry(end, length: float, lanes_at: Callable[[float], list],
                  setback: float = LINE_SETBACK) -> Optional[EndGeometry]:
     """EndGeometry of a builder RoadEnd (roadgen.opendrive.junctions), or None without
-    incoming lanes; lanes_at: the road's LaneLayout.lanes_at, (id, kind, inner t, outer t,
-    height) of every lane at a station."""
+    incoming lanes; lanes_at: the road's LaneLayout.lanes_at, (id, kind, inner t, outer t)
+    of every lane at a station."""
     lanes = tuple(end.in_lanes)
     if not lanes:
         return None
     side = 1 if lanes[0] > 0 else -1
     if end.cross:
-        edges = {lid: (t0, t1) for lid, kind, t0, t1, _ in end.cross if lid in lanes}
+        edges = {lid: (t0, t1) for lid, kind, t0, t1 in end.cross if lid in lanes}
     else:
         half = end.lane_width / 2
         edges = {lid: (end.lane_offset(lid) - side * half, end.lane_offset(lid) + side * half) for lid in lanes}
     return EndGeometry(end.road_id, end.contact, 0.0 if end.contact == "start" else length, length, lanes,
-                       edges, carriageway_edge(lanes_at, side), setback, tuple(end.pocket_lanes))
-
-
-@dataclass(frozen=True)
-class Crosswalk:
-    """A crosswalk at a road end: from curb to curb, depth along the road."""
-
-    road: int
-    contact: str
-    s: float  # centre station [m]
-    t_lo: float  # right curb [m]
-    t_hi: float  # left curb [m]
-    depth: float  # [m]
-
-    @property
-    def setback(self) -> float:
-        """Stop and yield lines this far before the road end [m]: behind the crosswalk."""
-        return CROSSWALK_GAP + self.depth + STOP_GAP + 0.25
-
-    @property
-    def length(self) -> float:
-        """Curb to curb [m]."""
-        return self.t_hi - self.t_lo
-
-
-def crosswalk_at(end, length: float, road_class: str, room: float) -> Optional[Crosswalk]:
-    """The crosswalk at a builder RoadEnd, or None: it needs sidewalks on both sides at the
-    end and room [m] of road (the whole road, or half of it where both ends are junctions)
-    for itself, its stop line and CROSSWALK_ROOM."""
-    if not end.cross:
-        return None
-    depth = CROSSWALK_DEPTH[road_class]
-    sides = {}
-    for sign in (-1, 1):
-        lanes = [x for x in end.cross if (x[0] > 0) == (sign > 0) and abs(x[3] - x[2]) > 1e-9]
-        if not any(kind == "sidewalk" for _, kind, _, _, _ in lanes):
-            return None
-        curbs = [t0 for _, kind, t0, _, _ in lanes if kind not in CARRIAGEWAY]
-        sides[sign] = max(curbs) if sign < 0 else min(curbs)
-    if room < CROSSWALK_GAP + depth + STOP_GAP + 0.5 + CROSSWALK_ROOM:
-        return None
-    s_end = 0.0 if end.contact == "start" else length
-    sign = 1 if end.contact == "end" else -1
-    return Crosswalk(end.road_id, end.contact, s_end - sign * (CROSSWALK_GAP + depth / 2), sides[-1], sides[1], depth)
-
-
-def crosswalk_furniture(junction_id: int, cw: Crosswalk, lights: bool, directions: tuple[int, ...],
-                        edge: Callable[[int], Callable[[float], float]],
-                        validity: Callable[[int], Optional[tuple[int, int]]]
-                        ) -> tuple[list[SignalRecord], list[ObjectRecord]]:
-    """The crosswalk object, and a 350-10 facing each direction of travel at a zebra;
-    directions: +1 / -1 where the road has traffic along / against s; edge(side): the
-    carriageway edge of a side; validity(direction): its lanes."""
-    t = (cw.t_lo + cw.t_hi) / 2
-    if lights:
-        obj = ObjectRecord(cw.road, cw.s, t, "crosswalk", cw.length / 2, cw.depth, 0.0, 0.0, None, junction_id,
-                           "crosswalk", edges=True)
-        return [], [obj]
-    obj = ObjectRecord(cw.road, cw.s, t, "crosswalk", cw.length / 2, cw.depth, ZEBRA, ZEBRA, None, junction_id,
-                       "crosswalk")
-    signals = []
-    for d in directions:
-        side = -d  # traffic along +s keeps right: negative t
-        lanes = validity(d)
-        if lanes is None:
-            continue
-        signals.append(SignalRecord(cw.road, cw.s, side * (edge(side)(cw.s) + SIGN_OFFSET), "+" if d > 0 else "-",
-                                    "350", lanes, junction_id, subtype="10"))
-    return signals, [obj]
+                       edges, carriageway_edge(lanes_at, side), setback, tuple(end.pocket_lanes), lanes_at)
 
 
 def approach_furniture(junction_id: int, control: Control, geom: EndGeometry, roundabout: bool,
@@ -256,7 +181,7 @@ def approach_furniture(junction_id: int, control: Control, geom: EndGeometry, ro
 
     def sign(code: str, s: float, z: float = 2.0) -> None:
         roadside = side * (geom.carriageway_edge(s) + SIGN_OFFSET)
-        signals.append(SignalRecord(geom.road, s, roadside, orientation, code, validity, junction_id, z))
+        signals.append(SignalRecord(geom.road, s, roadside, orientation, code, geom.validity_at(s), junction_id, z))
 
     s_line = geom.back(geom.setback)
     if role in ("stop", "yield", "signal"):
@@ -334,7 +259,7 @@ def lane_arrows(junction_id: int, geom: EndGeometry, lane_kinds: dict[int, list[
         if back + 5.0 > geom.length:
             continue
         s = geom.back(back)
-        lanes = {lid: (t0, t1) for lid, kind, t0, t1, _ in lanes_at(s)}
+        lanes = {lid: (t0, t1) for lid, kind, t0, t1 in lanes_at(s)}
         for lane in geom.in_lanes:
             segments = arrow_segments(lane_kinds.get(lane, []))
             edge = lanes.get(lane)

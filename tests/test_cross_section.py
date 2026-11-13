@@ -1,4 +1,4 @@
-"""Stage B1: cross-sections, junction trims with curb returns, lane roles, repair."""
+"""Stage B1: cross-sections (medians, area profiles), junction trims, lane roles, repair."""
 
 from __future__ import annotations
 
@@ -8,17 +8,14 @@ import pytest
 
 from cli import main
 from roadgen.generators.repair import repair_short_edges, short_edges, stub_roads
-from roadgen.geometry.alignment import network_alignment
 from roadgen.geometry.cross_section import (
     CrossSectionParams,
-    edge_cross_section,
+    half_widths,
     loop_edges,
     outer_half_width,
-    side_half_widths,
 )
 from roadgen.geometry.junction_space import (
     Arm,
-    junction_corners,
     junction_trims,
     node_arms,
     node_trims,
@@ -36,28 +33,20 @@ from tests.test_repair import two_junctions
 CS = CrossSectionParams()
 
 
-def test_profiles_by_class():
-    street = edge_cross_section(Edge(1, 1, 2, "street", 1, 1), CS)
-    assert [s.kind for s in street.right] == ["parking", "curb", "sidewalk"] == [s.kind for s in street.left]
-    assert street.median == 0.0 and street.radius == 3.0
-    highway = edge_cross_section(Edge(1, 1, 2, "highway", 2, 2), CS)
-    assert [s.kind for s in highway.right] == ["shoulder"] and highway.median == 2.0 and highway.radius == 7.6
-    assert edge_cross_section(Edge(1, 1, 2, "highway", 2, 0), CS).median == 0.0  # one-way: no median
-    assert edge_cross_section(Edge(1, 1, 2, "highway", 1, 1), CS).median == 0.0  # 1 + 1: too narrow
-    none = edge_cross_section(Edge(1, 1, 2, "avenue", 2, 2, cross_section="none"), CS)
-    assert none.right == none.left == () and none.radius == 0.0
-    rural = edge_cross_section(Edge(1, 1, 2, "street", 1, 1), CrossSectionParams(profile="rural"))
-    assert [(s.kind, s.width) for s in rural.right] == [("shoulder", 1.0)]
+def test_medians_by_class_and_profile():
+    assert CS.median_width(Edge(1, 1, 2, "street", 1, 1)) == 0.0
+    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2)) == 2.0
+    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 0)) == 0.0  # one-way: no median
+    assert CS.median_width(Edge(1, 1, 2, "highway", 1, 1)) == 0.0  # 1 + 1: too narrow
+    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2, cross_section="none")) == 0.0
+    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2, cross_section="rural")) == 2.0
     with pytest.raises(ValueError, match="unknown cross-section profile"):
-        edge_cross_section(Edge(7, 1, 2, "street", 1, 1, cross_section="downtown"), CS)
-    with pytest.raises(ValueError, match="unknown side lane kind"):
-        CrossSectionParams(urban_street=(("kerb", 0.2, 0.15),))
+        CS.median_width(Edge(7, 1, 2, "highway", 2, 2, cross_section="downtown"))
+    with pytest.raises(ValueError, match="unknown cross-section profile"):
+        CrossSectionParams(profile="downtown")
 
 
-def test_loop_edges_keep_curb_and_sidewalk_outside_and_curb_inside():
-    loop = edge_cross_section(Edge(1, 1, 2, "avenue", 2, 0), CS, loop=True)
-    assert [s.kind for s in loop.right] == ["curb", "sidewalk"]  # no bike or parking lane on a ring
-    assert [s.kind for s in loop.left] == ["curb"]  # the island side
+def test_loop_edges():
     g = RoadGraph(metadata={"roundabouts": [{"ring": [1, 2, 3]}], "culdesacs": [{"node": 9, "loop": [5, 6]}]})
     for nid in (1, 2, 3, 4, 5, 6):
         g.add_node(Node(nid, float(nid), 0.0))
@@ -66,62 +55,37 @@ def test_loop_edges_keep_curb_and_sidewalk_outside_and_curb_inside():
     assert loop_edges(g) == {1, 2, 4}
 
 
-def test_side_widths_at_junctions():
+def test_half_widths_are_the_driving_lanes_and_half_the_median():
     street = Edge(1, 1, 2, "street", 1, 1)
-    # along the road: 3.5 driving + 2.2 parking to the curb, + 0.15 curb + 2.0 sidewalk outside
-    assert side_half_widths(street, CS, 1, 1) == pytest.approx((5.7, 5.7, 7.85, 7.85))
-    # at a junction parking has ended (curb extension)
-    assert side_half_widths(street, CS, 1, 1, at_junction=True) == pytest.approx((3.5, 3.5, 5.65, 5.65))
+    assert half_widths(street, CS, 1, 1) == pytest.approx((3.5, 3.5))  # no side lanes (polish N1)
     highway = Edge(1, 1, 2, "highway", 2, 2)
-    assert side_half_widths(highway, CS, 2, 2) == pytest.approx((11.0, 11.0, 11.0, 11.0))  # 7 + 1 + 3
-    assert side_half_widths(highway, CS, 2, 2, at_junction=True, ramp=True) == pytest.approx((7.0,) * 4)
-    # urban and suburban shoulders end before every junction; rural ones go through the corner
-    assert side_half_widths(highway, CS, 2, 2, at_junction=True) == pytest.approx((7.0,) * 4)
-    rural = CrossSectionParams(profile="rural")
-    assert side_half_widths(highway, rural, 2, 2, at_junction=True) == pytest.approx((10.0,) * 4)
-    assert side_half_widths(highway, rural, 2, 2, at_junction=True, ramp=True) == pytest.approx((7.0,) * 4)
-    avenue = Edge(1, 1, 2, "avenue", 2, 2)
-    assert side_half_widths(avenue, CS, 2, 2, at_junction=True)[0] == pytest.approx(8.5)  # bike lane stays
-    assert side_half_widths(avenue, CS, 2, 2, at_junction=True, at_loop=True)[0] == pytest.approx(7.0)
+    assert half_widths(highway, CS, 2, 2) == pytest.approx((8.0, 8.0))  # 7 + 1 of the median
+    assert half_widths(highway, CS, 2, 2, at_junction=True) == pytest.approx((7.0, 7.0))  # it has ended
+    assert half_widths(highway, CS, 2, 2, loop=True) == pytest.approx((7.0, 7.0))
     one_way = Edge(1, 1, 2, "street", 2, 0)  # reference line on its left edge
-    assert side_half_widths(one_way, CS, 2, 0) == pytest.approx((9.2, 2.2, 11.35, 4.35))
-    assert outer_half_width(one_way, CS) == pytest.approx(11.35)
+    assert outer_half_width(one_way, CS) == pytest.approx(7.0)
 
 
-def _cross(theta_deg: float, width: float, outer: float, radius: float, length: float = 100.0) -> list[Arm]:
+def _cross(theta_deg: float, width: float) -> list[Arm]:
     t = math.radians(theta_deg)
     headings = [0.0, t, math.pi, math.pi + t]
-    return [Arm(k, h, width, width, outer, outer, radius, length) for k, h in enumerate(headings, 1)]
+    return [Arm(k, h, width, width) for k, h in enumerate(headings, 1)]
 
 
-def test_trims_with_curb_returns():
-    # 90 deg: curb lines cross 3.5 m out, the 3 m return adds 3 / tan 45 = 3 m.
-    trims = junction_trims(_cross(90, 3.5, 5.65, 3.0), 2.0, CS.max_corner_share)
-    assert list(trims.values()) == pytest.approx([3.5 + 3.0 + 2.0] * 4)
-    # 60 deg: the acute corners need (b + a cos 60) / sin 60 + r / tan 30
-    trims = junction_trims(_cross(60, 3.5, 5.65, 3.0), 2.0, CS.max_corner_share)
-    acute = (3.5 + 3.5 * 0.5) / math.sin(math.radians(60)) + 3.0 / math.tan(math.radians(30))
-    assert max(trims.values()) == pytest.approx(acute + 2.0)
-    # Without radii only the outer edges (sidewalks) must not overlap: 5.65 at 90 deg.
-    assert list(junction_trims(_cross(90, 3.5, 5.65, 0.0), 2.0).values()) == pytest.approx([5.65 + 2.0] * 4)
+def test_trims():
+    # 90 deg: the road edges cross 3.5 m out.
+    assert list(junction_trims(_cross(90, 3.5), 2.0).values()) == pytest.approx([3.5 + 2.0] * 4)
+    # 60 deg: the acute corners need (b + a cos 60) / sin 60
+    trims = junction_trims(_cross(60, 3.5), 2.0)
+    assert max(trims.values()) == pytest.approx((3.5 + 3.5 * 0.5) / math.sin(math.radians(60)) + 2.0)
 
 
-def test_curb_returns_shrink_on_short_arms_and_skip_bends():
-    corners = junction_corners(_cross(90, 3.5, 5.65, 3.0, length=5.0), 0.3)
-    assert [c.radius for c in corners] == pytest.approx([1.5] * 4)  # 0.3 * 5 m * tan 45
-    assert {c.wanted for c in corners} == {3.0}
-    assert junction_corners(_cross(90, 3.5, 5.65, 3.0, length=100.0), 0.3)[0].radius == 3.0
-    bend = [Arm(1, 0.0, 3.5, 3.5, 5.65, 5.65, 3.0), Arm(2, math.radians(100), 3.5, 3.5, 5.65, 5.65, 3.0)]
-    assert junction_corners(bend) == []  # two roads meeting are one road continuing
-
-
-def test_without_cross_section_trims_are_unchanged():
+def test_cross_section_trims_equal_the_driving_lanes_without_pockets():
     g = load_json("tests/fixtures/4way_avenue_x_street.json")
     plain = node_trims(g, 1)
     arms = [Arm(a.edge_id, a.heading, a.left, a.right) for a in node_arms(g, 1)]
     assert plain == junction_trims(arms, 2.0)
-    wide = node_trims(g, 1, cross_section=CS)
-    assert all(wide[e] > plain[e] for e in plain)
+    assert node_trims(g, 1, cross_section=CS) == plain  # no side lanes, medians end before it
 
 
 def test_road_end_explicit_lanes():
@@ -138,30 +102,27 @@ def test_road_end_explicit_lanes():
     assert median.lane_pose(2, True).y == pytest.approx(2.75)
 
 
-def test_lane_roles_link_side_lanes_across_a_lane_drop():
-    # right: two driving lanes, the outer one dropped at s = 60 (taper 40-60), and a sidewalk
+def test_lane_roles_link_a_median_across_a_lane_drop():
+    # right: a median, then two driving lanes, the outer one dropped at s = 60 (taper 40-60)
     layout = LaneLayout(
         100.0,
-        right=((WidthPiece(0, 100, 3.5, 3.5),),
-               (WidthPiece(0, 40, 3.5, 3.5), WidthPiece(40, 60, 3.5, 0.0)),
-               (WidthPiece(0, 100, 2.0, 2.0),)),
+        right=((WidthPiece(0, 100, 1.0, 1.0),),
+               (WidthPiece(0, 100, 3.5, 3.5),),
+               (WidthPiece(0, 40, 3.5, 3.5), WidthPiece(40, 60, 3.5, 0.0))),
         left=((WidthPiece(0, 100, 3.5, 3.5),),),
-        right_kinds=("driving", "driving", "sidewalk"),
+        right_kinds=("median", "driving", "driving"),
     )
     sections = layout.sections()
     assert [s.roles("right") for s in sections] == [
-        (("driving", 1), ("driving", 2), ("sidewalk", 3)),
-        (("driving", 1), ("driving", 2), ("sidewalk", 3)),
-        (("driving", 1), ("sidewalk", 3)),
+        (("median", 1), ("driving", 2), ("driving", 3)),
+        (("median", 1), ("driving", 2), ("driving", 3)),
+        (("median", 1), ("driving", 2)),
     ]
-    assert layout.driving_offsets(100.0) == {-1: -1.75, 1: 1.75}
-    assert layout.driving_offsets(0.0) == {-1: -1.75, -2: -5.25, 1: 1.75}
+    assert layout.driving_offsets(100.0) == {-2: -2.75, 1: 1.75}
     root = make_lane_sections(layout).get_element()
     last = root.findall("laneSection")[-1]
-    sidewalk = last.find("right/lane[@id='-2']")  # was -3 before the drop
-    assert sidewalk.find("link/predecessor").get("id") == "-3"
-    middle = root.findall("laneSection")[1]
-    assert middle.find("right/lane[@id='-3']/link/successor").get("id") == "-2"
+    assert last.find("right/lane[@id='-1']").get("type") == "median"
+    assert last.find("right/lane[@id='-2']/link/predecessor").get("id") == "-2"
     with pytest.raises(ValueError, match="not contiguous"):
         LaneLayout(10.0, right=((WidthPiece(0, 5, 3.5, 3.5),), (WidthPiece(0, 10, 3.5, 3.5),)),
                    left=()).sections()
@@ -185,17 +146,12 @@ def test_graph_json_round_trip_with_overrides():
 
 
 def test_repair_with_cross_sections():
-    """B9 (prompt 13): an edge only the side lanes make too short is never collapsed or
-    removed; its road ends become bare (side lanes end before the junction, no curb
-    return) until it fits."""
-    g = two_junctions(16.0)  # today: trims 5.5 + 5.5; with sidewalks and curb returns 8.5 + 8.5
-    assert short_edges(g) == [] and short_edges(g, cross_section=CS) == [1]
+    """Without side lanes the cross-section widens trims only by turn pockets: an edge
+    that fits with the driving lanes fits with HD maps too."""
+    g = two_junctions(16.0)
+    assert short_edges(g) == [] and short_edges(g, cross_section=CS) == []
     assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g))) == 0
-    assert 1 in g.edges and set(g.nodes) == {1, 2, 3, 4, 5, 6}
-    bare = g.metadata["no_side_lanes"]
-    assert bare and {n for n, _ in bare} <= {1, 2}
-    assert short_edges(g, cross_section=CS) == []
-    network_alignment(g, cross_section=CS)
+    assert set(g.nodes) == {1, 2, 3, 4, 5, 6}
 
 
 def test_repair_keeps_existing_stubs():
@@ -228,29 +184,7 @@ def test_pipeline_hd_fits_and_builds(tmp_path):
     off = tmp_path / "off"
     assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps", "--no-hd",
                  "-o", str(off)]) == 0
-    assert out.with_suffix(".xodr").read_bytes() != off.with_suffix(".xodr").read_bytes()  # wider trims
-
-
-def test_fit_also_repairs_dead_end_stubs():
-    # A T junction whose stem is a 9 m dead end: 3.5 m of road today (trim 5.5),
-    # 0.5 m with sidewalks and curb returns (trim 8.5): repaired only with dead_ends.
-    g = RoadGraph()
-    for nid, (x, y) in {1: (0.0, 0.0), 2: (-100.0, 0.0), 3: (100.0, 0.0), 4: (0.0, 9.0)}.items():
-        g.add_node(Node(nid, x, y))
-    for eid, (a, b) in enumerate([(2, 1), (1, 3), (1, 4)], 1):
-        g.add_edge(Edge(eid, a, b, "street", 1, 1))
-    assert stub_roads(g, cross_section=CS) == []
-    assert stub_roads(g, cross_section=CS, dead_ends=True) == [3]
-    known = frozenset(stub_roads(g, dead_ends=True))
-    assert known == {3}  # 3.5 m today: a stub already, so left alone ...
-    assert repair_short_edges(g, cross_section=CS, keep_stubs=known, dead_ends=True) == 0
-    g.nodes[4].y = 12.0  # ... but at 12 m it has 6.5 m today and 3.5 m with sidewalks:
-    # its side lanes make it a stub, so road ends at its junction become bare (B9, prompt 13):
-    # at a T the stem's trim comes from the through road, whose ends there lose theirs
-    assert repair_short_edges(g, cross_section=CS, keep_stubs=frozenset(stub_roads(g, dead_ends=True)),
-                              dead_ends=True) == 0
-    assert 3 in g.edges and g.metadata["no_side_lanes"] == [[1, 1], [1, 2]]
-    assert stub_roads(g, cross_section=CS, dead_ends=True) == []
+    assert out.with_suffix(".xodr").read_bytes() != off.with_suffix(".xodr").read_bytes()  # marks, signs, ...
 
 
 def test_collapse_keeps_bridges_on_their_edges():
@@ -262,64 +196,3 @@ def test_collapse_keeps_bridges_on_their_edges():
     (s0, s1), = g.edges[5].bridges
     assert (s0, s1) == pytest.approx((80.0 * 1.04, 95.0 * 1.04)) and s1 <= length
     assert g.validate() == []
-
-
-def test_bare_road_ends_build(tmp_path):
-    """The block the repair kept with bare ends builds with HD maps and validates; no
-    sidewalk reaches either junction (0 m wide at the road's ends, if any is left)."""
-    from lxml import etree
-
-    from roadgen.opendrive.builder import OpenDriveBuilder
-    from roadgen.validate.continuity import RoadEval, _width, check_continuity
-    from roadgen.validate.hdmap import check_hdmap
-    from roadgen.validate.topology import check_topology
-
-    g = two_junctions(18.0)  # 7 m of road today, 1 m with side lanes, 6.7 m with bare ends (curbs stay)
-    hd = HdMapParams(enabled=True)
-    assert repair_short_edges(g, cross_section=hd.active_cross_section, keep_stubs=frozenset(stub_roads(g))) == 0
-    assert g.metadata["no_side_lanes"] and stub_roads(g, cross_section=hd.active_cross_section) == []
-    path = tmp_path / "bare.xodr"
-    b = OpenDriveBuilder(hd=hd)
-    b.build(g)
-    b.write(path)
-    assert check_topology(path) == [] and check_continuity(path) == [] and check_hdmap(path) == []
-    road = next(r for r in etree.parse(str(path)).getroot().findall("road")
-                if r.get("id") == str(b.edge_to_road[1]))
-    ev = RoadEval(road)
-    sections = road.findall("lanes/laneSection")
-    for sec, ds in ((sections[0], 0.0), (sections[-1], ev.length - float(sections[-1].get("s")))):
-        walks = [lane for lane in sec.iter("lane") if lane.get("type") == "sidewalk"]
-        assert all(_width(lane, ds) == pytest.approx(0.0, abs=1e-6) for lane in walks)
-
-
-@pytest.mark.parametrize("gap, bikes_only", [(28.0, True), (24.0, False)])
-def test_repair_ends_bike_lanes_before_making_an_end_bare(tmp_path, gap, bikes_only):
-    """F10: on avenues (bike lane, curb, sidewalk) the repair first ends only the bike
-    lanes before the junction; the sidewalk goes on round the corner. Only if that is not
-    enough does a road end become bare."""
-    from lxml import etree
-
-    from roadgen.opendrive.builder import OpenDriveBuilder
-    from roadgen.validate.continuity import _width, check_continuity
-
-    g = two_junctions(gap)
-    for e in g.edges.values():
-        e.road_class = "avenue"
-    hd = HdMapParams(enabled=True)
-    assert repair_short_edges(g, cross_section=hd.active_cross_section, keep_stubs=frozenset(stub_roads(g))) == 0
-    assert bool(g.metadata.get("no_side_lanes")) != bikes_only
-    assert bool(g.metadata.get("no_bike_lanes")) or not bikes_only
-    if not bikes_only:
-        return
-    path = tmp_path / "net.xodr"
-    b = OpenDriveBuilder(hd=hd)
-    b.build(g)
-    b.write(path)
-    assert check_continuity(path) == []
-    (node, eid), = [p for p in g.metadata["no_bike_lanes"]]
-    road = next(r for r in etree.parse(str(path)).getroot().findall("road") if r.get("id") == str(b.edge_to_road[eid]))
-    first, last = road.findall("lanes/laneSection")[0], road.findall("lanes/laneSection")[-1]
-    at_node = first if g.edges[eid].from_node == node else last
-    ds = 0.0 if at_node is first else float(road.get("length")) - float(last.get("s"))
-    kinds = {lane.get("type") for lane in at_node.iter("lane") if _width(lane, ds) > 1e-6}
-    assert "sidewalk" in kinds and "biking" not in kinds

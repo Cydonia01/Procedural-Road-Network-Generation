@@ -39,20 +39,24 @@ def test_built_lane_types_pass(tmp_path):
     assert check_hdmap_tree(etree.parse(str(path)), sidecar) == []
 
 
-def test_sidewalk_linked_to_a_driving_lane_is_caught(tmp_path):
-    """A corner road's sidewalk turned into a driving lane: its junction laneLink now
-    joins a sidewalk of the incoming road to a driving lane."""
+def test_non_driving_lane_linked_to_a_driving_lane_is_caught(tmp_path):
+    """An incoming road's driving lane turned into a border lane where it reaches the
+    junction: its junction laneLink now joins a border lane to a driving lane."""
     path, sidecar = _build(tmp_path)
-    corner = str(sidecar["corner_roads"][0]["road"])
+    edited = []
 
     def edit(root, _):
-        road = _roads(root)[corner]
-        for lane in road.iter("lane"):
-            if lane.get("type") == "sidewalk":
-                lane.set("type", "driving")
+        conn = next(root.iter("connection"))
+        road = _roads(root)[conn.get("incomingRoad")]
+        lane_id = conn.find("laneLink").get("from")
+        secs = road.findall("lanes/laneSection")
+        sec = secs[0] if conn.get("contactPoint") == "start" else secs[-1]
+        next(x for x in sec.iter("lane") if x.get("id") == lane_id).set("type", "border")
+        edited.append(conn.get("connectingRoad"))
 
     errors = _errors(path, sidecar, edit)
-    assert any(f"connecting road {corner}" in e and "(sidewalk)" in e and "(driving)" in e for e in errors)
+    assert edited and any(f"connecting road {edited[0]}" in e and "(border)" in e and "(driving)" in e
+                          for e in errors)
 
 
 def _avenue_cross() -> RoadGraph:
@@ -74,7 +78,7 @@ def test_lane_type_change_between_lane_sections_is_caught(tmp_path):
         for road in root.findall("road"):
             secs = road.findall("lanes/laneSection")
             if road.get("junction") == "-1" and len(secs) > 1:
-                lane = next(x for x in secs[-1].iter("lane") if x.get("type") == "sidewalk")
+                lane = next(x for x in secs[-1].iter("lane") if x.get("type") == "driving")
                 lane.set("type", "parking")
                 edited.append(road.get("id"))
                 return
@@ -85,14 +89,14 @@ def test_lane_type_change_between_lane_sections_is_caught(tmp_path):
 
 
 def test_lane_type_change_across_a_road_link_is_caught(tmp_path):
-    """A corner road's successor is the outgoing road itself (a road-to-road link)."""
+    """A connecting road's successor is the outgoing road itself (a road-to-road link)."""
     path, sidecar = _build(tmp_path)
-    corner = str(sidecar["corner_roads"][0]["road"])
+    road = str(sidecar["movements"][0]["connecting_road"])
 
     def edit(root, _):
-        next(x for x in _roads(root)[corner].iter("lane") if x.get("type") == "sidewalk").set("type", "parking")
+        next(x for x in _roads(root)[road].iter("lane") if x.get("id") != "0").set("type", "parking")
 
-    assert any(f"road {corner} section" in e and "(parking)" in e and "of road" in e
+    assert any(f"road {road} section" in e and "(parking)" in e and "of road" in e
                for e in _errors(path, sidecar, edit))
 
 

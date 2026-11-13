@@ -242,9 +242,3 @@ def test_street_centre_line_follows_the_edge_profile(tmp_path):
 def test_avenues_keep_their_centre_line_in_urban_profile(tmp_path):
     _, root = _build(_t_street(400.0, "avenue", (1, 1), 16.7), tmp_path)
     assert _centre_kinds(root) == {"solid", "broken"}
-
-
-def test_curb_lanes_carry_no_mark(tmp_path):
-    _, root = _build(_t_street(), tmp_path)
-    curbs = [lane for lane in root.iter("lane") if lane.get("type") == "curb"]
-    assert curbs and all(lane.find("roadMark") is None for lane in curbs)

@@ -75,8 +75,8 @@ def drape(graph: RoadGraph, elevation: MapLayer, terrain: Optional[MapLayer] = N
 
     design, junction_margin, cross_section: as for the OpenDRIVE builder, so the
     fitted roads sampled here are the ones it builds. With a cross-section a
-    bridge spans wherever any part of the road's width (sidewalks included) is
-    over water.
+    bridge spans wherever any part of the road's width (median included) is over
+    water.
     """
     if elevation.kind != "elevation" or (terrain is not None and terrain.kind != "terrain"):
         raise ValueError("drape needs an elevation map (and optionally a terrain map)")

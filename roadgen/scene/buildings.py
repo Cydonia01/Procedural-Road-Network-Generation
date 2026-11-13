@@ -58,7 +58,7 @@ FOUNDATION = 1.0  # [m] a building's base goes this far below the lowest ground 
 @dataclass(frozen=True)
 class BuildingParams:
     seed: int = DEFAULTS["seed"]
-    setback: float = _D["setback"]  # sidewalk between road edge and building [m]
+    setback: float = _D["setback"]  # ground between the road edge and the buildings [m]
     corner_radius: float = _D["corner_radius"]  # rounding of convex footprint corners [m]
     min_height: float = _D["min_height"]  # [m]
     max_height: float = _D["max_height"]  # [m]
@@ -84,7 +84,7 @@ class BuildingParams:
 
 def road_half_extent(e: Edge, cross_section: Optional[CrossSectionParams] = None, loop: bool = False) -> float:
     """Widest side of the road from its reference line (one-ways sit on one side); with a
-    cross-section, its sidewalks and other side lanes included."""
+    cross-section, its median included."""
     if cross_section is not None:
         return outer_half_width(e, cross_section, loop)
     return max(e.lanes_forward, e.lanes_backward) * e.lane_width
@@ -118,8 +118,9 @@ def blocks(graph: RoadGraph, lines: Optional[list[tuple[Edge, LineString]]] = No
 def footprints(graph: RoadGraph, params: BuildingParams,
                cross_section: Optional[CrossSectionParams] = None) -> list[Polygon]:
     """Buildable area per block: the face minus the widened roads, corners rounded. With
-    a cross-section the roads include their sidewalks, so setback is the yard behind them,
-    and with its turn lanes the approaches with a left-turn pocket a lane more."""
+    a cross-section the roads include their medians, and with its turn lanes the
+    approaches with a left-turn pocket a lane more; setback is the ground between them
+    and the buildings."""
     lines = road_lines(graph, cross_section)
     loops = loop_edges(graph) if cross_section is not None else frozenset()
     widened = [

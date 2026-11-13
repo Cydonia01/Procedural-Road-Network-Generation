@@ -19,7 +19,7 @@ what you need.
 | Understand road shapes, curves and speeds | [Road geometry](geometry.md) |
 | Understand slopes, bridges, tunnels and overpasses | [Heights](heights.md) |
 | Understand the `.xodr` the builder writes | [OpenDRIVE builder](opendrive.md) |
-| Understand the HD-map content (side lanes, road marks, signs, lights, right of way, turn lanes), or turn it off with `--no-hd` | [OpenDRIVE builder](opendrive.md), [CLI reference → pipeline](cli-reference.md#pipeline) |
+| Understand the HD-map content (medians, road marks, signs, lights, right of way, turn lanes), or turn it off with `--no-hd` | [OpenDRIVE builder](opendrive.md), [CLI reference → pipeline](cli-reference.md#pipeline) |
 | Know what is checked, and measure a network | [Validation and metrics](validation.md) |
 | Look at a network in esmini, or take a screenshot | [CLI reference → view](cli-reference.md#view) |
 | Add ground and buildings to the 3D view | [3D scene](scene.md) |
@@ -31,7 +31,7 @@ what you need.
 
 | Code | Page |
 |------|------|
-| `cli.py`, `roadgen/config.py`, `roadgen/history.py`, `roadgen/defaults.yaml` | [CLI reference](cli-reference.md) |
+| `cli.py`, `roadgen/config.py`, `roadgen/history.py`, `roadgen/defaults.yaml`, `roadgen/presets.yaml` | [CLI reference](cli-reference.md) |
 | `roadgen/graph/` | [RoadGraph](road-graph.md) |
 | `roadgen/maps/` (except `align.py`, `drape.py`) | [Input maps](maps.md) |
 | `roadgen/maps/align.py`, `roadgen/maps/drape.py` | [Heights](heights.md) |

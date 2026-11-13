@@ -1,4 +1,5 @@
-"""Default parameters, loaded from roadgen/defaults.yaml.
+"""Default parameters, loaded from roadgen/defaults.yaml, and named presets, from
+roadgen/presets.yaml.
 
 DEFAULTS holds the packaged defaults; the params dataclasses take their field
 defaults from it. load_config() layers a user YAML file on top (the CLI's
@@ -15,6 +16,7 @@ from typing import Any, Optional, Union
 import yaml
 
 DEFAULTS_PATH = Path(__file__).with_name("defaults.yaml")
+PRESETS_PATH = Path(__file__).with_name("presets.yaml")
 
 
 def merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -80,3 +82,12 @@ def section(config: dict[str, Any], *keys: str) -> dict[str, Any]:
 
 
 DEFAULTS = load_config()
+
+
+def presets(*keys: str) -> dict[str, dict[str, Any]]:
+    """The named presets of one params class from roadgen/presets.yaml (keyed as in
+    defaults.yaml), lists turned into tuples; {} if it has none."""
+    data: Any = _read(PRESETS_PATH)
+    for key in keys:
+        data = (data or {}).get(key, {})
+    return {name: {k: tuplify(v) for k, v in (values or {}).items()} for name, values in (data or {}).items()}

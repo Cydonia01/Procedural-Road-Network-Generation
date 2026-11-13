@@ -84,8 +84,8 @@ Details are in [Heights](heights.md).
    - XML timestamps are fixed to 1970-01-01.
 5. **Pluggable components share one pattern:**
    - an ABC plus a `register` decorator;
-   - a frozen params dataclass with presets, whose defaults come from
-     `roadgen/defaults.yaml`;
+   - a frozen params dataclass whose defaults come from
+     `roadgen/defaults.yaml`, with presets from `roadgen/presets.yaml`;
    - a CLI subcommand ([Development](development.md#adding-a-component)).
 6. **External tools stay external.** esmini is found through `ESMINI_HOME`
    (fallback `./esmini`) in `roadgen/sim/esmini.py`, never by a hard-coded
@@ -105,7 +105,8 @@ Details are in [Heights](heights.md).
 cli.py                     command-line entry point: one cmd_* per command
 roadgen/
   defaults.yaml            every default parameter
-  config.py                loads defaults.yaml, merges --config, builds params dataclasses
+  presets.yaml             every preset, keyed like defaults.yaml
+  config.py                loads defaults.yaml and presets.yaml, merges --config, builds params dataclasses
   history.py               run folders out/<hash>/, replay, run.yaml
   graph/
     model.py               Node, Edge, RoadGraph
@@ -134,8 +135,8 @@ roadgen/
     transforms/            graph → graph passes: culdesac, stagger, roundabout, interchange
   geometry/                neutral road shape (no OpenDRIVE imports)
     planar.py              poses, straight segments, Hermite paramPoly3
-    junction_space.py      junction trims: where roads stop at a node; curb returns
-    cross_section.py       side lanes, medians, corner radii per profile and road class; turn pockets
+    junction_space.py      junction trims: where roads stop at a node
+    cross_section.py       profiles (area types), medians per road class; turn pockets
     design.py              design-speed rules: radii, advisory speeds, spirals, tapers
     primitives.py          line / arc / spiral pieces, alignments
     clothoid.py            G2 clothoid transitions
@@ -148,10 +149,10 @@ roadgen/
     __init__.py            HDMAP_VERSION, written to the sidecar with HD maps on
     builder.py             OpenDriveBuilder: roads, junction wiring, sidecar
     junctions.py           movement planning and connecting roads
-    lanes.py               lane sections (lane types, heights) and road marks
+    lanes.py               lane sections (lane types) and road marks
     marks.py               HD road marks: German catalogue, no-lane-change zones (stage B)
     control.py             junction control kinds, approach roles, conflicts and right of way (stage B)
-    furniture.py           stop and yield lines, crosswalks, signs and lights; speed and curve signs (stage B)
+    furniture.py           stop and yield lines, signs and lights; speed and curve signs (stage B)
     lights.py              traffic-light phase groups and fixed-time plans (stage B)
     hdmap.py               HdMapParams: the builder's HD-map settings (stage B)
     plot.py                plot-xodr: a built .xodr's lanes coloured by type, and its marks
@@ -198,8 +199,8 @@ per successful command
 | `net.png` | `pipeline`, `plot-graph` | Top-down plot: highways orange, avenues red, streets blue, one-way arrows |
 | `net.xodr` | `build-xodr`, `pipeline` | OpenDRIVE 1.6 road network |
 | `net.roadmap.json` | same | Edge → road and node → junction ids, every junction movement ([sidecar](opendrive.md#the-roadmapjson-sidecar)) |
-| `net_hd.png` | `pipeline --lane-plot` (HD maps on), `plot-xodr` | The built lanes coloured by type, with their marks ([plot-xodr](cli-reference.md#plot-map-plot-graph-plot-xodr)) |
+| `net_hd.png` | `pipeline` (HD maps on; `--no-lane-plot` leaves it out), `plot-xodr` | The built lanes coloured by type, with their marks ([plot-xodr](cli-reference.md#plot-map-plot-graph-plot-xodr)) |
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
-| `net_buildings.osgt` | `pipeline --buildings` | Buildings for esmini ([scene](scene.md)) |
-| `net_scene.osgt` | `pipeline --ground`, `ground` | Ground mesh, bridge and tunnel structures, junction surface, buildings |
+| `net_buildings.osgt` | `pipeline` without a ground (`--no-buildings` leaves it out) | Buildings for esmini ([scene](scene.md)) |
+| `net_scene.osgt` | `pipeline` with an elevation map (`--no-ground` leaves it out), `ground` | Ground mesh, bridge and tunnel structures, junction surface, buildings |
 | `run.yaml` | every recorded command | The command and every parameter that differs from the defaults |

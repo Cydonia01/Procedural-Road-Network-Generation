@@ -1,7 +1,7 @@
 """Parcels and one building per parcel (stage R6).
 
 A block's buildable area (roadgen.scene.buildings.footprints: the face minus
-the roads with their sidewalks and a setback) is split into parcels by
+the roads and a setback) is split into parcels by
 recursive oriented-box splits (Vanegas et al. 2012, "Procedural generation of
 parcels in urban modeling", OBB subdivision):
 

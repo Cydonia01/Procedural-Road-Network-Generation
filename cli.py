@@ -100,14 +100,12 @@ def hd_params(args: argparse.Namespace) -> HdMapParams:
     profile = getattr(args, "cross_section", None)
     if profile is not None:
         hd = dataclasses.replace(hd, cross_section=dataclasses.replace(hd.cross_section, profile=profile))
-    if getattr(args, "no_corner_roads", False):
-        hd = dataclasses.replace(hd, cross_section=dataclasses.replace(hd.cross_section, corner_roads=False))
     return hd
 
 
 def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: float) -> RoadGraph:
     """With HD maps on, repair the edges too short for the junction trims of roads with
-    their side lanes (generators only know the driving lanes); unchanged otherwise."""
+    their medians and turn pockets (generators only know the driving lanes); unchanged otherwise."""
     from roadgen.generators.repair import fit_cross_sections
 
     if hd.active_cross_section is None or not graph.edges:
@@ -262,7 +260,7 @@ def generate_graph(args: argparse.Namespace) -> tuple[RoadGraph, dict[str, MapLa
 
 def separate_graph(graph: RoadGraph, cfg: dict, cross_section=None) -> RoadGraph:
     """Roads crossing without a junction raised over each other (unchanged if none do);
-    with a cross-section (HD maps) the overpass spans the lower road's side lanes."""
+    with a cross-section (HD maps) the overpass spans the lower road's median too."""
     from roadgen.geometry.grade_separation import (
         GradeSeparationParams,
         find_crossings,
@@ -386,6 +384,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     prefix = artifact(args, args.output, default_output(args))
     graph, layers = generate_graph(args)
     hd = hd_params(args)
+    outputs(args, "elevation" in layers)
     # The scene draws the junction surface no lane covers too (under the .xodr's patch objects).
     fill = (args.ground or args.buildings) and section(args.cfg, "scene")["junction_fill"]
     if hd.enabled:
@@ -411,8 +410,6 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
             plot_xodr(xodr, Path(f"{prefix}_hd.png"))
     scenegraph = None
     if args.ground:
-        if "elevation" not in layers:
-            raise SystemExit("error: --ground needs an elevation map (--maps, --elevation or --map-file)")
         scenegraph = Path(f"{prefix}_scene.osgt")
         write_scene(graph, layers, scenegraph, args.cfg, args.seed, args.buildings,
                     hd.active_cross_section, xodr if xodr.exists() and graph.has_elevation else None,
@@ -437,6 +434,20 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def outputs(args: argparse.Namespace, elevation: bool) -> None:
+    """Resolve the pipeline's --[no-]drive-check, --lane-plot, --buildings and --ground
+    against the pipeline section of the config. A default ground needs an elevation map
+    (else it is left out); an asked-for one without it is an error."""
+    on = section(args.cfg, "pipeline")
+    for name in ("drive_check", "lane_plot", "buildings"):
+        if getattr(args, name) is None:
+            setattr(args, name, bool(on[name]))
+    if args.ground and not elevation:
+        raise SystemExit("error: --ground needs an elevation map (--maps, --elevation or --map-file)")
+    if args.ground is None:
+        args.ground = bool(on["ground"]) and elevation
+
+
 def junction_fills(xodr: Path, on: bool) -> list:
     """The junction fill outlines of a built .xodr (its sidecar), [] if off or not built."""
     from roadgen.opendrive.builder import sidecar_path
@@ -459,7 +470,7 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
     """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile. With the
     built .xodr of a draped network the ground is cut around its roads (and the junction
     fills), and bridges and tunnels get their structures; with a cross-section (HD maps)
-    buildings stand behind the side lanes."""
+    buildings stand setback behind the roads (medians included)."""
     import numpy as np
 
     from roadgen.scene.buildings import BuildingParams, building_mesh
@@ -823,17 +834,12 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--hd", action=argparse.BooleanOptionalAction, default=None,
-        help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
+        help="HD-map content (stage B: medians, marks, signs, lights, ...); default: hdmap.enabled in the config",
     )
     p.add_argument(
         "--cross-section", choices=PROFILES, metavar="PROFILE",
-        help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
+        help="default area profile with --hd (" + ", ".join(PROFILES) + "; none: no medians); "
              "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
-    )
-    p.add_argument(
-        "--no-corner-roads", action="store_true",
-        help="leave out the corner roads (side lanes around junction corners) with --hd: esmini loads "
-             "them slowly, so for throughput benchmarks (default: cross_section.corner_roads)",
     )
     p.set_defaults(func=cmd_build_xodr)
 
@@ -854,7 +860,7 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         g.add_argument("-o", "--output", help="output RoadGraph JSON (default: <name>[_<preset>]_s<seed>.json)")
         g.add_argument(
             "--hd", action=argparse.BooleanOptionalAction, default=None,
-            help="drape and separate with the roads' HD widths (side lanes); default: hdmap.enabled in the config",
+            help="drape and separate with the roads' HD widths (medians); default: hdmap.enabled in the config",
         )
         g.set_defaults(func=cmd_generate)
 
@@ -879,30 +885,30 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
         )
         g.add_argument(
             "--hd", action=argparse.BooleanOptionalAction, default=None,
-            help="HD-map content (stage B: side lanes, ...); default: hdmap.enabled in the config",
+            help="HD-map content (stage B: medians, marks, signs, lights, ...); default: hdmap.enabled in the config",
         )
         g.add_argument(
             "--cross-section", choices=PROFILES, metavar="PROFILE",
-            help="default cross-section profile with --hd (" + ", ".join(PROFILES) + "); "
+            help="default area profile with --hd (" + ", ".join(PROFILES) + "; none: no medians); "
                  "edges with their own Edge.cross_section keep it (default: cross_section.profile)",
         )
+        on = section(cfg, "pipeline")
         g.add_argument(
-            "--no-corner-roads", action="store_true",
-            help="leave out the corner roads (side lanes around junction corners) with --hd: esmini loads "
-                 "them slowly, so for throughput benchmarks (default: cross_section.corner_roads)",
+            "--drive-check", action=argparse.BooleanOptionalAction, default=None,
+            help="drive every junction movement and lane with esmini's RoadManager "
+                 f"(default: pipeline.drive_check, {on['drive_check']})",
         )
-        g.add_argument(
-            "--drive-check", action="store_true",
-            help="also drive every junction movement with esmini's RoadManager",
-        )
-        g.add_argument("--lane-plot", action="store_true",
-                       help="also draw the built lanes to <prefix>_hd.png with HD maps (plot-xodr; ~5 s on a city)")
-        g.add_argument("--buildings", action="store_true",
-                       help="also export buildings (one per parcel) to <prefix>_buildings.osgt "
-                            "(for view --scenegraph)")
-        g.add_argument("--ground", action="store_true",
-                       help="also export a 3D ground mesh from the maps (with the --buildings on it) "
-                            "to <prefix>_scene.osgt (for view --scenegraph)")
+        g.add_argument("--lane-plot", action=argparse.BooleanOptionalAction, default=None,
+                       help="draw the built lanes to <prefix>_hd.png with HD maps (plot-xodr; ~5 s on a city) "
+                            f"(default: pipeline.lane_plot, {on['lane_plot']})")
+        g.add_argument("--buildings", action=argparse.BooleanOptionalAction, default=None,
+                       help="export buildings (one per parcel) to <prefix>_buildings.osgt, or into the "
+                            f"scene with the ground (for view --scenegraph) (default: pipeline.buildings, "
+                            f"{on['buildings']})")
+        g.add_argument("--ground", action=argparse.BooleanOptionalAction, default=None,
+                       help="export a 3D ground mesh from the maps, cut around the roads, with the buildings "
+                            "on it, to <prefix>_scene.osgt (for view --scenegraph); needs an elevation map "
+                            f"(default: pipeline.ground, {on['ground']}, when there is one)")
         _add_pipeline_map_args(g, cfg)
         g.set_defaults(func=cmd_pipeline)
 

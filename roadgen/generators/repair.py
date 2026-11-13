@@ -20,25 +20,20 @@ that could be built before is returned unchanged:
 
 Repeated in edge-id order until no edge is too short. Deterministic.
 
-With a cross-section (stage B) the trims are those of roads with their side
-lanes and curb returns; the pipeline runs this pass again with it before the
-build (cli.fit_graph), so generators stay unaware of cross-sections. A left-turn
+With a cross-section (stage B) the trims are those of roads with their medians
+and turn pockets; the pipeline runs this pass again with it before the build
+(cli.fit_graph), so generators stay unaware of cross-sections. A left-turn
 pocket widens its arm and so the trims of the arms beside it: before an edge is
 repaired, the pockets at its two junctions are left out, one at a time, until it
 fits (graph metadata "no_pockets", [node, edge] pairs; real designs leave them out
-on short blocks too). An edge that is too short only because of the side lanes
+on short blocks too). An edge that is too short only because of the cross-section
 (it fits with the driving lanes alone) is never collapsed or removed (prompt 13):
-road ends at its junctions lose side lanes instead, one at a time until it fits
-(its own ends first, then the other arms there): first only their bike lanes end
-before the junction, the curb and sidewalk going on round the corner (graph metadata
-"no_bike_lanes", cross_section.bike_ends); if that is not enough the ends become bare,
-their sidewalks, shoulders, parking and bike lanes ending before the junction (graph
-metadata "no_side_lanes", cross_section.bare_ends). If even that is not enough and one end is a two-road bend
-(which the side lanes turned into a junction: its curve no longer clears the
-sidewalks around), the bend is straightened: its two edges, the same road, become
-one, and the bend node goes (metadata "straightened_bends"); the road stays.
-Otherwise it is left for the builder to report. Only edges too short with the
-driving lanes alone are collapsed or removed.
+if one end is a two-road bend (which the wider road turned into a junction: its
+curve no longer clears the roads around), the bend is straightened: its two
+edges, the same road, become one, and the bend node goes (metadata
+"straightened_bends"); the road stays. Otherwise it is left for the builder to
+report. Only edges too short with the driving lanes alone are collapsed or
+removed.
 """
 
 from __future__ import annotations
@@ -51,13 +46,7 @@ import numpy as np
 
 from roadgen.geometry.alignment import ShortEdgeError, network_alignment
 from roadgen.geometry.chains import find_chains, junction_nodes
-from roadgen.geometry.cross_section import (
-    BARE_DROP,
-    CrossSectionParams,
-    edge_cross_section,
-    loop_edges,
-    pocket_ends,
-)
+from roadgen.geometry.cross_section import CrossSectionParams, pocket_ends
 from roadgen.geometry.design import DesignParams
 from roadgen.geometry.junction_space import DEFAULT_MARGIN, node_trims
 from roadgen.graph.model import Edge, RoadGraph
@@ -159,7 +148,7 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
     """Fix too-short edges in place; return how many were collapsed or removed.
     keep_stubs: stub roads to leave alone (they build, only too short to change
     slope between their junctions); dead_ends: dead-end roads count as stubs too."""
-    fixed = dropped = bared = dissolved = 0
+    fixed = dropped = dissolved = 0
     tried: set[int] = set()
     while True:
         todo = [e for e in short_edges(graph, design, junction_margin, cross_section) if e not in tried]
@@ -169,9 +158,8 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
             found, junctions = _stub_scan(graph, design, junction_margin, cross_section, dead_ends)
             if found and not junctions:
                 # The alignment found an edge too short for a bend it keeps as a junction:
-                # not a stub, so keep_stubs does not apply, and whether the side lanes made
-                # it so is checked like a too-short edge (B9: a stub without them became too
-                # short with them).
+                # not a stub, so keep_stubs does not apply, and whether the cross-section
+                # made it so is checked like a too-short edge (B9).
                 stubs = False
                 todo = [e for e in found if e not in tried]
                 check = lambda eid, cs=cross_section: _too_short_in_alignment(  # noqa: E731
@@ -183,12 +171,12 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
                     graph, eid, j, junction_margin, cs)
         if not todo:
             break
-        # Pockets left out and bare road ends change only trims, which check sees: work
-        # through all edges of one scan. A collapse or removal moves the network: rescan.
+        # Pockets left out change only trims, which check sees: work through all edges of
+        # one scan. A collapse or removal moves the network: rescan.
         for k, eid in enumerate(todo):
             # The first is the scan's own; later ones may have been fixed meanwhile by an
-            # earlier edge's pockets or bare ends. (Each pass changes something or adds
-            # to tried, so the loop ends.)
+            # earlier edge's pockets. (Each pass changes something or adds to tried, so
+            # the loop ends.)
             if k and (eid not in graph.edges or not check(eid)):
                 continue
             if cross_section is not None:
@@ -196,23 +184,16 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
                 if n:
                     dropped += n
                     continue
-                # Too short only with the side lanes: HD made it so. A stub here is one: the
-                # stubs the network had without them are keep_stubs (fit_cross_sections).
+                # Too short only with the cross-section: HD made it so. A stub here is one: the
+                # stubs the network had without it are keep_stubs (fit_cross_sections).
                 if stubs or not check(eid, None):
-                    n = _bare(graph, eid, lambda eid=eid: check(eid), cross_section)
-                    if not n:  # pockets and side lanes may both be needed (two highways at an acute angle)
-                        n, out = _bare_without_pockets(graph, eid, lambda eid=eid: check(eid), cross_section)
-                        dropped += out
-                    if n:
-                        bared += n
-                        continue
-                        # A two-road bend the side lanes made a junction (its curve no longer clears
-                    # the sidewalks around): the road stays, its bend vertex goes (B9).
+                    # A two-road bend the wider road made a junction (its curve no longer clears
+                    # the roads around): the road stays, its bend vertex goes (B9).
                     if _dissolve_bend(graph, eid, junction_margin, cross_section):
                         dissolved += 1
                         break
-                    tried.add(eid)  # never removed for its side lanes (prompt 13): the builder reports it
-                    log.warning("repair: edge %d is too short for its junctions even with bare road ends", eid)
+                    tried.add(eid)  # never removed for its cross-section (prompt 13): the builder reports it
+                    log.warning("repair: edge %d is too short for its junctions with its cross-section", eid)
                     continue
             if _collapse(graph, eid, junction_margin, max_degree, cross_section) or _remove(graph, eid):
                 fixed += 1
@@ -222,10 +203,6 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
             break
     if dropped:
         log.info("repair: left out %d turn pocket(s) on blocks too short for them", dropped)
-    if bared:
-        bikes = len(graph.metadata.get("no_bike_lanes", []))
-        log.info("repair: %d road end(s) bare (side lanes end before the junction), %d with only the bike "
-                 "lanes ending, on blocks too short for them", bared - bikes, bikes)
     if dissolved:
         log.info("repair: %d two-road bend(s) straightened (their two edges made one)", dissolved)
     if fixed:
@@ -235,19 +212,16 @@ def repair_short_edges(graph: RoadGraph, design: DesignParams = DesignParams(),
 
 def fit_cross_sections(graph: RoadGraph, design: DesignParams, junction_margin: float,
                        cross_section: CrossSectionParams) -> RoadGraph:
-    """The HD-map pass before the build: repair what the roads' side lanes (and turn
-    pockets) make too short, in place. It never joins more roads at a node than the
+    """The HD-map pass before the build: repair what the roads' medians and turn pockets
+    make too short, in place. It never joins more roads at a node than the
     generator already does (at least MAX_DEGREE) and leaves the stub roads the network
     already has (they build); records the repair in the graph metadata ("fit")."""
     max_degree = max([MAX_DEGREE] + [graph.degree(n) for n in graph.nodes])
     known = frozenset(stub_roads(graph, design, junction_margin, dead_ends=True))
     n = repair_short_edges(graph, design, junction_margin, max_degree, cross_section, known, dead_ends=True)
-    if n or any(graph.metadata.get(k) for k in ("no_pockets", "no_bike_lanes", "no_side_lanes",
-                                                "straightened_bends")):
+    if n or any(graph.metadata.get(k) for k in ("no_pockets", "straightened_bends")):
         graph.metadata["fit"] = {"repaired_edges": n, "profile": cross_section.profile,
                                  "dropped_pockets": len(graph.metadata.get("no_pockets", [])),
-                                 "bare_ends": len(graph.metadata.get("no_side_lanes", [])),
-                                 "bike_lane_ends": len(graph.metadata.get("no_bike_lanes", [])),
                                  "straightened_bends": len(graph.metadata.get("straightened_bends", []))}
     return graph
 
@@ -262,60 +236,6 @@ def _drop_pockets(graph: RoadGraph, eid: int, too_short: Callable[[], bool],
     pockets = [[n, p] for n in sorted({e.from_node, e.to_node})
                for p in sorted(pocket_ends(graph, n, cross_section.turn_lanes))]
     return _leave_out(graph, "no_pockets", pockets, too_short)
-
-
-def _bare(graph: RoadGraph, eid: int, too_short: Callable[[], bool], cross_section: CrossSectionParams) -> int:
-    """Make road ends bare at the junctions of an edge its side lanes make too short (see
-    _leave_out): the edge's own ends first, then the other arms of those junctions (an
-    arm at an acute angle widens the edge's trim); only ends with side lanes to leave
-    out. Return how many stay bare."""
-    e = graph.edges[eid]
-    loops = loop_edges(graph)
-    nodes = sorted({e.from_node, e.to_node})
-
-    def has_side_lanes(x: int) -> bool:
-        xs = edge_cross_section(graph.edges[x], cross_section, x in loops)
-        return any(s.kind in BARE_DROP for s in xs.right + xs.left)
-
-    ends = [[n, eid] for n in nodes]
-    ends += [[n, x.id] for n in nodes for x in sorted(graph.incident_edges(n), key=lambda x: x.id) if x.id != eid]
-    ends = [pair for pair in ends if has_side_lanes(pair[1]) and pair not in graph.metadata.get("no_side_lanes", [])]
-    # First only the bike lanes (sidewalks go on round the corner), then whole bare ends.
-    bikes = [pair for pair in ends if pair not in graph.metadata.get("no_bike_lanes", []) and any(
-        s.kind == "biking" for s in edge_cross_section(graph.edges[pair[1]], cross_section, pair[1] in loops).right)]
-    n = _leave_out(graph, "no_bike_lanes", bikes, too_short) if bikes else 0
-    return n or _leave_out(graph, "no_side_lanes", ends, too_short)
-
-
-def _bare_without_pockets(graph: RoadGraph, eid: int, too_short: Callable[[], bool],
-                          cross_section: CrossSectionParams) -> tuple[int, int]:
-    """_bare with every pocket at the edge's junctions left out, then the pockets it fits
-    without put back; (bare ends, pockets left out), or (0, 0) with nothing changed."""
-    if cross_section.turn_lanes is None:
-        return 0, 0
-    e = graph.edges[eid]
-    pockets = [[n, p] for n in sorted({e.from_node, e.to_node})
-               for p in sorted(pocket_ends(graph, n, cross_section.turn_lanes))]
-    if not pockets:
-        return 0, 0
-    before = list(graph.metadata.get("no_pockets", []))
-    graph.metadata["no_pockets"] = before + pockets
-    n = _bare(graph, eid, too_short, cross_section)
-    if not n:
-        if before:
-            graph.metadata["no_pockets"] = before
-        else:
-            graph.metadata.pop("no_pockets", None)
-        return 0, 0
-    out = list(pockets)
-    for pair in pockets:  # those it fits without go back
-        graph.metadata["no_pockets"] = before + [x for x in out if x != pair]
-        if not too_short():
-            out.remove(pair)
-    graph.metadata["no_pockets"] = before + out
-    if not graph.metadata["no_pockets"]:
-        graph.metadata.pop("no_pockets")
-    return n, len(out)
 
 
 def _leave_out(graph: RoadGraph, key: str, candidates: list[list[int]], too_short: Callable[[], bool]) -> int:

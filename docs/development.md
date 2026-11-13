@@ -46,8 +46,7 @@ Add a fixture whenever you fix a junction bug.
 
 ## Coding rules
 
-The full rules are in [`.github/copilot-instructions.md`](../.github/copilot-instructions.md)
-and [`CLAUDE.md`](../CLAUDE.md). In short:
+The full rules are in [`CLAUDE.md`](../CLAUDE.md). In short:
 
 - Python 3.10+, type hints everywhere, dataclasses for models (frozen for
   params), `Optional[...]`.
@@ -68,7 +67,8 @@ Generators, map generators and graph transforms all follow one pattern:
 1. **Params.** A frozen params dataclass validated in `__post_init__`, with
    its defaults in `roadgen/defaults.yaml`. A test checks that the dataclass
    defaults match the YAML, so add new parameters in both places.
-2. **Presets** as a `PRESETS` dict.
+2. **Presets** in `roadgen/presets.yaml`, read into a `PRESETS` dict with
+   `config.presets(...)`.
 3. **Registration.** An ABC subclass registered with a decorator (`@register`,
    `@register_map`), and its module imported in the package `__init__.py`.
 4. **Determinism.** Deterministic for a seed. New optional features draw from
@@ -104,6 +104,8 @@ prompts and decisions.
 | Stage C | Long-tail diversity: network metrics, manhattan → lsystem, pattern fields, style maps, cul-de-sacs, junction variety, `junction` generator, roundabouts, overpasses, tunnels, interchanges | `metrics/network.py`, `patterns.py`, `maps/style.py`, `generators/transforms/`, `junction.py`, `geometry/grade_separation.py`, `validate/clearance.py` |
 | Stage B | HD-map completeness, on by default (`--no-hd` gives the plain network): cross-sections with side lanes, curb returns and corner roads, German road marks, junction control and right of way, signs and stop lines, traffic lights with fixed-time plans (also in OpenSCENARIO), crosswalks, speed and curve signs, lane use and arrows, turn pockets, banned turns, the HD repair (bare road ends), the `annotate` step | `geometry/cross_section.py`, `opendrive/marks.py`, `control.py`, `furniture.py`, `lights.py`, `hdmap.py`, `plot.py`, `maps/annotate.py`, `validate/hdmap.py`, `metrics/hdmap.py` |
 | Stage R | Refinement for natural networks: road hierarchy from strokes, width-aware growth and body-overlap check, dead-end pass, ground that stays under the roads, junction surface drawn in the scene, naturalness metrics | `generators/hierarchy.py`, `lsystem.py`, `validate/clearance.py`, `scene/ground.py`, `scene/junctions.py`, `metrics/network.py` |
+| Polish R4 (2026-11-13) | Ground cut around the built `.xodr`'s roads, smooth shoreline, side slopes, bridge decks, piers and tunnel portals ([plan](../plans/2026-11-13-r4-ground-and-structures.md)) | `scene/surface.py`, `scene/ground.py`, `scene/structures.py` |
+| Polish N1–N4 (2026-11-13) | Side lanes removed (parking, bike lanes, shoulders, curbs, sidewalks, corner roads, curb returns, crosswalks, pedestrian phases; roads keep driving lanes, pockets and medians; buildings `setback` 7 m), presets moved to `roadgen/presets.yaml`, `pipeline` builds buildings, ground, lane plot and drive-check by default, Copilot instructions merged into `CLAUDE.md` ([plan](../plans/2026-11-13-polish-n-items.md)) | `geometry/cross_section.py`, `opendrive/`, `generators/repair.py`, `config.py`, `presets.yaml`, `cli.py` |
 
 Phase 6 (a scalability benchmark) was removed
 ([plan](../plans/2026-10-27-slim-benchmark.md)), and the `simulate` command
@@ -129,14 +131,12 @@ product, and `view` is the presentation.
 esmini 3.9's RoadManager does most of its work while loading: it computes
 OSI points along every lane (`SetLaneOSIPoints`, 1 m steps that shrink
 where the surface's pitch or roll changes). On large HD networks that is
-the bulk of a drive-check or simulation start (`city` about 57 s,
-`mixed_city` about 170 s). Measured in stage B9
+the bulk of a drive-check or viewer start (`city` about 57 s,
+`mixed_city` about 170 s, both with the side lanes the roads had then). Measured in stage B9
 (`plans/2026-10-29-stage-b-implementation.md`, B9 result):
 
-- **Corner roads** are 5 % of `city`'s lane length but 27 s of its load.
-  Neither their OSI point density (about twice the rest) nor their place in
-  the file explains it. `cross_section.corner_roads: false`
-  (`--no-corner-roads`) leaves them out for throughput benchmarks.
+- **Corner roads** (side lanes around junction corners, since removed with
+  the side lanes) were 5 % of `city`'s lane length but 27 s of its load.
 - **Road order:** esmini finds roads by id with a linear scan, so the load
   depends on where roads stand in the file. Long normal roads first (as
   built) is about the best order; reversed it takes about twice as long.

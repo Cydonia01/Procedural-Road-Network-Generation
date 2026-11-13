@@ -64,33 +64,24 @@ reference line, and left lanes (positive ids) drive against it.
   reference line.
 - **Lane sections** (`make_lane_sections`, from the
   [lane layout](geometry.md#along-road-profiles)). A new section starts
-  wherever a driving lane's count or width changes. Side lanes and medians
-  run the whole road, 0 m wide where they are absent, and keep their own
-  width changes (curb extensions, tapers) inside a section as several
-  `<width>` records, so they add no sections. Driving lanes keep one width
-  record per section, which the drive-check relies on.
+  wherever a driving lane's count or width changes. Medians run the whole
+  road, 0 m wide where they are absent, and keep their own width changes
+  (tapers) inside a section as several `<width>` records, so they add no
+  sections. Driving lanes keep one width record per section, which the
+  drive-check relies on.
   - Lanes are linked by **role** across section boundaries: the same kind and
-    position in the [lane layout](geometry.md#along-road-profiles). A side lane
-    outside a driving lane that ends keeps its links while its id shifts
-    inward.
+    position in the [lane layout](geometry.md#along-road-profiles).
   - A lane that narrows to 0 or widens from 0 at a boundary has no link there.
-- **Side lanes** (HD maps on, [cross-sections](geometry.md#cross-sections)).
-  Outside the driving lanes, as OpenDRIVE lane types `biking`, `parking`,
-  `shoulder`, `curb`, `sidewalk` and `border`. Curbs and sidewalks are raised
-  0.15 m with `<height>`, which esmini draws as a curb face.
-  - **Ending before junctions:** parking tapers out (5 m) to end 10 m before
-    a junction (a curb extension); shoulders (urban and suburban profiles,
-    and at ramp nodes) and bike lanes before a roundabout entry narrow to
-    0 m at the road's end.
-  - **Bridges and tunnels:** parking stops over bridges; shoulders narrow to
-    1 m in tunnels.
-  - **One-way roads** have them on both edges: those on the reference line's
-    left edge are positive lanes.
-  - **Loops** (roundabout rings, cul-de-sac bulbs) have only curb and
-    sidewalk outside and a curb on the island side.
-- **Medians** (`median` lanes) sit next to the centre line on two-way roads
-  with 2 or more lanes each way (2 m on highways). They taper out
-  (MUTCD shift taper) to end 5 m before every junction. The median lane runs
+- **Lane types.** Roads carry only driving lanes, left-turn pockets (type
+  `driving`) and medians (type `median`). There are no parking, bike,
+  shoulder, curb, sidewalk or border lanes, and no lane `<height>`. The
+  [cross-section profile](geometry.md#cross-sections) of an edge is its area
+  type: it decides the median and the road marks.
+- **Medians** (`median` lanes, HD maps on) sit next to the centre line on
+  two-way roads with 2 or more lanes each way (`cross_section.median_min_lanes`;
+  width per class from `cross_section.median`: 2 m on highways, none on
+  streets and avenues), not in the profile `none` and not on loops. They taper out
+  (MUTCD shift taper) to end 5 m (`median_end`) before every junction. The median lane runs
   the whole road, 0 m wide where there is no median, so the driving lanes
   keep their ids (−2, −3, … and 2, 3, …) along the road. Anything that
   follows a lane by id (esmini's drive-check, odrviewer's cars) thus
@@ -104,30 +95,6 @@ reference line, and left lanes (positive ids) drive against it.
   `none` and 0 m wide elsewhere, so the driving lanes keep their ids.
 - Only **driving** lanes get movements;
   esmini's own traffic (odrviewer) also keeps to driving-type lanes.
-- **Corner roads** (`junctions.py::corner_roads`). Where two neighbouring arms
-  of a junction both have side lanes at the junction, a connecting road with
-  only those lanes (bike lane, curb, sidewalk, shoulder) runs around the
-  corner and links to them.
-  - **Reference line:** the right turn from the first arm's outermost
-    incoming lane to the next arm's outermost outgoing lane (the same path as
-    that movement), with a `laneOffset` of half the turn lane's width. The
-    curb starts exactly at the turn lane's outer edge, so the junction
-    surface has no stretch without a lane, which CARLA and OSI would see as
-    a hole.
-  - **Widths** blend smoothly (zero slope at both ends) from one arm's side
-    lanes to the other's. A lane only one arm has narrows to 0 m and has no
-    link at that end.
-  - **Without that turn** (no incoming lanes on the first arm or no outgoing
-    lanes on the next, as between one-way roads) the path joins the two
-    carriageway edges. The surface between the curb and the movements then
-    stays without a lane.
-  - The sidecar lists them under `corner_roads`, with `closes` true where a
-    movement drives the turn. They are not movements: drive-check, scenarios
-    and esmini's traffic never use them.
-  - **esmini loads them slowly:** on `city` they are 5 % of the lane length
-    but 27 s of its 57 s load ([stage B plan](../plans/2026-10-29-stage-b-implementation.md)).
-    `cross_section.corner_roads: false` (`--no-corner-roads`) leaves them
-    out for throughput benchmarks.
 - **Road marks** (without HD maps). A solid centre line, broken lines between
   lanes (3 m dash, 9 m gap), and a solid line on the outermost driving lane's
   edge.
@@ -151,15 +118,11 @@ section.
 | Median lane | solid edge line where it is wider than 0 m |
 | Between driving lanes | broken (`laneChange="both"`) |
 | No-lane-change zone | lane lines and a broken centre line become solid with `laneChange="none"` over the last 20 / 30 / 50 m (street / avenue / highway, `no_change_length`) of each approach to a junction of 3 or more roads, in the travel direction; across lane-section boundaries, and over the whole road if it is shorter |
-| Outermost driving lane | solid edge line, whatever lies outside it (it is also a bike lane's line on its driving side) |
-| Side lanes (parking, bike, shoulder, curb, sidewalk, border) | none |
+| Outermost driving lane | solid edge line |
 
 Widths: 0.12 m on streets and avenues, 0.15 m on highways (`width`).
 
-Curbs get no `curb` road mark: esmini's OSI ground truth turns that mark
-into a solid white lane boundary, not a curb boundary. The `curb` lane with
-its `<height>` describes the curb.
-Connecting roads, corner roads included, have no marks: junction interiors
+Connecting roads have no marks: junction interiors
 are unmarked, which the [HD-map check](validation.md#hd-map-content) enforces.
 
 **At a contact point.** A road whose reference line **ends** at a junction
@@ -238,7 +201,7 @@ movement**:
   closed outline per arrow would be smaller still, but esmini draws closed
   outlines in a flat grey and then exports no road markings for them.
 - **Junction-surface fill:** surface inside a junction that no lane covers
-  (between the curb and the movements at corners no turn follows, slivers
+  (between the carriageway edges and the movements at corners no turn follows, slivers
   between turning lanes, the middle of large junctions) becomes a flat
   `<object type="patch">` with a closed asphalt outline, on the junction's
   first connecting road, its corners on the junction plane. esmini draws it
@@ -331,33 +294,12 @@ sidecar too.
 
 **Signs and lines** (`furniture.py`), per approach with incoming lanes:
 
-| Role | Line, 1 m before the road end (1 m behind a crosswalk) | Sign, 0.5 m outside the carriageway, facing the traffic |
+| Role | Line, 1 m before the road end | Sign, 0.5 m outside the carriageway (driving lanes, pockets, medians), facing the traffic |
 |---|---|---|
 | `stop` | stop line: white, 0.5 m deep, solid | 206 |
 | `yield` | yield line (Z 341): 0.5 m dashes, 0.25 m gaps, 0.3 m deep | 205; at roundabout entries also 215, above it |
 | `signal` | stop line | a traffic light on the roadside at the stop line, and one over the lanes on approaches with 3 or more lanes ([traffic lights](#traffic-lights-and-controllers-hd-maps)) |
 | `major` | none | 301, 30 m before the junction (at most half the road), not on roundabout rings; along a priority road through two or more priority junctions 306 / 307 instead (below) |
-
-**Crosswalks.** At the junction end of a road with sidewalks on both sides
-there (junctions with control only), 0.5 m before the road end, from curb to
-curb: 3 m deep on streets, 4 m on avenues and highways.
-
-- **At lights,** on every arm: two solid edge lines 0.3 m wide
-  (Fußgängerfurt), no sign.
-- **Without lights:** a zebra (Z 293: 0.5 m stripes, 0.5 m gaps) and a sign
-  350-10 facing each direction of travel, only where `junction_control.zebras`
-  allows. German towns have few zebras at junctions without lights, so the
-  default `dense_avenues` puts them only on avenue arms in the `urban`
-  profile: on maps the dense areas (`annotate`, from `urban_density`),
-  without maps every avenue; never on streets. `all` puts one on every arm,
-  `none` on none.
-- The stop or yield line moves 1 m behind the crosswalk.
-- **Skipped** where the road has too little room for the crosswalk, its stop
-  line and 2 m more (half the road where both ends are junctions).
-
-A crosswalk is `<object type="crosswalk">` with an open outline across the
-road and its markings along it (a zebra's stripes; at lights two outline rows,
-one per edge line).
 
 **Priority roads (306 / 307).** Where a priority road runs through two or
 more consecutive priority junctions (traced along each junction's priority
@@ -390,7 +332,9 @@ it (elevation and superelevation) relative to the surface under the object,
 plus 2 cm: lines on a banked or sloped road end lie on the surface instead of
 sinking partly into it. There is no 294 signal, since esmini has no
 OSI type for it and CARLA does not know it. Signs are `<signal country="DE"
-subtype="-1">` with a `<validity>` over the approach lanes; esmini types
+subtype="-1">` with a `<validity>` over the driving lanes present at the
+sign's own station (a lane added on the approach may not exist yet there);
+esmini types
 205, 206, 215 and 301 for OSI. Signals are numbered 1, 2, …; line objects
 from (C + 1) · 1000 on (C chain roads), above every bridge and tunnel id.
 
@@ -417,12 +361,9 @@ plan:
   ([60, 90] s). The green time left after yellow and all-red is split by the
   groups' incoming lane counts, each at least `min_green` (10 s, which may
   stretch the cycle).
-- **Pedestrian phase:** a junction whose approaches all fit in one group (an
-  opposite pair, the third arm leaving only) has nothing to switch between.
-  With crosswalks it keeps its lights and gets a second phase with every
-  vehicle light red, long enough to cross the longest crosswalk at
-  `walk_speed` (1.2 m/s), at least `min_green`. Without crosswalks it becomes
-  a priority junction (the pair is the priority road).
+- **One group:** a junction whose approaches all fit in one group (an
+  opposite pair, the third arm leaving only) has nothing to switch between,
+  so it becomes a priority junction (the pair is the priority road).
 - **Offset:** seeded per junction, a whole second within the cycle, so
   neighbouring junctions do not switch together.
 
@@ -469,9 +410,8 @@ Abridged output for `tests/fixtures/single_4way.json` (4 edges, 1 junction,
 | `geometry_version` | 2 for chain roads (1 was one straight road per edge) |
 | `hdmap_version` | HD maps on only: 1 for the stage B content (`HDMAP_VERSION`, `roadgen/opendrive/__init__.py`); absent with `--no-hd` |
 | `cross_sections` | HD maps on only: each edge's cross-section profile |
-| `signal_plans` | HD maps on only, per junction with lights: `junction`, `node`, `controller`, `cycle` and `offset` [s], `min_green`, `groups` (`[road, contact]` per phase), `lights` (signal id → its approach), `phases` (`group`, `kind` green / yellow / all_red / pedestrian, `duration`, `states`: signal id → `"on;off;off"` red, `"off;on;off"` yellow, `"off;off;on"` green), and the junction's `conflicts` and `permissive` (high, low) connecting-road pairs |
+| `signal_plans` | HD maps on only, per junction with lights: `junction`, `node`, `controller`, `cycle` and `offset` [s], `min_green`, `groups` (`[road, contact]` per phase), `lights` (signal id → its approach), `phases` (`group`, `kind` green / yellow / all_red, `duration`, `states`: signal id → `"on;off;off"` red, `"off;on;off"` yellow, `"off;off;on"` green), and the junction's `conflicts` and `permissive` (high, low) connecting-road pairs |
 | `lane_use` | HD maps on only, per approach: `junction`, `road`, `contact`, `lanes` (incoming lane → movement kinds), `pockets` |
 | `banned` | HD maps on only, per banned turn: `junction`, `from` and `to` (`[road, contact]`), `reason` (`right_in_right_out`, `seeded`) |
-| `junctions` | HD maps on only: per junction its `control` kind, `priority_roads` (`[road, contact]`), `approaches` (`road`, `contact`, `role`), and its numbers of `conflicts`, `priorities` and `crosswalks` |
+| `junctions` | HD maps on only: per junction its `control` kind, `priority_roads` (`[road, contact]`), `approaches` (`road`, `contact`, `role`), and its numbers of `conflicts` and `priorities` |
 | `movement_control` | HD maps on only: per connecting road its approach's `control` role, `priority` (on the priority road) and `yields_to` (connecting roads) |
-| `corner_roads` | HD maps on only: each corner road's `junction_id`, `road`, `from_road`, `to_road`, lane `kinds`, `path` and `closes` (a movement drives the turn it follows) |

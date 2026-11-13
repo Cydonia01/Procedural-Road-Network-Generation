@@ -46,7 +46,7 @@ def _section_spans(road: etree._Element) -> list[tuple[etree._Element, float]]:
 
 def _wide_length(lane: etree._Element, section_length: float) -> float:
     """Length [m] of a lane section over which the lane is not 0 m wide: its <width>
-    records that are not all zero (side lanes and medians run the whole road, 0 m wide
+    records that are not all zero (medians and pockets run the whole road, 0 m wide
     where they are absent)."""
     widths = sorted(lane.findall("width"), key=lambda w: float(w.get("sOffset", 0)))
     if not widths:

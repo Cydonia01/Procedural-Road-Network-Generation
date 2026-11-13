@@ -35,7 +35,7 @@ from typing import Any, Optional
 import numpy as np
 from shapely.geometry import LineString
 
-from roadgen.config import DEFAULTS, section
+from roadgen.config import DEFAULTS, presets, section
 from roadgen.geometry.cross_section import CLASSES
 from roadgen.geometry.planar import wrap_angle
 from roadgen.graph.model import RoadGraph
@@ -43,7 +43,6 @@ from roadgen.graph.model import RoadGraph
 _D = section(DEFAULTS, "junction_control")
 
 CONTROL_KINDS = ("none", "right_before_left", "yield", "stop", "signal")  # Node.control values
-ZEBRAS = ("dense_avenues", "all", "none")  # where junctions without lights get zebra crossings
 RANK = {c: k for k, c in enumerate(CLASSES)}  # street < avenue < highway
 SALT = 5  # random stream of the stop share (np.random.default_rng([seed, SALT, node]))
 BAN_SALT = 8  # random stream of the seeded left-turn bans
@@ -59,7 +58,6 @@ class JunctionControlParams:
     stop_skew_deg: float = _D["stop_skew_deg"]  # ... or a minor arm is this far off 90 deg [deg]
     stop_share: float = _D["stop_share"]  # ... or at this random share of priority junctions
     right_before_left: bool = _D["right_before_left"]  # street-only junctions without signs
-    zebras: str = _D["zebras"]  # zebras without lights: dense_avenues | all | none (crossings at lights always)
     ban_left_highway: bool = _D["ban_left_highway"]  # right-in / right-out where a minor road meets a 2+2 highway
     ban_share: float = _D["ban_share"]  # left turns banned from one approach at this seeded share of junctions
 
@@ -70,16 +68,6 @@ class JunctionControlParams:
             raise ValueError("junction_control needs 0 <= stop_share <= 1 and 0 <= stop_skew_deg <= 90")
         if not 0 <= self.ban_share <= 1:
             raise ValueError("junction_control.ban_share must be within [0, 1]")
-        if self.zebras not in ZEBRAS:
-            raise ValueError(f"unknown junction_control.zebras {self.zebras!r}; available: {ZEBRAS}")
-
-    def zebra(self, road_class: str, profile: str) -> bool:
-        """Whether an arm of a junction without lights gets a zebra: in German towns only on
-        avenues in dense areas (the urban profile, which `annotate` sets from the
-        population map), never on streets (prompt 10)."""
-        if self.zebras == "all":
-            return True
-        return self.zebras == "dense_avenues" and road_class == "avenue" and profile == "urban"
 
     @classmethod
     def preset(cls, name: str, **overrides: Any) -> JunctionControlParams:
@@ -88,11 +76,7 @@ class JunctionControlParams:
         return cls(**{**PRESETS[name], **overrides})
 
 
-PRESETS: dict[str, dict[str, Any]] = {
-    "default": {},
-    "dense": {"signal_density": 4000.0, "stop_share": 0.05},  # more lights, fewer stops
-    "rural": {"right_before_left": False, "stop_share": 0.3, "stop_speed": 13.9},  # signed priority everywhere
-}
+PRESETS: dict[str, dict[str, Any]] = presets("junction_control")  # roadgen/presets.yaml
 JunctionControlParams.PRESETS = PRESETS  # type: ignore[attr-defined]
 
 

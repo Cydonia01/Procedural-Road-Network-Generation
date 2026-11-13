@@ -33,7 +33,7 @@ from typing import Any
 
 import numpy as np
 
-from roadgen.config import DEFAULTS, section
+from roadgen.config import DEFAULTS, presets, section
 from roadgen.generators.base import RoadNetworkGenerator, assign_node_kinds, register
 from roadgen.generators.repair import MIN_ROAD_LENGTH
 from roadgen.generators.transforms.culdesac import add_culdesacs
@@ -103,21 +103,7 @@ class JunctionLayoutParams:
         return cls(**{**PRESETS[name], **overrides})
 
 
-PRESETS: dict[str, dict[str, Any]] = {
-    "t": {"angles_deg": (0.0, 90.0, 180.0), "skew_deg": 0.0},
-    "y": {"angles_deg": (90.0, 210.0, 330.0), "skew_deg": 0.0},
-    "skewed_cross": {"angles_deg": (0.0, 60.0, 180.0, 240.0), "skew_deg": 0.0},
-    # A through road with two diagonals leaving one side.
-    "k": {"angles_deg": (90.0, 270.0, 30.0, 330.0), "skew_deg": 0.0},
-    "five_way": {"legs": 5, "skew_deg": 8.0},
-    "six_way": {"legs": 6, "skew_deg": 5.0},
-    "offset_t": {"pair": True, "skew_deg": 10.0},
-    "roundabout": {"legs": 4, "skew_deg": 10.0, "min_angle_deg": 55.0, "roundabout": True},
-    "roundabout_5": {"legs": 5, "skew_deg": 5.0, "min_angle_deg": 55.0, "roundabout": True},
-    "diamond": {"interchange": "diamond"},
-    "cloverleaf": {"interchange": "cloverleaf"},
-    "random": {},
-}
+PRESETS: dict[str, dict[str, Any]] = presets("generators", "junction")  # roadgen/presets.yaml
 JunctionLayoutParams.PRESETS = PRESETS  # type: ignore[attr-defined]
 
 

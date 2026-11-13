@@ -1,13 +1,9 @@
 """How much room a junction needs: where the roads meeting at a node must stop.
 
 Pure geometry on arm headings and road widths, shared by the OpenDRIVE
-builder, the 3D ground and the generators' repair pass.
-
-With a cross-section (stage B, roadgen.geometry.cross_section) an arm has two
-widths per side: its curb line (driving lanes and the paved side lanes
-inside it) and its outer edge (sidewalks included); and two neighbouring
-arms are joined by a curb return of the smaller of their class radii, which
-the arms must reach past (StreetGen sec. 2.4-2.5).
+builder, the 3D ground and the generators' repair pass. With a cross-section
+(stage B, roadgen.geometry.cross_section) an arm's width counts a left-turn
+pocket on its incoming side; medians have ended before the junction.
 """
 
 from __future__ import annotations
@@ -19,12 +15,9 @@ from typing import Optional
 from roadgen.config import DEFAULTS
 from roadgen.geometry.cross_section import (
     CrossSectionParams,
-    edge_cross_section,
+    half_widths,
     loop_edges,
-    bare_ends,
-    bike_ends,
     pocket_ends,
-    side_half_widths,
 )
 from roadgen.graph.model import Edge, RoadGraph
 
@@ -38,43 +31,19 @@ class Arm:
 
     edge_id: int
     heading: float  # outward direction from the node [rad]
-    left: float  # road width on the counter-clockwise side of `heading` [m] (to the curb line)
+    left: float  # road width on the counter-clockwise side of `heading` [m]
     right: float  # road width on the clockwise side [m]
-    left_outer: Optional[float] = None  # ... to the outer edge (sidewalks included); None = left
-    right_outer: Optional[float] = None
-    radius: float = 0.0  # curb-return radius of the arm's class [m]; 0 = sharp corners
-    length: float = math.inf  # the arm's edge length [m]: bounds its curb returns
-
-    @property
-    def outer(self) -> tuple[float, float]:
-        """(left, right) widths to the outer edge [m]."""
-        return (self.left if self.left_outer is None else self.left_outer,
-                self.right if self.right_outer is None else self.right_outer)
 
 
-@dataclass(frozen=True)
-class Corner:
-    """The curb return between two neighbouring arms (second is counter-clockwise of first)."""
-
-    first: int  # edge ids
-    second: int
-    angle: float  # between the arms [rad]
-    radius: float  # of the curb return [m], after shrinking
-    wanted: float  # the class radius before shrinking [m]
-
-
-def junction_trims(arms: list[Arm], margin: float, max_share: float = 1.0) -> dict[int, float]:
+def junction_trims(arms: list[Arm], margin: float) -> dict[int, float]:
     """Distance from the node at which each arm's road must stop.
 
-    Baseline: the widest half carriageway (to the curb line) at the node, as
-    for right-angle junctions. For two neighboring arms an angle theta apart, the facing road
-    edges (offset a = left width of the first, b = right width of the second)
-    cross at distance d1 = (b + a cos theta) / sin theta along the first arm and
-    d2 = (a + b cos theta) / sin theta along the second; each arm is trimmed past
-    every such crossing, so acute junctions never overlap. The facing curb lines
-    are joined by a curb return of radius r (junction_corners), which adds its
-    tangent length r / tan(theta / 2) to both crossings; the outer edges
-    (sidewalks) only must not overlap.
+    Baseline: the widest half road at the node, as for right-angle junctions.
+    For two neighboring arms an angle theta apart, the facing road edges
+    (offset a = left width of the first, b = right width of the second) cross
+    at distance d1 = (b + a cos theta) / sin theta along the first arm and
+    d2 = (a + b cos theta) / sin theta along the second; each arm is trimmed
+    past every such crossing, so acute junctions never overlap.
 
     The crossing only matters when it lies on both arms (d1 > 0 and d2 > 0).
     Otherwise it lies behind one arm's start, and the two road surfaces only
@@ -86,38 +55,15 @@ def junction_trims(arms: list[Arm], margin: float, max_share: float = 1.0) -> di
     """
     base = max(max(arm.left, arm.right) for arm in arms)
     need = {arm.edge_id: base for arm in arms}
-    radius = {(c.first, c.second): c.radius for c in junction_corners(arms, max_share)}
     for first, second, theta in _neighbours(arms):
         sin, cos = math.sin(theta), math.cos(theta)
-        tangent = radius.get((first.edge_id, second.edge_id), 0.0) / math.tan(theta / 2)
-        for a, b, extra in ((first.left, second.right, tangent), (first.outer[0], second.outer[1], 0.0)):
-            d1, d2 = (b + a * cos) / sin, (a + b * cos) / sin
-            if d1 <= 0 or d2 <= 0:
-                continue  # crossing behind one arm's start: within the baseline
-            need[first.edge_id] = max(need[first.edge_id], d1 + extra)
-            need[second.edge_id] = max(need[second.edge_id], d2 + extra)
+        a, b = first.left, second.right
+        d1, d2 = (b + a * cos) / sin, (a + b * cos) / sin
+        if d1 <= 0 or d2 <= 0:
+            continue  # crossing behind one arm's start: within the baseline
+        need[first.edge_id] = max(need[first.edge_id], d1)
+        need[second.edge_id] = max(need[second.edge_id], d2)
     return {eid: d + margin for eid, d in need.items()}
-
-
-def junction_corners(arms: list[Arm], max_share: float = 1.0) -> list[Corner]:
-    """Curb returns between neighbouring arms that both have a radius, where three or
-    more roads meet (two roads meeting are one road continuing: a bend or a lane-count
-    change kept as a junction).
-
-    The radius is the smaller of the two arms' (StreetGen sec. 2.4), shrunk so
-    that its tangent length r / tan(theta / 2) takes at most max_share of the
-    shorter arm (sec. 2.5: the axis is too short for the guessed radius).
-    """
-    out: list[Corner] = []
-    if len(arms) < 3:
-        return out
-    for first, second, theta in _neighbours(arms):
-        wanted = min(first.radius, second.radius)
-        if wanted <= 0:
-            continue
-        room = max_share * min(first.length, second.length) * math.tan(theta / 2)
-        out.append(Corner(first.edge_id, second.edge_id, theta, min(wanted, room), wanted))
-    return out
 
 
 def _neighbours(arms: list[Arm]) -> list[tuple[Arm, Arm, float]]:
@@ -152,44 +98,28 @@ def oriented_lanes(edge: Edge) -> tuple[int, int, bool]:
 
 
 def node_arms(graph: RoadGraph, node_id: int, cross_section: Optional[CrossSectionParams] = None) -> list[Arm]:
-    """The roads leaving a junction node as arms; with cross_section, with their side
-    lanes as they reach the junction, their curb-return radius and length."""
+    """The roads leaving a junction node as arms; with cross_section, with their
+    left-turn pockets."""
     node = graph.nodes[node_id]
     loops = loop_edges(graph) if cross_section is not None else frozenset()
-    incident = graph.incident_edges(node_id)
-    # Where a loop starts (roundabout entry, cul-de-sac stem) its transform designed the
-    # corners: no class curb returns there, and bike lanes end before it.
-    at_loop = any(e.id in loops for e in incident)
-    bare = bare_ends(graph, node_id) if cross_section is not None else frozenset()
-    no_bikes = bike_ends(graph, node_id) if cross_section is not None else frozenset()
     pockets = (pocket_ends(graph, node_id, cross_section.turn_lanes)
                if cross_section is not None and cross_section.turn_lanes is not None else frozenset())
     arms = []
-    for e in incident:
+    for e in graph.incident_edges(node_id):
         right, left, reverse = oriented_lanes(e)
         start_node = e.to_node if reverse else e.from_node
         other = graph.nodes[e.to_node if e.from_node == node_id else e.from_node]
         heading = math.atan2(other.y - node.y, other.x - node.x)
-        # Leaving the node along +s keeps the lane sides; along -s swaps them.
         if cross_section is None:
-            lw, rw = left * e.lane_width, right * e.lane_width
-            if node_id != start_node:
-                lw, rw = rw, lw
-            arms.append(Arm(e.id, heading, lw, rw))
-            continue
-        loop = e.id in loops
-        rc, lc, ro, lo = side_half_widths(e, cross_section, right, left, at_junction=True,
-                                          bare=e.id in bare,
-                                          ramp=node.kind == "ramp", loop=loop,
-                                          at_loop=at_loop or e.id in no_bikes)
+            rw, lw = right * e.lane_width, left * e.lane_width
+        else:
+            rw, lw = half_widths(e, cross_section, right, left, at_junction=True, loop=e.id in loops)
+        # Leaving the node along +s keeps the lane sides; along -s swaps them.
         if node_id != start_node:
-            rc, lc, ro, lo = lc, rc, lo, ro
+            rw, lw = lw, rw
         if e.id in pockets:  # a left-turn pocket widens the incoming side: the arm's left
-            lc, lo = lc + e.lane_width, lo + e.lane_width
-        # No class curb return where a loop starts (its transform designed the corner) or at
-        # a bare road end (B9: without its side lanes it takes the room it takes today).
-        radius = 0.0 if at_loop or e.id in bare else edge_cross_section(e, cross_section, loop).radius
-        arms.append(Arm(e.id, heading, lc, rc, lo, ro, radius, graph.edge_length(e.id)))
+            lw += e.lane_width
+        arms.append(Arm(e.id, heading, lw, rw))
     return arms
 
 
@@ -210,7 +140,7 @@ def node_trims(graph: RoadGraph, node_id: int, margin: float = DEFAULT_MARGIN,
 def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Optional[CrossSectionParams]) -> tuple:
     """What node_trims reads with a cross-section: the node, each incident edge with its
     far node's position and loop membership, roundabout entries, the pockets left out
-    and the bare road ends there, the margin and the parameters."""
+    there, the margin and the parameters."""
     node = graph.nodes[node_id]
     rings = graph.metadata.get("roundabouts", [])
     loops = [set(r["ring"]) for r in rings] + [set(c["loop"]) for c in graph.metadata.get("culdesacs", [])]
@@ -224,25 +154,13 @@ def _trims_key(graph: RoadGraph, node_id: int, margin: float, cross_section: Opt
         return node_id, node.x, node.y, margin, tuple(sorted(arms))
     left_out = tuple(sorted(e for n, e in graph.metadata.get("no_pockets", []) if n == node_id))
     return (node_id, node.x, node.y, node.kind, node.control, margin, repr(cross_section), tuple(sorted(arms)),
-            any(node_id in r.get("entries", []) for r in rings), left_out, tuple(sorted(bare_ends(graph, node_id))),
-            tuple(sorted(bike_ends(graph, node_id))))
+            any(node_id in r.get("entries", []) for r in rings), left_out)
 
 
 def _node_trims(graph: RoadGraph, node_id: int, margin: float,
                 cross_section: Optional[CrossSectionParams]) -> dict[int, float]:
     arms = node_arms(graph, node_id, cross_section)
     try:
-        if cross_section is None:
-            return junction_trims(arms, margin)
-        return junction_trims(arms, margin, cross_section.max_corner_share)
+        return junction_trims(arms, margin)
     except ValueError as err:
         raise ValueError(f"node {node_id}: {err}") from None
-
-
-def node_corners(graph: RoadGraph, node_id: int, cross_section: CrossSectionParams) -> list[Corner]:
-    """The curb returns of a junction node, radii shrunk to fit."""
-    try:
-        return junction_corners(node_arms(graph, node_id, cross_section), cross_section.max_corner_share)
-    except ValueError as err:
-        raise ValueError(f"node {node_id}: {err}") from None
-

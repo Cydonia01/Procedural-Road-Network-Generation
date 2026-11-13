@@ -29,15 +29,15 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE builder -> .xodr -> validators, drive
   speed (AASHTO), banking, lane tapers, sloped junctions. These are checked by
   validators and by driving every lane and junction movement with esmini's
   RoadManager.
-- **3D view:** optional ground and buildings for the esmini view.
+- **3D view:** ground and buildings for the esmini view, built by default.
 
 ## Quick start
 
 ```bash
 docker compose build && docker compose run --rm dev      # or a native install, see below
 pytest
-python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 --drive-check -o first
-python -m cli pipeline lsystem --preset city --maps --ground --buildings -o hills
+python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 -o first
+python -m cli pipeline lsystem --preset city --maps -o hills
 ```
 
 Each run writes into its own folder `out/<hash>/` and logs where.

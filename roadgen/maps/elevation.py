@@ -29,7 +29,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from roadgen.config import DEFAULTS, section
+from roadgen.config import DEFAULTS, presets, section
 from roadgen.maps import noise
 from roadgen.maps.base import MapGenerator, register_map
 from roadgen.maps.image import grayscale, read_raster, resample
@@ -86,18 +86,7 @@ class FbmElevationParams:
         return cls(**{**PRESETS[name], **overrides})
 
 
-PRESETS: dict[str, dict[str, Any]] = {
-    # Nearly flat plain, a few metres of relief.
-    "flat": {"max_elevation": 5.0, "octaves": 3, "erosion_iterations": 0},
-    # Gentle hills, typical of a lowland city.
-    "rolling": {"max_elevation": 40.0, "scale": 2000.0, "exponent": 1.2},
-    # Pronounced hills and valleys (e.g. a San Francisco-like site).
-    "hilly": {"max_elevation": 150.0, "scale": 1200.0, "gain": 0.55, "ridge": 0.3,
-              "erosion_iterations": 30},
-    # Ridges and steep valleys; most roads will have to follow the contours.
-    "mountainous": {"max_elevation": 600.0, "scale": 2500.0, "gain": 0.55, "ridge": 0.8,
-                    "exponent": 1.6, "erosion_iterations": 50, "talus_deg": 35.0},
-}
+PRESETS: dict[str, dict[str, Any]] = presets("maps", "elevation", "fbm")  # roadgen/presets.yaml
 FbmElevationParams.PRESETS = PRESETS  # type: ignore[attr-defined]
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Final-product examples: each is one `pipeline` run that gives a city with HD
-# maps (side lanes, marks, signs, lights, turn lanes), a ground mesh where the
+# maps (medians, marks, signs, lights, turn lanes), a ground mesh where the
 # city has input maps, and buildings, then opens it in odrviewer. Run from the
 # repository root on the host:
 #
@@ -25,16 +25,16 @@ _run() {
 
 # name | note | pipeline arguments (the output name is added)
 EXAMPLES=(
-"city|Mixed-density city on generated maps: highways, ring roads, river, hills|lsystem --preset city --maps --seed 7 --ground --buildings"
-"manhattan|Manhattan grid: alternating one-way avenues and streets, ring road|lsystem --preset manhattan_like --seed 1 --buildings"
-"paris|Paris: star of avenues, rings, grid outside|lsystem --preset paris --buildings"
-"suburb|Suburb: cul-de-sac bulbs, suburban cross-section|lsystem --preset suburb --seed 1 --cross-section suburban --buildings"
-"mixed_city|Mixed city: style-map districts on generated maps|lsystem --preset mixed_city --maps --seed 1 --ground --buildings"
-"hill_town|Hill town: contour streets on hilly maps|lsystem --preset hill_town --maps --seed 1 --ground --buildings"
-"freeways|City with freeways and overpasses|lsystem --preset city --maps --seed 1 --set highway_crossings=separated --ground --buildings"
-"highway_corridor|Freeway corridor with a diamond interchange, lane adds and drops|lsystem --preset highway_corridor --maps --seed 1 --ground --buildings"
-"diamond|Diamond interchange: freeway crossing an arterial with ramps|junction --preset diamond --set interchange_length=800"
-"cloverleaf|Cloverleaf interchange: freeway crossing a freeway with loop ramps|junction --preset cloverleaf --set interchange_length=800"
+"city|Mixed-density city on generated maps: highways, ring roads, river, hills|lsystem --preset city --maps --seed 7"
+"manhattan|Manhattan grid: alternating one-way avenues and streets, ring road|lsystem --preset manhattan_like --seed 1"
+"paris|Paris: star of avenues, rings, grid outside|lsystem --preset paris"
+"suburb|Suburb: cul-de-sac bulbs, suburban cross-section|lsystem --preset suburb --seed 1 --cross-section suburban"
+"mixed_city|Mixed city: style-map districts on generated maps|lsystem --preset mixed_city --maps --seed 1"
+"hill_town|Hill town: contour streets on hilly maps|lsystem --preset hill_town --maps --seed 1"
+"freeways|City with freeways and overpasses|lsystem --preset city --maps --seed 1 --set highway_crossings=separated"
+"highway_corridor|Freeway corridor with a diamond interchange, lane adds and drops|lsystem --preset highway_corridor --maps --seed 1"
+"diamond|Diamond interchange: freeway crossing an arterial with ramps|junction --preset diamond --set interchange_length=800 --no-buildings"
+"cloverleaf|Cloverleaf interchange: freeway crossing a freeway with loop ramps|junction --preset cloverleaf --set interchange_length=800 --no-buildings"
 )
 
 generate() {
@@ -43,7 +43,7 @@ generate() {
         IFS='|' read -r name note args <<< "$entry"
         echo "== $name"
         # shellcheck disable=SC2086
-        _run dev --note "$note" pipeline $args --drive-check --lane-plot -o "$name"
+        _run dev --note "$note" pipeline $args -o "$name"
     done
 }
 

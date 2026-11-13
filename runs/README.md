@@ -1,7 +1,7 @@
 # Example runs
 
-Ten networks, each the final product: one `pipeline` run with HD maps (side
-lanes, road marks, signs, lights, turn lanes), buildings, a ground mesh where
+Ten networks, each the final product: one `pipeline` run with HD maps
+(medians, road marks, signs, lights, turn lanes), buildings, a ground mesh where
 the city is grown on input maps, and a drive-check. Each opens in odrviewer.
 Made by [`examples.sh`](examples.sh); this page is written from the run
 folders by [`make_readme.py`](make_readme.py).
