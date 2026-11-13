@@ -446,11 +446,12 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     report(reports, stages.check_fit(graph))
     errors = [e for r in reports for e in r.errors]
     errors += check_traffic(graph, args.allow_traps)
-    for kind, layer in layers.items():  # PREFIX_<kind>.npz / .png with the roads on top
-        write_map(layer, Path(f"{prefix}_{kind}"), graph)
-    if layers:
-        graph.metadata["maps"] = maps_metadata(layers, prefix)
-    save_json(graph, prefix.with_suffix(".json"))
+    with timed("write maps and graph"):
+        for kind, layer in layers.items():  # PREFIX_<kind>.npz / .png with the roads on top
+            write_map(layer, Path(f"{prefix}_{kind}"), graph)
+        if layers:
+            graph.metadata["maps"] = maps_metadata(layers, prefix)
+        save_json(graph, prefix.with_suffix(".json"))
     with timed("plot"):
         plot_graph(graph, prefix.with_suffix(".png"))
     xodr = prefix.with_suffix(".xodr")
@@ -481,7 +482,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
                                     *fill_meshes(junction_fills(xodr, fill), args.cfg)])
         log.info("wrote %s (%d buildings)", scenegraph, n)
     if args.drive_check and not errors:
-        failed = ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
+        with timed("drive-check"):
+            failed = ["drive-check failed"] if cmd_drive_check(argparse.Namespace(input=str(xodr))) else []
         reports.append(stages.StageReport("drive-check", failed))
         errors += failed
     log.info("validation: %s", stages.summary(reports))
