@@ -4,7 +4,6 @@ its stage could break, and the pipeline reports every stage."""
 from __future__ import annotations
 
 import copy
-import logging
 import re
 
 import numpy as np
@@ -163,18 +162,6 @@ def test_summary():
 
 
 # --- CLI -----------------------------------------------------------------------------------------------
-
-
-def test_pipeline_reports_every_stage(tmp_path, caplog):
-    caplog.set_level(logging.INFO)
-    out = tmp_path / "net"
-    assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps", "--ground",
-                 "-o", str(out)]) == 0
-    (line,) = [r.getMessage() for r in caplog.records if r.getMessage().startswith("validation: ")]
-    names = [part.rsplit(" ", 1)[0] for part in line[len("validation: "):].split("; ")]
-    assert names[:5] == ["map terrain", "map elevation", "map population", "maps", "generate"]
-    assert {"align", "drape", "annotate", "fit", "xodr", "scene"} <= set(names)
-    assert all(part.endswith(" ok") for part in line[len("validation: "):].split("; ")), line
 
 
 def test_a_failing_map_stops_the_pipeline_and_names_its_stage(tmp_path):

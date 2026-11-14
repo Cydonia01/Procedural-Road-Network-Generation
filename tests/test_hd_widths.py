@@ -20,7 +20,7 @@ from roadgen.opendrive.plot import lane_polygons
 from roadgen.scene.buildings import BuildingParams, footprints
 from roadgen.scene.ground import GroundParams, ground_mesh
 from roadgen.scene.surface import read_surfaces
-from tests.grids import GRID_CLI
+from tests.grids import grid_cli
 from tests.test_elevation import GRID, elevation, terrain
 from tests.test_grade_separation import crossing_graph
 
@@ -80,7 +80,7 @@ def test_overpass_spans_the_lower_road():
 
 def test_buildings_keep_ground_between_them_and_the_roads(tmp_path):
     out = tmp_path / "grid"
-    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps", "--hd",
+    assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), "--allow-traps", "--hd",
                  "-o", str(out)]) == 0
     g = load_json(out.with_suffix(".json"))
     root = etree.parse(str(out.with_suffix(".xodr"))).getroot()

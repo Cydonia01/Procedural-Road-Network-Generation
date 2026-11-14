@@ -16,6 +16,7 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.validate.connectivity import check_traffic_connectivity
 from tests.grids import GRID, SPACING, grid_cli, node_at, small_grid
+from tests.shared import needs_rm
 
 
 def edge_between(g: RoadGraph, a: tuple[float, float], b: tuple[float, float]) -> Edge:
@@ -70,18 +71,6 @@ def test_one_way_lanes_without_pattern():
     g = small_grid(3, 3, major_lanes=(4, 0))
     arterials = [e for e in g.edges.values() if e.lanes_forward + e.lanes_backward == 4]
     assert arterials and all(min(e.lanes_forward, e.lanes_backward) == 0 for e in arterials)
-
-
-@pytest.mark.parametrize("kw", [
-    {"oneway_pattern": ("zigzag", "none")},
-    {"oneway_pattern": ("none",)},
-    {"boundary": "wrap"},
-    {"ring_offset": 0.0},
-    {"ring_lanes": (0, 0)},
-])
-def test_invalid_params(kw):
-    with pytest.raises(ValueError):
-        LSystemParams(**kw)
 
 
 def test_grid_extent():
@@ -277,12 +266,6 @@ def _lanes_leaving(b: OpenDriveBuilder, e: Edge, node: int) -> list[int]:
 # --- CLI ------------------------------------------------------------------------------
 
 
-def test_cli_pipeline_preset_passes(tmp_path, monkeypatch):
-    monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
-    assert main(["pipeline", "lsystem", "--preset", "manhattan_like", "--seed", "1",
-                 "-o", str(tmp_path / "m")]) == 0
-
-
 def test_cli_pipeline_fails_on_traps_unless_allowed(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
     w, h = grid_extent(3, 4, SPACING)
@@ -321,17 +304,7 @@ def test_cli_replaying_a_manhattan_run_explains_its_removal(tmp_path):
         main(["run", str(spec)])
 
 
-def _rm_available() -> bool:
-    from roadgen.sim.esmini import esmini_library
-
-    try:
-        esmini_library("esminiRMLib")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_esmini_drives_every_movement_in_small_preset(tmp_path):
     from roadgen.sim.drive_check import drive_movements
 

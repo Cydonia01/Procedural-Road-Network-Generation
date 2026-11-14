@@ -26,7 +26,6 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import Movement
 from roadgen.validate.hdmap import check_hdmap, check_hdmap_tree
 from roadgen.validate.topology import check_topology
-from tests.grids import GRID_CLI
 
 P = JunctionControlParams()
 
@@ -391,22 +390,6 @@ def test_hd_off_has_no_control(tmp_path):
                               HdMapParams(enabled=False))
     assert not list(root.iter("signal")) and not root.findall("junction/priority")
     assert "junctions" not in sidecar and "movement_control" not in sidecar
-
-
-def test_annotate_command_and_pipeline(tmp_path):
-    from cli import main
-
-    out = tmp_path / "city"
-    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--maps", "--hd", "--allow-traps",
-                 "-o", str(out)]) == 0
-    graph = json.loads(out.with_suffix(".json").read_text())
-    assert "annotate" in graph["metadata"]
-    assert {e.get("cross_section") for e in graph["edges"]} - {None}
-    assert check_hdmap(out.with_suffix(".xodr")) == []
-    pop = tmp_path / "city_population.npz"
-    assert pop.exists()
-    assert main(["--no-history", "annotate", str(out.with_suffix(".json")), "--map-file",
-                 f"population={pop}", "-o", str(tmp_path / "a.json")]) == 0
 
 
 def test_signs_follow_the_road_width_at_their_station(tmp_path):

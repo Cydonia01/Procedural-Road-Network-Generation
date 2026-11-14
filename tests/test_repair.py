@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from roadgen.config import DEFAULTS, section
-from roadgen.generators.base import get_generator, load_params
+from roadgen.config import DEFAULTS
+from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 from roadgen.generators.repair import MIN_ROAD_LENGTH, repair_short_edges, short_edges, stub_roads
 from roadgen.graph.io import graph_to_dict
 from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.maps.base import make_map
-from roadgen.maps.model import MAP_KINDS, GridSpec, MapSet
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
+from tests.shared import grown, grown_maps
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
@@ -57,31 +56,21 @@ def test_collapse_refused_when_it_would_duplicate_a_road_then_edge_removed():
     assert short_edges(g) == []
 
 
-def _sweep_graph(seed: int):
-    gen = get_generator("lsystem")
-    params = load_params(gen.params_type, preset="city", defaults=section(DEFAULTS, "generators", "lsystem"))
-    grid = GridSpec.from_bounds(gen.map_bounds(params), DEFAULTS["maps"]["grid"]["margin"],
-                                DEFAULTS["maps"]["grid"]["cell_size"])
-    layers = {}
-    for kind in MAP_KINDS:
-        name = DEFAULTS["maps"]["pipeline"][kind]
-        layers[kind] = make_map(kind, name, grid, seed, defaults=section(DEFAULTS, "maps", kind, name),
-                                upstream=MapSet(**layers))
-    return gen.generate(params, seed, maps=MapSet(**layers))
-
-
+@pytest.mark.slow
 def test_sweep_seed_60_now_builds():
-    g = _sweep_graph(60)  # 42 m between two junctions needing 21 m each (A0 sweep)
+    g = grown("city", 60, maps=True)  # 42 m between two junctions needing 21 m each (A0 sweep)
     assert short_edges(g) == []
     OpenDriveBuilder(hd=PLAIN).build(g)
 
 
+@pytest.mark.slow
 def test_buildable_networks_are_unchanged(monkeypatch):
     # The repair only touches edges the builder would reject: a seed that built
     # before (seed 3) gives the same graph with the repair switched off.
-    repaired = graph_to_dict(_sweep_graph(3))
+    repaired = graph_to_dict(grown("city", 3, maps=True))
     monkeypatch.setattr("roadgen.generators.lsystem.repair_short_edges", lambda graph, **kw: 0)
-    assert graph_to_dict(_sweep_graph(3)) == repaired
+    unrepaired = LSystemGenerator().generate(LSystemParams.preset("city"), 3, grown_maps("city", 3))
+    assert graph_to_dict(unrepaired) == repaired
 
 
 def test_stub_road_between_junctions_is_merged():

@@ -23,6 +23,7 @@ from roadgen.opendrive.junctions import lane_use
 from roadgen.validate.continuity import RoadEval, _width, check_continuity
 from roadgen.validate.hdmap import check_hdmap
 from roadgen.validate.topology import check_topology
+from tests.shared import needs_rm
 
 HD = HdMapParams(enabled=True)
 
@@ -201,17 +202,7 @@ def test_hd_off_unchanged_by_b8(tmp_path):
     assert not list(root.iter("object"))
 
 
-def _rm_available() -> bool:
-    try:
-        from roadgen.sim.esmini import esmini_library
-
-        esmini_library("esminiRMLib")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_drive_check_through_pockets(tmp_path):
     from roadgen.sim.drive_check import drive_lanes, drive_movements
 

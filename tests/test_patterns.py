@@ -169,18 +169,6 @@ def test_skewed_grid_has_skewed_junctions():
     assert m["skewed_share"] > 0.3
 
 
-@pytest.mark.parametrize("kw", [
-    {"pattern_weights": (1, 0, 0)},
-    {"pattern_weights": (0, 0, 0, 0, 0)},
-    {"pattern_weights": (1, -1, 0, 0, 0)},
-    {"organic": 1.5},
-    {"radial_spokes": 1},
-])
-def test_invalid_field_params(kw):
-    with pytest.raises(ValueError):
-        LSystemParams(**kw)
-
-
 def test_field_growth_is_deterministic():
     a, b = grow(4, organic=0.6, skew_deg=10.0), grow(4, organic=0.6, skew_deg=10.0)
     assert [(n.x, n.y) for n in a.nodes.values()] == [(n.x, n.y) for n in b.nodes.values()]

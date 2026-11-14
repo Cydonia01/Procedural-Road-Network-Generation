@@ -16,6 +16,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import classify, continuation_pairs, lane_pairs
 from roadgen.validate.continuity import check_continuity, check_continuity_tree
 from roadgen.validate.topology import check_topology, check_topology_tree
+from tests.shared import needs_rm
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
@@ -313,17 +314,7 @@ def test_topology_detects_bad_lane_links(tmp_path):
 # --- esmini drive-through (skipped when esmini is not available) --------------------
 
 
-def _rm_available() -> bool:
-    from roadgen.sim.esmini import esmini_library
-
-    try:
-        esmini_library("esminiRMLib")
-        return True
-    except FileNotFoundError:
-        return False
-
-
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 @pytest.mark.parametrize("name", ALL_FIXTURES)
 def test_esmini_drives_every_movement(tmp_path, name):
     from roadgen.sim.drive_check import drive_movements
@@ -403,7 +394,7 @@ def test_sliver_angle_rejected(tmp_path):
         OpenDriveBuilder(hd=PLAIN).build(g)
 
 
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 @pytest.mark.parametrize("name", ANGLED)
 def test_esmini_drives_angled_junctions(tmp_path, name):
     from roadgen.sim.drive_check import drive_movements
@@ -428,7 +419,7 @@ def short_roads_graph():
     return g
 
 
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_esmini_drives_short_roads_and_dead_ends(tmp_path):
     from roadgen.sim.drive_check import APPROACH, drive_movements
 
@@ -444,7 +435,7 @@ def test_esmini_drives_short_roads_and_dead_ends(tmp_path):
     assert [r.describe() for r in results if not r.ok] == []
 
 
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_esmini_drives_long_connecting_roads(tmp_path):
     """A big junction's connecting roads can be longer than the approach plus
     a fixed distance; the drive must still reach the target road."""

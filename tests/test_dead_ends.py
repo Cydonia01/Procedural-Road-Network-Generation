@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from roadgen.generators.lsystem import (
     AVENUE_Y,
@@ -13,7 +12,6 @@ from roadgen.generators.lsystem import (
     _Growth,
 )
 from roadgen.metrics.network import network_metrics
-from roadgen.validate.connectivity import check_traffic_connectivity
 
 P = LSystemParams(extent=(1000.0, 600.0), block_size=(200.0, 100.0))
 
@@ -85,14 +83,6 @@ def test_ring_boundary_keeps_roads_at_the_edge():
     end = node_at(g, (1000.0, 300.0))
     g.dead_end_pass()
     assert len(g.adj[end]) == 1  # the ring road collects it later
-
-
-@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("city", 2), ("skewed_grid", 0)])
-def test_presets_have_few_dead_ends_and_no_traps(preset, seed):
-    g = LSystemGenerator().generate(LSystemParams.preset(preset), seed)
-    m = network_metrics(g)
-    assert m["counts"]["dead_ends"] <= 0.03 * len(g.nodes)
-    assert not [e for e in check_traffic_connectivity(g) if "trap" in e]
 
 
 def test_off_keeps_dead_ends():

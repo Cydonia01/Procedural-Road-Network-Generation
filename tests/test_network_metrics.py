@@ -16,6 +16,7 @@ from roadgen.metrics.network import (
     offset_t_pairs,
     orientation,
 )
+from tests.shared import grown
 
 
 def graph_of(points: dict[int, tuple[float, float]], edges: list[tuple[int, int]], **meta) -> RoadGraph:
@@ -148,11 +149,15 @@ def test_body_overlaps_read_heights():
     assert naturalness(g)["body_overlaps"] == 1
 
 
-@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("city", 2), ("suburb", 1)])
+@pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("city", 2), ("suburb", 1),
+                                          ("skewed_grid", 0)])
 def test_presets_pass_the_naturalness_gates(preset, seed):
-    from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
+    from roadgen.validate.connectivity import check_traffic_connectivity
 
-    m = network_metrics(LSystemGenerator().generate(LSystemParams.preset(preset), seed))["naturalness"]
+    g = grown(preset, seed)
+    m = network_metrics(g)["naturalness"]
+    if preset != "suburb":  # suburb's dead ends end in turning bulbs
+        assert not [e for e in check_traffic_connectivity(g) if "trap" in e]
     assert m["two_road_changes"] == 0
     assert m["body_overlaps"] == 0
     assert m["dead_end_share"] <= 0.03

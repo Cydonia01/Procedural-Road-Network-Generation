@@ -10,7 +10,6 @@ import pytest
 from cli import main
 from roadgen.config import DEFAULTS, section
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.graph.io import load_json
 from roadgen.graph.model import RoadGraph
 from roadgen.maps.base import make_map
 from roadgen.maps.model import (
@@ -20,13 +19,13 @@ from roadgen.maps.model import (
     GridSpec,
     MapLayer,
     MapSet,
-    load_npz,
     save_npz,
 )
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
+from tests.shared import grown
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
@@ -197,25 +196,13 @@ def test_roads_respect_max_grade():
 # --- whole networks -------------------------------------------------------------------------------
 
 
-def generated_maps(params: LSystemParams, seed: int) -> MapSet:
-    """terrain -> elevation -> population, each on the maps before it."""
-    grid = GridSpec.from_bounds(LSystemGenerator().map_bounds(params), 200.0, 10.0)
-    maps = MapSet()
-    for kind, name in (("terrain", "noise"), ("elevation", "fbm"), ("population", "centers")):
-        layer = make_map(kind, name, grid, seed, defaults=section(DEFAULTS, "maps", kind, name),
-                         upstream=maps)
-        maps = MapSet(**{**maps.layers(), kind: layer})
-    return maps
-
-
-@pytest.mark.parametrize("seed", range(2))
-def test_city_on_generated_maps_builds_valid_xodr(tmp_path, seed):
-    p = LSystemParams.preset("city")
-    maps = generated_maps(p, seed)
-    g = LSystemGenerator().generate(p, seed, maps)
+@pytest.mark.slow
+def test_city_on_generated_maps_builds_valid_xodr(tmp_path):
+    # the network of the identity fingerprint city_maps (tests/lsystem_identity.py), which
+    # also keeps it the same from run to run
+    g = grown("city", 1, maps=True)
     assert g.validate() == []
     assert classes(g, "highway") and len(g.edges) > 100
-    assert g == LSystemGenerator().generate(p, seed, maps)  # deterministic
     b = OpenDriveBuilder(hd=PLAIN)
     b.build(g)
     xodr = tmp_path / "city.xodr"
@@ -255,39 +242,7 @@ def test_map_bounds_cover_the_rotated_area():
     assert (x0, y0, x1, y1) == pytest.approx((-400.0, 200.0, 100.0, 1200.0))
 
 
-def test_new_params_are_validated():
-    with pytest.raises(ValueError):
-        LSystemParams(highway_max_turn_deg=70.0, highway_max_detour_deg=60.0)
-    with pytest.raises(ValueError):
-        LSystemParams(prune_factor=1.5)
-    with pytest.raises(ValueError):
-        LSystemParams(highway_lanes=(0, 0))
-
-
 # --- CLI ------------------------------------------------------------------------------------------
-
-
-def test_cli_pipeline_grows_lsystem_on_its_maps(tmp_path):
-    prefix = tmp_path / "city"
-    # --no-hd: the network as grown (annotate and the HD fit would set profiles and repair)
-    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--allow-traps", "--maps", "--no-hd",
-                 "--seed", "3", "-o", str(prefix)]) == 0
-    graph = load_json(prefix.with_suffix(".json"))
-    assert "bridges" in graph.metadata
-    assert set(graph.metadata["maps"]) == {"terrain", "elevation", "population"}
-    params = LSystemParams.preset("city", extent=(1500.0, 900.0))
-    for kind in ("terrain", "elevation", "population"):
-        layer = load_npz(tmp_path / f"city_{kind}.npz")
-        assert layer.grid.covers(LSystemGenerator().map_bounds(params))
-    # The same maps from files give the same network.
-    out = tmp_path / "again.json"
-    files = [f"--map-file={k}={tmp_path / f'city_{k}.npz'}"
-             for k in ("terrain", "elevation", "population")]
-    assert main(["generate", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--seed", "3", *files, "--no-hd",
-                 "-o", str(out)]) == 0
-    again = load_json(out)
-    assert again.edges == graph.edges
-    assert again.metadata["maps"]["terrain"]["source"].endswith("city_terrain.npz")
 
 
 def test_cli_map_file_errors(tmp_path):

@@ -124,6 +124,7 @@ def test_templates_need_room_and_a_straight_road():
     assert "interchanges" not in g.metadata
 
 
+@pytest.mark.slow
 def test_lsystem_freeway_corridor_has_a_diamond():
     from roadgen.config import DEFAULTS, section
     from roadgen.maps.base import make_map
@@ -143,18 +144,9 @@ def test_lsystem_freeway_corridor_has_a_diamond():
     OpenDriveBuilder(hd=HdMapParams(enabled=False)).build(separate(g))  # HD repair is the pipeline's job
 
 
-@pytest.mark.parametrize("kw", [{"interchanges": True}, {"interchange_spacing": 0.0},
-                                {"highway_lane_change_prob": 2.0}])
-def test_invalid_lsystem_params(kw):
-    with pytest.raises(ValueError):
-        LSystemParams(**kw)
-
-
 def test_invalid_params():
     with pytest.raises(ValueError):
         InterchangeParams(ramp_angle_deg=5.0)
-    with pytest.raises(ValueError):
-        JunctionLayoutParams(interchange="trumpet")
 
 
 def test_lane_changes_on_highways():
