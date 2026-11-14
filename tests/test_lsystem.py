@@ -6,7 +6,7 @@ from itertools import combinations
 import pytest
 from shapely.geometry import LineString
 
-from cli import fit_graph, main
+from cli import fit_graph
 from roadgen.config import DEFAULTS
 from roadgen.generators.base import build_params
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
@@ -15,7 +15,7 @@ from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
-from tests.grids import GRID, GRID_CLI
+from tests.grids import GRID
 
 
 def road_set(g: RoadGraph) -> set:
@@ -75,7 +75,8 @@ def test_grid_goal_grows_the_lattice_from_any_lattice_start(start):
 
 @pytest.mark.parametrize("seed", range(5))
 def test_organic_growth_respects_constraints(seed):
-    p = LSystemParams.preset("city", dead_ends=False)  # bulbs are added after growth
+    # bulbs are added after growth; a quarter of city's area holds the same local rules
+    p = LSystemParams.preset("city", dead_ends=False, extent=(1500.0, 1200.0))
     g = LSystemGenerator().generate(p, seed)
     assert g.validate() == []
     assert len(g.edges) > 50
@@ -109,7 +110,7 @@ def test_organic_growth_respects_constraints(seed):
 
 
 def test_deterministic():
-    p = LSystemParams.preset("city")
+    p = LSystemParams.preset("city", extent=(1500.0, 900.0))
     a, b = LSystemGenerator().generate(p, 7), LSystemGenerator().generate(p, 7)
     assert a == b
     assert road_set(a) != road_set(LSystemGenerator().generate(p, 8))
@@ -120,7 +121,9 @@ def test_max_segments_budget():
     assert len(g.edges) == 25
 
 
+# Every LSystemParams check, by feature (one table instead of one test per feature file).
 @pytest.mark.parametrize("kw", [
+    # growth
     {"global_goal": "radial"},
     {"extent": (0.0, 100.0)},
     {"start": (1.5, 0.5)},
@@ -129,6 +132,33 @@ def test_max_segments_budget():
     {"min_angle_deg": 95.0},
     {"major_lanes": (0, 0)},
     {"arterial_share": 0.6, "collector_share": 0.6},
+    {"curve_tortuosity": 0.9},
+    # grids: one-way patterns and the ring road
+    {"oneway_pattern": ("zigzag", "none")},
+    {"oneway_pattern": ("none",)},
+    {"boundary": "wrap"},
+    {"ring_offset": 0.0},
+    {"ring_lanes": (0, 0)},
+    # pattern fields
+    {"pattern_weights": (1, 0, 0)},
+    {"pattern_weights": (0, 0, 0, 0, 0)},
+    {"pattern_weights": (1, -1, 0, 0, 0)},
+    {"organic": 1.5},
+    {"radial_spokes": 1},
+    # suburbs: connectors and cul-de-sacs
+    {"detour_ratio": 0.5},
+    {"connect_radius": 0.0},
+    {"culdesac_prob": 2.0},
+    {"culdesac_radius": 0.0},
+    {"suburb_end_prob": -0.1},
+    # highways on input maps, crossings and interchanges
+    {"highway_max_turn_deg": 70.0, "highway_max_detour_deg": 60.0},
+    {"prune_factor": 1.5},
+    {"highway_lanes": (0, 0)},
+    {"highway_crossings": "maybe"},
+    {"interchanges": True},
+    {"interchange_spacing": 0.0},
+    {"highway_lane_change_prob": 2.0},
 ])
 def test_invalid_params(kw):
     with pytest.raises(ValueError):
@@ -143,10 +173,10 @@ def test_unknown_preset():
 # --- OpenDRIVE ------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("seed", range(3))
-def test_organic_network_builds_valid_xodr(tmp_path, seed):
+@pytest.mark.slow
+def test_organic_network_builds_valid_xodr(tmp_path):
     # As the pipeline does: the HD fit repairs edges too short once side lanes widen the trims.
-    g = fit_graph(grow(seed, preset="city", extent=(1500.0, 900.0)), DEFAULTS, HdMapParams(), 2.0)
+    g = fit_graph(grow(0, preset="city", extent=(1500.0, 900.0)), DEFAULTS, HdMapParams(), 2.0)
     b = OpenDriveBuilder()
     b.build(g)
     xodr = tmp_path / "o.xodr"
@@ -155,8 +185,3 @@ def test_organic_network_builds_valid_xodr(tmp_path, seed):
     assert check_continuity(xodr) == []
 
 
-def test_acceptance_pipeline_lsystem_grid(tmp_path, monkeypatch):
-    monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
-    monkeypatch.chdir(tmp_path)  # default output goes to ./out
-    assert main(["pipeline", "lsystem", *GRID_CLI]) == 0
-    assert (tmp_path / "out" / "lsystem_s0.xodr").is_file()

@@ -18,6 +18,7 @@ from roadgen.opendrive.junctions import JunctionParams, RoadEnd, u_turn_lane
 from roadgen.geometry.planar import Pose
 from roadgen.validate.connectivity import check_traffic_connectivity
 from tests.test_junction_variety import build_and_check, star
+from tests.shared import grown
 
 
 def roundabout(angles, lanes=(1, 1), **kw) -> tuple[RoadGraph, int]:
@@ -68,8 +69,9 @@ def test_roundabouts_need_room_and_spread_arms():
     assert roundabout([0, 120, 240], allowed=lambda fp: False)[1] == 0
 
 
+@pytest.mark.slow
 def test_roundabouts_in_lsystem_and_junction_generator():
-    g = LSystemGenerator().generate(LSystemParams.preset("suburb"), 1)
+    g = grown("suburb", 1)
     assert network_metrics(g)["features"]["roundabouts"] > 0
     OpenDriveBuilder(hd=HdMapParams(enabled=False)).build(g)  # HD repair is the pipeline's job
     rings = sum(bool(JunctionGenerator().generate(JunctionLayoutParams.preset("roundabout"), s)

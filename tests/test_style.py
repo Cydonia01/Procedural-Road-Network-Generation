@@ -27,6 +27,7 @@ from roadgen.maps.model import (
 from roadgen.metrics.network import network_metrics
 from tests.grids import GRID as GRID10
 from tests.lsystem_identity import fingerprint
+from tests.shared import grown
 
 GRID = GridSpec((0.0, 0.0), (3000.0, 2400.0), 20.0)
 X, Y = GRID.cell_centers()
@@ -131,6 +132,7 @@ def test_blend_weights_sum_to_one_and_blur_borders():
     assert w((2900.0, 1200.0))[STYLE_SUBURB] == pytest.approx(1.0)
 
 
+@pytest.mark.slow
 def test_grid_goal_ignores_the_style_map():
     style = zones(shares=(0, 0, 0, 0, 1))
     p = LSystemParams.preset("city")
@@ -161,6 +163,7 @@ def test_district_angles_turn_the_grid():
     assert turns == {expected}
 
 
+@pytest.mark.slow
 def test_cli_pipeline_builds_style_only_for_the_field_goal(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
     small = ["--set", "extent=[1200, 900]", "--allow-traps", "--maps"]
@@ -170,8 +173,7 @@ def test_cli_pipeline_builds_style_only_for_the_field_goal(tmp_path, monkeypatch
     assert set(graph.metadata["maps"]) == {"terrain", "elevation", "population", "style"}
     assert load_npz(tmp_path / "mixed_style.npz").kind == "style"
     assert (tmp_path / "mixed_style.png").is_file()
-    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", *small, "-o", str(tmp_path / "g")]) == 0
-    assert not (tmp_path / "g_style.npz").exists()
+    # city (grid goal) gets no style map: tests/test_cli_pipeline.py
 
 
 def test_cli_map_style(tmp_path):
@@ -180,10 +182,7 @@ def test_cli_map_style(tmp_path):
     assert load_npz(tmp_path / "s.npz").metadata["params"]["angle_spread_deg"] == 10
 
 
-def test_mixed_city_is_more_varied_than_a_grid(tmp_path, monkeypatch):
-    monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
-    assert main(["pipeline", "lsystem", "--preset", "mixed_city", "--maps", "--seed", "3",
-                 "--allow-traps", "-o", str(tmp_path / "m")]) == 0
-    mixed = network_metrics(load_json(tmp_path / "m.json"))
+def test_mixed_city_is_more_varied_than_a_grid():
+    mixed = network_metrics(grown("mixed_city", 3, maps=True, extent=(1500.0, 1200.0)))
     grid = network_metrics(LSystemGenerator().generate(LSystemParams(**GRID10), 0))
     assert mixed["orientation_entropy"] > grid["orientation_entropy"] + 1.0

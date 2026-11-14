@@ -24,7 +24,7 @@ from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
 from roadgen.validate.topology import check_topology
 from tests.grids import GRID
-from tests.test_junctions import _rm_available
+from tests.shared import rm_available
 
 
 def star(angles_deg, lanes=((2, 2),), length: float = 150.0) -> RoadGraph:
@@ -38,7 +38,8 @@ def star(angles_deg, lanes=((2, 2),), length: float = 150.0) -> RoadGraph:
     return g
 
 
-def build_and_check(g: RoadGraph, tmp_path: Path, params: JunctionParams = JunctionParams()) -> OpenDriveBuilder:
+def build_and_check(g: RoadGraph, tmp_path: Path, params: JunctionParams = JunctionParams(),
+                    drive: bool = True) -> OpenDriveBuilder:
     b = OpenDriveBuilder(junctions=params)
     b.build(g)
     path = tmp_path / "net.xodr"
@@ -47,7 +48,7 @@ def build_and_check(g: RoadGraph, tmp_path: Path, params: JunctionParams = Junct
     assert check_continuity(path) == []
     assert check_curvature(path)[0] == []
     assert check_dynamics(path, connecting=True) == []
-    if _rm_available():
+    if drive and rm_available():
         from roadgen.sim.drive_check import drive_lanes, drive_movements
 
         assert [r.describe() for r in drive_movements(path) if not r.ok] == []
@@ -68,7 +69,8 @@ SHAPES = {
 @pytest.mark.parametrize("name", SHAPES)
 def test_shapes_build_and_drive(name, tmp_path):
     g = star(SHAPES[name], lanes=((2, 2), (1, 1)))
-    b = build_and_check(g, tmp_path)
+    # esmini drives these shapes as junction generator presets (test_junction_generator.py)
+    b = build_and_check(g, tmp_path, drive=False)
     assert len(b.node_to_junction) == 1
     legs = len(SHAPES[name])
     assert network_metrics(g)["legs"][str(legs) if legs < 7 else "7+"] == 1

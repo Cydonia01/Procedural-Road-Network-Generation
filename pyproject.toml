@@ -35,7 +35,10 @@ roadgen = ["defaults.yaml", "presets.yaml"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-markers = ["pipeline_defaults: run with the pipeline's real default outputs (tests/conftest.py turns them off)"]
+markers = [
+    "pipeline_defaults: run with the pipeline's real default outputs (tests/conftest.py turns them off)",
+    "slow: a whole network grown, built or driven (seconds each); the daily run is pytest -m 'not slow'",
+]
 # matplotlib's mathtext (log-axis tick labels) calls deprecated pyparsing APIs.
 filterwarnings = [
     "ignore::DeprecationWarning:matplotlib.*",

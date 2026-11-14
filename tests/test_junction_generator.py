@@ -69,7 +69,8 @@ def test_impossible_layout_is_reported():
 
 
 @pytest.mark.parametrize("kw", [{"legs": 8}, {"leg_weights": (1, 0, 0)}, {"angles_deg": (0.0, 90.0)},
-                                {"lane_probs": (1.0, 0.0, 0.0, 0.0)}, {"leg_length": 0.0}])
+                                {"lane_probs": (1.0, 0.0, 0.0, 0.0)}, {"leg_length": 0.0},
+                                {"interchange": "trumpet"}])
 def test_invalid_params(kw):
     with pytest.raises(ValueError):
         JunctionLayoutParams(**kw)

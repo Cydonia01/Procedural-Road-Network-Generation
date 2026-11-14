@@ -10,16 +10,7 @@ import pytest
 from cli import main
 from roadgen.config import DEFAULTS
 from tests.grids import ON_MAPS, grid_cli
-
-
-def _rm_available() -> bool:
-    try:
-        from roadgen.sim.esmini import esmini_library
-
-        esmini_library("esminiRMLib")
-        return True
-    except FileNotFoundError:
-        return False
+from tests.shared import needs_rm
 
 
 @pytest.mark.pipeline_defaults
@@ -28,7 +19,7 @@ def test_defaults_are_on():
 
 
 @pytest.mark.pipeline_defaults
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_pipeline_writes_everything_by_default(tmp_path, caplog):
     caplog.set_level(logging.INFO, logger="roadgen.cli")
     out = tmp_path / "net"

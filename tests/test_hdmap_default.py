@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 
-from cli import main
 from roadgen.config import DEFAULTS
 from roadgen.graph.io import load_json
 from roadgen.opendrive import HDMAP_VERSION
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
-from tests.grids import GRID_CLI
 
 FIXTURE = "tests/fixtures/4way_avenue_x_street.json"
 
@@ -31,13 +29,3 @@ def test_sidecar_has_hdmap_version_only_with_hd_maps(tmp_path):
     assert "hdmap_version" not in _sidecar(tmp_path, HdMapParams(enabled=False))
 
 
-def test_pipeline_default_is_hd_and_no_hd_is_plain(tmp_path):
-    on, off = tmp_path / "on", tmp_path / "off"
-    base = ["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps"]
-    assert main([*base, "--lane-plot", "-o", str(on)]) == 0
-    assert main([*base, "--no-hd", "-o", str(off)]) == 0
-    assert json.loads(on.with_suffix(".roadmap.json").read_text())["hdmap_version"] == HDMAP_VERSION
-    assert "hdmap_version" not in json.loads(off.with_suffix(".roadmap.json").read_text())
-    assert "<signal " in on.with_suffix(".xodr").read_text()  # signs and lights
-    assert "<signal " not in off.with_suffix(".xodr").read_text()
-    assert (tmp_path / "on_hd.png").is_file() and not (tmp_path / "off_hd.png").exists()

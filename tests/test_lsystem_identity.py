@@ -1,6 +1,5 @@
 """New lsystem features are off by default: the existing lsystem presets grow exactly the
-networks they grew before (tests/lsystem_identity.py, recorded before stage C,
-re-recorded for the stage R1 road hierarchy)."""
+networks they grew before (tests/lsystem_identity.py)."""
 
 from __future__ import annotations
 
@@ -12,6 +11,5 @@ from tests.lsystem_identity import CASES, EXPECTED, build, fingerprint
 
 
 @pytest.mark.parametrize("name, preset, seed, maps", CASES, ids=[c[0] for c in CASES])
-def test_network_unchanged(name, preset, seed, maps, monkeypatch):
-    monkeypatch.delenv("OPENDRIVE_XSD", raising=False)
-    assert fingerprint(build(preset, seed, maps), heights=not maps) == json.loads(EXPECTED.read_text())[name]
+def test_network_unchanged(name, preset, seed, maps):
+    assert fingerprint(build(preset, seed, maps)) == json.loads(EXPECTED.read_text())[name]

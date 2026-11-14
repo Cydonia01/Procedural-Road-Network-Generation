@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 
 import numpy as np
-import pytest
 
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 from roadgen.maps.model import GridSpec, MapLayer, MapSet
@@ -69,6 +68,3 @@ def test_hill_town_ignores_the_style_map():
     assert "style" in gen.map_kinds(LSystemParams.preset("mixed_city"))
 
 
-def test_curve_params_are_validated():
-    with pytest.raises(ValueError):
-        LSystemParams(curve_tortuosity=0.9)

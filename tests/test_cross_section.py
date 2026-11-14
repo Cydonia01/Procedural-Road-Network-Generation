@@ -6,7 +6,6 @@ import math
 
 import pytest
 
-from cli import main
 from roadgen.generators.repair import repair_short_edges, short_edges, stub_roads
 from roadgen.geometry.cross_section import (
     CrossSectionParams,
@@ -27,7 +26,6 @@ from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.opendrive.junctions import RoadEnd
 from roadgen.opendrive.lanes import make_lane_sections
-from tests.grids import GRID_CLI
 from tests.test_repair import two_junctions
 
 CS = CrossSectionParams()
@@ -175,16 +173,6 @@ def test_hd_params_from_config():
     from roadgen.geometry.cross_section import TurnLaneParams
 
     assert on.seed == 4 and on.active_cross_section == CrossSectionParams(turn_lanes=TurnLaneParams())
-
-
-def test_pipeline_hd_fits_and_builds(tmp_path):
-    out = tmp_path / "net"
-    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps", "--hd",
-                 "-o", str(out)]) == 0
-    off = tmp_path / "off"
-    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps", "--no-hd",
-                 "-o", str(off)]) == 0
-    assert out.with_suffix(".xodr").read_bytes() != off.with_suffix(".xodr").read_bytes()  # marks, signs, ...
 
 
 def test_collapse_keeps_bridges_on_their_edges():

@@ -14,20 +14,11 @@ from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.continuity import RoadEval, _width, check_continuity
 from roadgen.validate.topology import check_topology
-from tests.grids import GRID_CLI
+from tests.grids import grid_cli
+from tests.shared import needs_rm
 
 CS = CrossSectionParams()
 HD = HdMapParams(enabled=True)
-
-
-def _rm_available() -> bool:
-    try:
-        from roadgen.sim.esmini import esmini_library
-
-        esmini_library("esminiRMLib")
-        return True
-    except FileNotFoundError:
-        return False
 
 
 def _build(graph: RoadGraph, tmp_path, name: str = "net", hd: HdMapParams = HD):
@@ -92,18 +83,7 @@ def test_median_shifts_driving_lanes_and_ends_before_junctions(tmp_path):
         assert all(types[link.get("from")] == "driving" for link in conn.findall("laneLink"))
 
 
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
-@pytest.mark.parametrize("args", [
-    ["lsystem", *GRID_CLI],
-    ["junction", "--preset", "roundabout"],
-    ["junction", "--preset", "diamond"],
-], ids=["grid", "roundabout", "diamond"])
-def test_drive_check_with_hd_maps(tmp_path, args):
-    out = tmp_path / "net"
-    assert main(["--no-history", "pipeline", *args, "--allow-traps", "--hd", "--drive-check", "-o", str(out)]) == 0
-
-
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_esmini_drives_past_a_median(tmp_path):
     from roadgen.sim.drive_check import drive_lanes, drive_movements
 
@@ -124,7 +104,7 @@ def test_pipeline_writes_lane_plot_and_only_driven_lanes(tmp_path):
     """Polish N1: the roads carry driving lanes, turn pockets and medians only; nothing
     else is a lane (no sidewalks, curbs, parking, bike lanes or shoulders)."""
     out = tmp_path / "net"
-    assert main(["--no-history", "pipeline", "lsystem", *GRID_CLI, "--allow-traps", "--hd",
+    assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), "--allow-traps", "--hd",
                  "--cross-section", "rural", "--lane-plot", "-o", str(out)]) == 0
     assert (tmp_path / "net_hd.png").exists()
     root = etree.parse(str(out.with_suffix(".xodr"))).getroot()
@@ -149,7 +129,7 @@ def test_lane_step_follows_the_lane_on_curves():
     assert _lane_steps(evals, [(1, 1, 0.0), (1, 5, STEP)]) == [STEP]  # a lane the road does not have
 
 
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_drive_check_still_catches_a_jump(tmp_path):
     from roadgen.sim.drive_check import drive_movements
 

@@ -3,13 +3,13 @@ and esmini driving every lane of chain roads."""
 
 from __future__ import annotations
 
-import pytest
 from lxml import etree
 
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.validate.continuity import check_continuity_tree, check_curvature_tree
 from roadgen.validate.dynamics import check_dynamics_tree
+from tests.shared import needs_rm
 
 W = 3.5
 
@@ -94,17 +94,7 @@ def _bend_network() -> RoadGraph:
     return g
 
 
-def _esmini_available() -> bool:
-    try:
-        from roadgen.sim.esmini import esmini_library
-
-        esmini_library("esminiRMLib")
-        return True
-    except (FileNotFoundError, RuntimeError):
-        return False
-
-
-@pytest.mark.skipif(not _esmini_available(), reason="esmini not found")
+@needs_rm
 def test_esmini_drives_every_chain_lane_on_our_centre_line(tmp_path):
     from roadgen.sim.drive_check import drive_lanes
 

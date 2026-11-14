@@ -3,20 +3,36 @@
 ## Tests
 
 ```bash
-docker compose run --rm -T dev python -m pytest -q        # whole suite (~560 tests, a few minutes)
+docker compose run --rm -T dev python -m pytest -q -m "not slow"   # daily run (~740 tests, under a minute)
+docker compose run --rm -T dev python -m pytest -q                 # whole suite, before a merge (~1.5 min)
 docker compose run --rm -T dev python -m pytest tests/test_junctions.py -k acute
-docker compose run --rm -T dev ruff check                 # lint (mypy roadgen is available too)
+docker compose run --rm -T dev ruff check                          # lint (mypy roadgen is available too)
 ```
 
 `pyproject.toml` configures pytest (`testpaths = ["tests"]`, repo root on
-the path, deprecation noise filtered). `tests/conftest.py` turns run
-recording off. Tests that need esmini or its RoadManager library
-(`*_runs_in_esmini`, `test_esmini_drives_*`) skip themselves when it isn't
-found, so a green run without esmini doesn't cover the simulator.
+the path, deprecation noise filtered, the markers). `tests/conftest.py`
+turns run recording and the pipeline's default outputs off. Tests marked
+`slow` grow, build or drive a whole network (seconds each); the daily run
+leaves them out, and the whole suite runs them before a merge.
+
+Tests that need esmini's RoadManager library use the `needs_rm` mark from
+`tests/shared.py` and skip themselves when it isn't found, so a green run
+without esmini doesn't cover the drive-check.
+
+**Writing tests.** Test a function on the smallest input that shows the
+behaviour: a fixture, a `tests/grids.py` grid, or a smaller `extent` where
+the size of the network isn't the point. Networks several tests need come
+from `tests/shared.py` (`grown(preset, seed, maps=...)`, grown once per
+session on the maps `pipeline --maps` builds); don't grow a preset again
+in a new file. The CLI pipeline is tested end to end once, in
+`test_cli_pipeline.py`: add an assertion there for a new output or flag
+rather than another `pipeline` run. Invalid-parameter cases go in the
+table of their params class (`test_lsystem.py::test_invalid_params` for
+`LSystemParams`).
 
 | Area | Test files |
 |------|------------|
-| RoadGraph, config, CLI runs | `test_graph.py`, `test_config.py`, `test_registry.py`, `test_history.py` |
+| RoadGraph, config, CLI runs | `test_graph.py`, `test_config.py`, `test_registry.py`, `test_history.py`, `test_cli_pipeline.py`, `test_pipeline_defaults.py` |
 | Input maps | `test_maps.py`, `test_style.py` |
 | lsystem | `test_lsystem.py`, `test_lsystem_grid.py`, `test_lsystem_maps.py`, `test_curved_growth.py`, `test_patterns.py`, `test_culdesac.py`, `test_lsystem_identity.py` |
 | Other generators, transforms, repair | `test_junction_generator.py`, `test_roundabout.py`, `test_interchange.py`, `test_repair.py` |
@@ -26,10 +42,11 @@ found, so a green run without esmini doesn't cover the simulator.
 | Validators and metrics | `test_validators.py`, `test_metrics.py`, `test_network_metrics.py`, `test_hdmap_metrics.py` |
 | Scene | `test_buildings.py` |
 
-`test_lsystem_identity.py` guards a project rule: without maps, and with
-new features at their defaults, the existing lsystem presets must grow
-exactly the networks recorded in `tests/lsystem_identity.py`. New lsystem
-features must therefore default to off. Re-record
+`test_lsystem_identity.py` guards a project rule: with new features at
+their defaults, the existing lsystem presets (with and without input maps)
+must grow exactly the networks recorded in `tests/lsystem_identity.py`. It
+fingerprints the generator's output, before align, drape and the HD fit.
+New lsystem features must therefore default to off. Re-record
 (`python -m tests.lsystem_identity`) only for an intended change.
 
 ### Fixtures

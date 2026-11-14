@@ -21,6 +21,7 @@ from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.connectivity import check_traffic_connectivity, exits
 from roadgen.validate.continuity import check_continuity
 from roadgen.validate.topology import check_topology
+from tests.shared import grown
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
@@ -116,11 +117,12 @@ def suburb(seed: int = 1, **kw) -> RoadGraph:
 
 
 def test_cnr_falls_as_the_detour_ratio_rises():
-    cnr = [np.mean([network_metrics(suburb(seed, detour_ratio=k))["cnr"] for seed in (1, 2)])
-           for k in (1.2, 2.0, 4.0, 0.0)]  # 0 = no connectors
+    # one seed: each of seeds 1-3 alone keeps the order (2026-11-14)
+    cnr = [network_metrics(suburb(1, detour_ratio=k))["cnr"] for k in (1.2, 2.0, 4.0, 0.0)]  # 0 = no connectors
     assert cnr[0] >= cnr[1] >= cnr[2] > cnr[3]
 
 
+@pytest.mark.slow
 def test_connectors_keep_the_network_valid():
     g = suburb(3, detour_ratio=1.5)
     assert g.validate() == []
@@ -136,18 +138,12 @@ def test_culdesac_prob_in_lsystem():
     assert len(traps) == m1["counts"]["dead_ends"] - len(exits(bulbed))  # roads leaving the area are no traps
 
 
+@pytest.mark.slow
 def test_suburb_preset_has_culdesacs_and_builds():
-    g = LSystemGenerator().generate(LSystemParams.preset("suburb"), 1)
+    g = grown("suburb", 1)
     m = network_metrics(g)
     assert m["features"]["culdesacs"] >= 5 and m["counts"]["dead_ends"] > 0
     OpenDriveBuilder(hd=PLAIN).build(g)
-
-
-@pytest.mark.parametrize("kw", [{"detour_ratio": 0.5}, {"connect_radius": 0.0}, {"culdesac_prob": 2.0},
-                                {"culdesac_radius": 0.0}, {"suburb_end_prob": -0.1}])
-def test_invalid_params(kw):
-    with pytest.raises(ValueError):
-        LSystemParams(**kw)
 
 
 def cross(leg_class: str = "street") -> RoadGraph:

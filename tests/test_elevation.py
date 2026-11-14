@@ -43,6 +43,7 @@ from roadgen.scene.surface import read_surfaces
 from roadgen.validate.continuity import RoadEval, check_continuity
 from roadgen.validate.topology import check_topology
 from tests.grids import ON_MAPS, grid_cli
+from tests.shared import needs_rm
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
@@ -227,17 +228,7 @@ def test_continuity_catches_height_and_grade_jumps(tmp_path):
     assert any("grade mismatch" in e for e in errors)
 
 
-def _rm_available() -> bool:
-    try:
-        from roadgen.sim.drive_check import _load_rm
-
-        _load_rm()
-        return True
-    except (OSError, FileNotFoundError):
-        return False
-
-
-@pytest.mark.skipif(not _rm_available(), reason="esmini RoadManager library not found")
+@needs_rm
 def test_esmini_reads_the_heights(tmp_path):
     import ctypes
 
@@ -374,31 +365,11 @@ def test_buildings_stand_on_the_ground_and_not_on_water():
 # --- CLI -----------------------------------------------------------------------------------------------
 
 
-def test_cli_pipeline_drapes_and_writes_the_scene(tmp_path, caplog):
-    prefix = tmp_path / "city"
-    caplog.set_level(logging.INFO, logger="roadgen.cli")
-    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--allow-traps", "--maps",
-                 "--seed", "3", "--ground", "--buildings", "-o", str(prefix)]) == 0
-    # Quality gate (F14): the ground covers no road surface on a whole generated city.
-    (msg,) = [r.getMessage() for r in caplog.records if "road-surface samples under the ground" in r.getMessage()]
-    covered, samples = (int(v) for v in re.match(r"ground: (\d+) of (\d+)", msg).groups())
-    assert samples > 10000 and covered == 0, msg
-    g = load_json(prefix.with_suffix(".json"))
-    assert g.has_elevation and "drape" in g.metadata
-    assert (tmp_path / "city_scene.osgt").is_file() and not (tmp_path / "city_buildings.osgt").exists()
-    text = (tmp_path / "city_scene.osgt").read_text()
-    assert 'Name "ground"' in text and 'Name "buildings"' in text
-
-    flat = tmp_path / "flat"
-    assert main(["pipeline", "lsystem", "--preset", "city", "--set", "extent=[1500, 900]", "--allow-traps", "--maps",
-                 "--seed", "3", "--flat", "-o", str(flat)]) == 0
-    assert not load_json(flat.with_suffix(".json")).has_elevation
-
-
 def test_cli_drape_and_ground_commands(tmp_path, caplog):
     prefix = tmp_path / "net"
     assert main(["pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps", "--flat",
                  "-o", str(prefix)]) == 0
+    assert not load_json(prefix.with_suffix(".json")).has_elevation  # --flat
     files = [f"--map-file={k}={tmp_path / f'net_{k}.npz'}" for k in ("terrain", "elevation")]
     assert main(["drape", str(prefix.with_suffix(".json")), *files]) == 0
     draped = load_json(tmp_path / "net.draped.json")

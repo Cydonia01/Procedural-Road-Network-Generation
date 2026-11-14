@@ -144,11 +144,6 @@ def test_separated_highways_have_crossings_and_no_access():
     OpenDriveBuilder(hd=PLAIN).build(g)
 
 
-def test_invalid_crossings_mode():
-    with pytest.raises(ValueError):
-        LSystemParams(highway_crossings="maybe")
-
-
 # --- tunnels ----------------------------------------------------------------------------------
 
 
