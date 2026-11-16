@@ -54,3 +54,5 @@ screen_shot_*.tga
 
 files/
 plans/
+report/*
+!report/midterm-report.pdf

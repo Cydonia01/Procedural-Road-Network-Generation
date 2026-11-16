@@ -23,8 +23,6 @@ flowchart LR
 `generate` and `pipeline` run steps 1–3 automatically
 ([which ones](cli-reference.md#generate)). The `align`, `drape` and
 `separate` commands run them on an existing graph. `--flat` skips the drape.
-A graph without heights gives a flat `.xodr`, byte-identical to one built
-before heights existed.
 
 ## 1. Align: bends that leave legal ground
 

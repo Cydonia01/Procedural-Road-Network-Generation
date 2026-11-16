@@ -101,10 +101,6 @@ All layers end up in the run's config: the `config` part of
 [`run.yaml`](#run-folders-history-replay-run), which holds only the
 differences from `defaults.yaml`.
 
-The `manhattan` generator no longer exists. Use `lsystem --preset
-manhattan_like`. Replaying a run of it, or a config with a
-`generators.manhattan` section, stops with a message saying so.
-
 ## Outputs
 
 In a recorded run (the default), every output goes into the run's folder
@@ -350,12 +346,6 @@ python -m cli run my_run.yaml           # a run file written by hand
 - **Replay** uses today's code and defaults with the run's non-default
   arguments and parameters, so its result follows the pipeline as the code
   changes. `--show` only prints the command and the folder.
-- **HD maps since the default changed.** `hdmap.enabled` is on by default
-  since stage B. A run recorded before that holds no `hd` argument and no
-  `hdmap` parameter, so its replay gives HD output. A new run of the same
-  command has the same spec and hash and replaces the old folder. To get the
-  old output, add `--no-hd` (or `--set hdmap.enabled=false`); that is a
-  different spec with its own folder. Old `run.yaml` files are not migrated.
 - **Input files.** A command reads its input files from where they are now,
   so replay the runs that write them first.
 - **Run files.** Only `command` is required. `args` uses argument names as in

@@ -103,8 +103,7 @@ At the end, the graph passes through the enabled
 
 ## Road hierarchy
 
-A road's lanes follow the job it does in the network, not the direction it
-points (`roadgen/generators/hierarchy.py`, step `hierarchy: strokes`):
+A road's lanes follow the job it does in the network (`roadgen/generators/hierarchy.py`, step `hierarchy: strokes`):
 
 1. **Strokes.** Edges are joined into continuous roads. At a node with two
    roads, both belong to the same road, however sharp the bend. At a node with
