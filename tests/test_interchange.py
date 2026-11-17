@@ -1,4 +1,4 @@
-"""Highway interchanges (stage C9): diamond and cloverleaf, ramp nodes, lane changes.
+"""Highway interchanges (stage C9): the diamond, ramp nodes, lane changes.
 
 esmini's drive-check of the interchange networks is left out here: it takes
 minutes on their long highways (to be looked at later).
@@ -6,20 +6,16 @@ minutes on their long highways (to be looked at later).
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from roadgen.generators.base import assign_node_kinds
-from roadgen.generators.junction import JunctionGenerator, JunctionLayoutParams
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 from roadgen.generators.transforms.interchange import (
     InterchangeParams,
-    add_cloverleaf,
     add_diamond,
-    turn_path,
 )
 from roadgen.geometry.grade_separation import find_crossings, separate
 from roadgen.graph.model import Edge, Node, RoadGraph
@@ -27,6 +23,7 @@ from roadgen.metrics.network import network_metrics
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.clearance import check_clearance
+from roadgen.validate.connectivity import check_traffic_connectivity
 from roadgen.validate.continuity import check_continuity, check_curvature
 from roadgen.validate.dynamics import check_dynamics
 from roadgen.validate.topology import check_topology
@@ -45,15 +42,28 @@ def build_static(g: RoadGraph, tmp_path: Path) -> OpenDriveBuilder:
     return b
 
 
-def interchange(kind: str) -> RoadGraph:
-    return JunctionGenerator().generate(JunctionLayoutParams.preset(kind), 0)
+def diamond(length: float = 1500.0) -> RoadGraph:
+    """A 2+2 highway along x crossing a 2+2 avenue along y at the origin (edges 2 and 3,
+    without a node), each road length [m] either way, with a diamond there."""
+    g = RoadGraph()
+    for nid, (x, y) in {1: (-length, 0.0), 2: (-1.0, 0.0), 3: (length, 0.0),
+                        4: (0.0, -length), 5: (0.0, 1.0), 6: (0.0, length)}.items():
+        g.add_node(Node(nid, x, y))
+    g.add_edge(Edge(1, 1, 2, "highway", 2, 2, speed_limit=22.2))
+    g.add_edge(Edge(2, 2, 3, "highway", 2, 2, speed_limit=22.2))
+    g.add_edge(Edge(3, 4, 5, "avenue", 2, 2, speed_limit=13.9))
+    g.add_edge(Edge(4, 5, 6, "avenue", 2, 2, speed_limit=13.9))
+    assert add_diamond(g, 2, 3, (0.0, 0.0))
+    assign_node_kinds(g)
+    g.metadata["exits"] = [n for n in sorted(g.nodes) if g.degree(n) == 1]  # roads running on
+    return g
 
 
-@pytest.mark.parametrize("kind, ramps, ramp_nodes", [("diamond", 4, 4), ("cloverleaf", 8, 8)])
-def test_templates_build_and_validate(kind, ramps, ramp_nodes, tmp_path):
-    g = interchange(kind)
+def test_diamond_builds_and_validates(tmp_path):
+    g = diamond()
     (ic,) = g.metadata["interchanges"]
-    assert ic["type"] == kind and len(ic["ramp_nodes"]) == ramp_nodes
+    ramps = ramp_nodes = 4
+    assert ic["type"] == "diamond" and len(ic["ramp_nodes"]) == ramp_nodes
     assert sum(1 for n in g.nodes.values() if n.kind == "ramp") == ramp_nodes
     one_way = [e for e in g.edges.values() if e.is_one_way]
     assert all(e.road_class == "highway" and e.total_lanes == 1 for e in one_way)
@@ -65,19 +75,18 @@ def test_templates_build_and_validate(kind, ramps, ramp_nodes, tmp_path):
 
 
 def test_ramp_nodes_allow_no_left_turns_or_ramp_to_ramp():
-    for kind in ("diamond", "cloverleaf"):
-        g = interchange(kind)
-        b = OpenDriveBuilder()
-        b.build(separate(g))
-        ramp_junctions = {b.node_to_junction[n] for n, node in g.nodes.items() if node.kind == "ramp"}
-        moves = [m for m in b.movements if m.junction_id in ramp_junctions]
-        assert moves and not [m for m in moves if m.kind == "left"]
-        one_way = {e.id for e in g.edges.values() if e.is_one_way}
-        assert not [m for m in moves if m.from_edge in one_way and m.to_edge in one_way]
+    g = diamond()
+    b = OpenDriveBuilder()
+    b.build(separate(g))
+    ramp_junctions = {b.node_to_junction[n] for n, node in g.nodes.items() if node.kind == "ramp"}
+    moves = [m for m in b.movements if m.junction_id in ramp_junctions]
+    assert moves and not [m for m in moves if m.kind == "left"]
+    one_way = {e.id for e in g.edges.values() if e.is_one_way}
+    assert not [m for m in moves if m.from_edge in one_way and m.to_edge in one_way]
 
 
 def test_diamond_exits_from_the_outer_lane_with_aux_lanes():
-    g = interchange("diamond")
+    g = diamond()
     b = OpenDriveBuilder()
     b.build(separate(g))
     ramp_junctions = {b.node_to_junction[n] for n, node in g.nodes.items() if node.kind == "ramp"}
@@ -87,23 +96,11 @@ def test_diamond_exits_from_the_outer_lane_with_aux_lanes():
     assert any(max(e.lanes_forward, e.lanes_backward) == 3 for e in g.edges.values() if e.road_class == "highway")
 
 
-def test_cloverleaf_weaves_between_the_loops():
-    g = interchange("cloverleaf")
-    weaving = [e for e in g.edges.values() if e.road_class == "highway" and e.lanes_forward == e.lanes_backward == 3]
-    assert len(weaving) >= 2  # both highways, through the crossing
+def test_leg_ends_are_exits_not_traps():
+    assert not [e for e in check_traffic_connectivity(diamond(800.0)) if "trap" in e]
 
 
-def test_turn_path_is_tangent_and_turns_the_right_way():
-    pts = turn_path(np.array((0.0, 0.0)), 0.0, np.array((100.0, -100.0)), -math.pi / 2, 50.0, True)
-    assert pts is not None and len(pts) >= 4
-    assert all(p[1] <= 1e-9 for p in pts)  # a right turn from heading east to south
-    assert turn_path(np.array((0.0, 0.0)), 0.0, np.array((10.0, -10.0)), -math.pi / 2, 50.0, True) is None
-
-
-def test_templates_need_room_and_a_straight_road():
-    g = interchange("diamond")
-    n = len(g.edges)
-    assert n > 4
+def test_diamond_needs_room_and_a_straight_road():
     # A crossing too skewed for a diamond.
     g = RoadGraph()
     for nid, (x, y) in {1: (-1500, 0), 2: (1500, 0), 3: (-1200, -1000), 4: (1200, 1000)}.items():
@@ -117,10 +114,10 @@ def test_templates_need_room_and_a_straight_road():
     for nid, (x, y) in {1: (-1500, 0), 2: (1500, 0), 3: (0, -1500), 4: (0, 1500), 5: (-300, 40), 6: (-60, 40)}.items():
         g.add_node(Node(nid, float(x), float(y)))
     g.add_edge(Edge(1, 1, 2, "highway", 2, 2))
-    g.add_edge(Edge(2, 3, 4, "highway", 2, 2))
+    g.add_edge(Edge(2, 3, 4, "avenue", 2, 2))
     g.add_edge(Edge(3, 5, 6, "street", 1, 1))
     (c,) = find_crossings(g)
-    assert not add_cloverleaf(g, c.upper, c.lower, (c.x, c.y))
+    assert not add_diamond(g, c.upper, c.lower, (c.x, c.y))
     assert "interchanges" not in g.metadata
 
 
@@ -146,7 +143,7 @@ def test_lsystem_freeway_corridor_has_a_diamond():
 
 def test_invalid_params():
     with pytest.raises(ValueError):
-        InterchangeParams(ramp_angle_deg=5.0)
+        InterchangeParams(ramp_off=0.0)
 
 
 def test_lane_changes_on_highways():

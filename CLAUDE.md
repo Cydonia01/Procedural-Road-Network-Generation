@@ -44,7 +44,7 @@ not a current goal: 4000 x 4000 m networks already work.
     graph/        model.py, io.py, plot.py
     maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py,
                   image.py, plot.py, align.py, drape.py, annotate.py
-    generators/   base.py, lsystem.py, patterns.py, hierarchy.py, junction.py, repair.py,
+    generators/   base.py, lsystem.py, patterns.py, hierarchy.py, repair.py,
                   transforms/ (culdesac, stagger, roundabout, interchange)
     geometry/     planar.py, junction_space.py, design.py, primitives.py, clothoid.py, chains.py,
                   alignment.py, profiles.py, vertical.py, grade_separation.py, cross_section.py
@@ -115,9 +115,10 @@ not a current goal: 4000 x 4000 m networks already work.
 - The generated `.xodr` is the product; everything after it (scene,
   buildings, `view`) is for presentation only, and `view` is how networks
   are presented. There are no `simulate` or `scenario` commands any more.
-- lsystem is the only city generator (the `manhattan` generator was removed
-  in stage C): grids, pattern fields (`patterns.py`) and graph transforms
-  (`roadgen/generators/transforms/`).
+- lsystem is the only generator (`manhattan` was removed in stage C, the
+  single-junction `junction` generator and the cloverleaf on 2026-11-17):
+  grids, pattern fields (`patterns.py`) and graph transforms
+  (`roadgen/generators/transforms/`, diamond interchanges only).
 - Docs: `docs/` (index in `docs/README.md`, by task and by source folder).
   Each topic has one home page; other pages link to it instead of repeating
   it (parameters and run folders: `cli-reference.md`; module map and output

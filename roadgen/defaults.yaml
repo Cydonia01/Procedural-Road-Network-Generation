@@ -121,30 +121,6 @@ generators:
     tunnel_min_cover: 8.0      # ground over a tunnel, somewhere along it [m]
     max_tunnel_length: 800.0   # longest stretch under ground [m]
 
-  junction:                    # one junction per seed (stage C6), JunctionArt-style
-    legs: 0                    # number of legs; 0 = drawn by leg_weights
-    leg_weights: [0.3, 0.3, 0.2, 0.1, 0.1]  # P(3, 4, 5, 6, 7 legs)
-    angles_deg: []             # leg headings [deg]; empty = evenly spread from a random start
-    skew_deg: 20.0             # std dev of each leg's turn from its heading [deg]
-    min_angle_deg: 30.0        # least angle between neighbouring legs [deg]
-    leg_length: 150.0          # [m]
-    lane_probs: [0.15, 0.6, 0.2, 0.05]  # P(0, 1, 2, 3 lanes) on each side of a leg (JunctionArt)
-    lane_width: 3.5            # [m]
-    street_speed: 11.1         # [m/s]
-    avenue_speed: 13.9         # [m/s], legs with 4 or more lanes
-    pair: false                # two T junctions on a through road, stems on opposite sides
-    pair_offset: 35.0          # distance between the two T junctions [m]
-    culdesacs: true            # turn-around bulbs at two-way leg ends (no traps)
-    culdesac_radius: 15.0      # [m]
-    culdesac_speed: 8.3        # [m/s]
-    max_tries: 50              # draws until a buildable junction
-    roundabout: false          # build the junction as a roundabout (where it fits)
-    roundabout_radius: 25.0    # single-lane ring [m]
-    roundabout_radius_avenue: 32.0  # two-lane ring [m]
-    roundabout_speed: 8.3      # [m/s]
-    interchange: none          # none | diamond | cloverleaf: a highway interchange instead of a junction
-    interchange_length: 1500.0 # each road's length from the crossing [m] (interchange)
-
 maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and pipeline --maps
   grid:
     origin: [0.0, 0.0]         # lower-left corner [m] (`map` command)
@@ -237,16 +213,12 @@ maps:  # input maps after Parish & Mueller (see docs/maps.md); `map` command and
       # RGB in [0, 1]; pixels take the nearest class
       colors: [[0.30, 0.47, 0.66], [0.89, 0.34, 0.34], [0.33, 0.64, 0.29], [0.70, 0.47, 0.64], [0.93, 0.79, 0.23]]
 
-interchange:  # highway interchange templates (stage C9; roadgen/generators/transforms/interchange.py)
+interchange:  # diamond interchanges on lsystem freeways (stage C9; roadgen/generators/transforms/interchange.py)
   ramp_off: 250.0          # diamond: exits this far before the crossing [m]
   ramp_on: 200.0           # diamond: entries this far after it (beyond the overpass ramps) [m]
   terminal_offset: 90.0    # diamond: ramp terminals on the crossing road, off the mainline [m]
   aux_length: 100.0        # deceleration / acceleration lanes (AASHTO parallel type) [m]
-  loop_radius: 60.0        # cloverleaf loop ramps [m]
-  outer_radius: 150.0      # cloverleaf outer ramps [m]
-  ramp_angle_deg: 25.0     # cloverleaf ramps leave and join the highways at this angle [deg]
   ramp_speed: 13.9         # [m/s] (50 km/h)
-  loop_speed: 11.1         # [m/s] (40 km/h)
   cross_lanes: [2, 2]      # diamond: the crossing road gets at least these lanes
 
 grade_separation:  # roads crossing without a junction pass over each other (stage C8; `separate`)

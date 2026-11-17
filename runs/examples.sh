@@ -33,8 +33,6 @@ EXAMPLES=(
 "hill_town|Hill town: contour streets on hilly maps|lsystem --preset hill_town --maps --seed 1"
 "freeways|City with freeways and overpasses|lsystem --preset city --maps --seed 1 --set highway_crossings=separated"
 "highway_corridor|Freeway corridor with a diamond interchange, lane adds and drops|lsystem --preset highway_corridor --maps --seed 1"
-"diamond|Diamond interchange: freeway crossing an arterial with ramps|junction --preset diamond --set interchange_length=800 --no-buildings"
-"cloverleaf|Cloverleaf interchange: freeway crossing a freeway with loop ramps|junction --preset cloverleaf --set interchange_length=800 --no-buildings"
 )
 
 generate() {

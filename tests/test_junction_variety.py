@@ -69,8 +69,7 @@ SHAPES = {
 @pytest.mark.parametrize("name", SHAPES)
 def test_shapes_build_and_drive(name, tmp_path):
     g = star(SHAPES[name], lanes=((2, 2), (1, 1)))
-    # esmini drives these shapes as junction generator presets (test_junction_generator.py)
-    b = build_and_check(g, tmp_path, drive=False)
+    b = build_and_check(g, tmp_path)
     assert len(b.node_to_junction) == 1
     legs = len(SHAPES[name])
     assert network_metrics(g)["legs"][str(legs) if legs < 7 else "7+"] == 1

@@ -495,8 +495,8 @@ python -m cli pipeline lsystem --preset city --maps \
     a zone streets may not enter. Streets start from the avenue's ends, so the
     city reaches the freeway through the interchanges.
   - **Building:** after growth, a [diamond](generators.md#interchanges) is
-    built at each slot. lsystem never builds cloverleafs, because its
-    highways stop where they meet, so they never cross.
+    built at each slot. Highways stop where they meet, so they never cross
+    each other and need no highway-to-highway interchange.
 
 ```bash
 python -m cli pipeline lsystem --preset city --maps --set highway_crossings=separated

@@ -77,8 +77,7 @@ Reported as errors:
   sinks), so vehicles would get stuck. A dead end listed in the graph's
   `metadata.exits` is no trap: the road leaves the generated area there (a
   freeway running on), and traffic may come back at any exit. lsystem lists
-  the dead ends whose road would leave its area within one block length;
-  the `junction` generator lists its leg ends.
+  the dead ends whose road would leave its area within one block length.
 - **Unreachable roads:** traffic leaving on an edge that nothing feeds.
 - **Not strongly connected:** the node-level lane-direction graph has several
   strongly connected components. Nodes outside the main one are listed.

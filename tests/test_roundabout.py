@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 
 from roadgen.generators.base import assign_node_kinds
-from roadgen.generators.junction import JunctionGenerator, JunctionLayoutParams
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 from roadgen.generators.transforms.culdesac import add_culdesacs
 from roadgen.generators.transforms.roundabout import add_roundabouts
@@ -70,13 +69,10 @@ def test_roundabouts_need_room_and_spread_arms():
 
 
 @pytest.mark.slow
-def test_roundabouts_in_lsystem_and_junction_generator():
+def test_roundabouts_in_lsystem():
     g = grown("suburb", 1)
     assert network_metrics(g)["features"]["roundabouts"] > 0
     OpenDriveBuilder(hd=HdMapParams(enabled=False)).build(g)  # HD repair is the pipeline's job
-    rings = sum(bool(JunctionGenerator().generate(JunctionLayoutParams.preset("roundabout"), s)
-                     .metadata.get("roundabouts")) for s in range(20))
-    assert rings >= 18
     plain = LSystemGenerator().generate(LSystemParams.preset("suburb", roundabout_prob=0.0), 1)
     assert "roundabouts" not in plain.metadata
 

@@ -335,10 +335,10 @@ def test_conflicts_are_complete_on_a_4_leg_junction():
 
 
 def test_roundabout_entries_yield_with_sign_215(tmp_path):
-    from roadgen.generators.base import get_generator, load_params
+    from tests.test_roundabout import roundabout
 
-    gen = get_generator("junction")
-    g = gen.generate(load_params(gen.params_type, preset="roundabout"), 0)
+    g, built = roundabout([0, 80, 180, 270])  # four entries
+    assert built == 1
     path, root, sidecar = _build(g, tmp_path)
     assert check_hdmap(path) == []
     rings = [j for j in sidecar["junctions"] if j["control"] == "roundabout"]

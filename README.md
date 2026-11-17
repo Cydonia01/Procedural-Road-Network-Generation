@@ -20,8 +20,6 @@ Generator -> RoadGraph (JSON) -> OpenDRIVE builder -> .xodr -> validators, drive
   contour-following and suburban patterns blended per district, cul-de-sacs,
   staggered and many-leg junctions, roundabouts, freeways with overpasses,
   tunnels and diamond interchanges.
-- **Single junctions** (`junction`): any 3–7 leg shape, offset T pairs,
-  roundabouts, diamond and cloverleaf interchanges, for long-tail data.
 - **Terrain:** networks grow on generated or real maps. Highways head for
   population, bridge rivers and tunnel through hills, and streets stop at
   water, parks and steep slopes. Roads follow the terrain in height.

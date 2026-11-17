@@ -132,14 +132,13 @@ def test_every_preset_in_presets_yaml_builds_its_params():
     """Polish N2: the presets live in roadgen/presets.yaml; each names fields of its
     params class (keyed as in defaults.yaml) and builds."""
     from roadgen.config import presets
-    from roadgen.generators.junction import JunctionLayoutParams
     from roadgen.maps.elevation import FbmElevationParams
     from roadgen.maps.population import CentersPopulationParams
     from roadgen.maps.style import ZonesStyleParams
     from roadgen.maps.terrain import NoiseTerrainParams
     from roadgen.opendrive.control import JunctionControlParams
 
-    classes = {("generators", "lsystem"): LSystemParams, ("generators", "junction"): JunctionLayoutParams,
+    classes = {("generators", "lsystem"): LSystemParams,
                ("maps", "terrain", "noise"): NoiseTerrainParams, ("maps", "elevation", "fbm"): FbmElevationParams,
                ("maps", "population", "centers"): CentersPopulationParams,
                ("maps", "style", "zones"): ZonesStyleParams, ("junction_control",): JunctionControlParams}

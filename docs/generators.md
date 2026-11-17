@@ -7,7 +7,6 @@ deterministic and never touch OpenDRIVE.
 | Generator | Makes | Docs |
 |-----------|-------|------|
 | `lsystem` | Cities: grids, street patterns, highways on maps | [lsystem](lsystem.md) |
-| `junction` | One junction or interchange per seed | [below](#junction-one-junction-per-seed) |
 
 ```bash
 python -m cli generators          # generators, presets and every parameter
@@ -41,55 +40,6 @@ class RoadNetworkGenerator(ABC, Generic[P]):
   `map_bounds`. `map_kinds` limits the kinds `pipeline --maps` builds; lsystem
   asks for a style map only with its field goal.
 - **Default output name:** `<generator>[_<preset>]_s<seed>`.
-
-## `junction`: one junction per seed
-
-`roadgen/generators/junction.py`, after Muktadir et al., *JunctionArt*
-(2023). Cities have almost only 3- and 4-leg junctions near 90°. This
-generator makes any shape on demand, for long-tail datasets, builder stress
-tests and short ego scenarios. It makes one junction (or an offset pair) and
-its legs, not a city.
-
-| Parameter | Default | Meaning |
-|-----------|---------|---------|
-| `legs` | 0 | Number of legs (3–7); 0 = drawn by `leg_weights` |
-| `leg_weights` | (0.3, 0.3, 0.2, 0.1, 0.1) | P(3, 4, 5, 6, 7 legs) |
-| `angles_deg` | () | Leg headings [deg]; empty = evenly spread from a random start |
-| `skew_deg` | 20 | Std dev of each leg's turn from its heading [deg] |
-| `min_angle_deg` | 30 | Least angle between neighbouring legs [deg] |
-| `leg_length` | 150 | [m] |
-| `lane_probs` | (0.15, 0.6, 0.2, 0.05) | P(0, 1, 2, 3 lanes) on each side of a leg, never 0 on both |
-| `lane_width`, `street_speed`, `avenue_speed` | 3.5, 11.1, 13.9 | Legs with 4+ lanes are avenues |
-| `pair`, `pair_offset` | false, 35 | Two T junctions on a through road, stems on opposite sides [m] |
-| `culdesacs`, `culdesac_radius`, `culdesac_speed` | true, 15, 8.3 | Turn-around bulbs at two-way leg ends |
-| `roundabout`, `roundabout_radius`, `roundabout_radius_avenue`, `roundabout_speed` | false, 25, 32, 8.3 | Build it as a roundabout, where it fits |
-| `interchange`, `interchange_length` | none, 1500 | `diamond` or `cloverleaf`: an [interchange](#interchanges) instead, each road this long [m] |
-| `max_tries` | 50 | Draws until a buildable junction |
-
-**Buildable.** A drawn junction must have its arms at least `min_angle_deg`
-apart, and every road must be longer than its trims plus 5 m. This is
-checked with the neutral junction-space code, not OpenDRIVE.
-
-- **Redraws.** Otherwise it is drawn again on the next sub-stream, so the
-  result still depends only on the seed. `metadata.attempts` counts the
-  draws, at most 4 over 200 seeds.
-- **No traps.** A lone junction stands for one in a bigger network, so its
-  leg ends are exits (`metadata.exits`), not traps. With `culdesacs`, bulbs
-  turn traffic round at the leg ends instead.
-
-Presets:
-
-- shapes: `t`, `y` (120°), `skewed_cross` (60° / 120°), `k` (a through road
-  with two diagonals on one side), `five_way`, `six_way`, `offset_t`;
-- roundabouts and interchanges: `roundabout`, `roundabout_5`, `diamond`,
-  `cloverleaf`;
-- `random`: every leg count from 3 to 7 appears over seeds 0–199.
-
-```bash
-python -m cli pipeline junction --preset k --seed 3
-python -m cli pipeline junction --preset random --seed 17 --set skew_deg=30 --allow-traps
-for s in $(seq 0 49); do python -m cli pipeline junction --preset random --seed $s --allow-traps; done
-```
 
 ## Repair: edges too short for their junctions
 
@@ -162,18 +112,18 @@ for the random generator it gets. lsystem gives each its own sub-stream.
 
 | Module | Function | Used by |
 |--------|----------|---------|
-| `culdesac.py` | `add_culdesacs`: turn-around bulbs at dead ends | [lsystem](lsystem.md#connectivity-and-cul-de-sacs), `junction` |
+| `culdesac.py` | `add_culdesacs`: turn-around bulbs at dead ends | [lsystem](lsystem.md#connectivity-and-cul-de-sacs) |
 | `stagger.py` | `stagger_crossings`: 4-way crossings into offset T pairs | [lsystem](lsystem.md#junction-variety) |
-| `roundabout.py` | `add_roundabouts`: junctions into one-way rings | [lsystem](lsystem.md#roundabouts), `junction` |
-| `interchange.py` | `add_diamond`, `add_cloverleaf`: highway interchanges | [below](#interchanges) |
+| `roundabout.py` | `add_roundabouts`: junctions into one-way rings | [lsystem](lsystem.md#roundabouts) |
+| `interchange.py` | `add_diamond`: diamond interchanges on freeways | [below](#interchanges) |
 
 Each list of built features goes into `metadata` (`culdesacs`,
 `roundabouts`, `interchanges`).
 
 ### Interchanges
 
-`transforms/interchange.py` builds templates at a grade-separated crossing
-of a highway with another road. Their parameters are in the `interchange:`
+`transforms/interchange.py` builds a diamond at a grade-separated crossing
+of a highway with an avenue or street. Their parameters are in the `interchange:`
 section of the config.
 
 - **Common base.**
@@ -193,21 +143,12 @@ section of the config.
   - **Entry:** it rejoins `ramp_on` (200 m) after the crossing, beyond the
     overpass ramps, with an acceleration lane.
   - The crossing road gets at least `cross_lanes` (2 + 2) lanes.
-- **Cloverleaf** (highway × highway at 70–110°).
-  - **Loop ramps:** in each quadrant, a loop ramp (a 240° right turn of
-    `loop_radius`, 60 m, leaving and joining at `ramp_angle_deg`, 25°)
-    carries the left turn.
-  - **Outer ramps:** an outer ramp (`outer_radius`, 150 m) carries the right
-    turn. Outer ramps move out in 25 m steps until they clear the loops.
-  - **Weaving:** between one loop's entry and the next loop's exit, both
-    directions weave on an auxiliary lane.
 - **All or nothing.** Nothing changes unless the whole interchange fits:
   - no other road may join the rebuilt roads inside it;
   - no ramp may come within 8 m (plus lane widths) of another road.
 
-lsystem builds diamonds on its freeways
-([lsystem](lsystem.md#freeways-tunnels-and-interchanges)). Cloverleafs come
-from `junction --preset cloverleaf`.
+lsystem builds them on its freeways
+([lsystem](lsystem.md#freeways-tunnels-and-interchanges)).
 
 ## Adding a generator
 

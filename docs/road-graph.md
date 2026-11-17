@@ -70,7 +70,6 @@ add lists of what they built:
 | `bridges`, `tunnels` | Highway edge ids over water / through hills |
 | `culdesacs`, `roundabouts`, `interchanges` | Built by the [transforms](generators.md#graph-transforms) |
 | `overpasses` | Built by [grade separation](heights.md#3-grade-separation-overpasses) |
-| `attempts` | Draws the `junction` generator needed |
 
 The [network metrics](validation.md#network-metrics) count these features.
 
