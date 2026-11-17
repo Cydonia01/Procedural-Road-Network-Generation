@@ -127,7 +127,7 @@ def test_highways_grow_towards_the_population_peak():
     highway_nodes = {n for eid in classes(g, "highway")
                      for n in (g.edges[eid].from_node, g.edges[eid].to_node)}
     assert min(math.hypot(g.nodes[n].x - 900.0, g.nodes[n].y - 500.0) for n in highway_nodes) < 120.0
-    assert all(e.lanes_forward == 2 and e.speed_limit == pytest.approx(22.2)
+    assert all(e.lanes_forward == 3 and e.speed_limit == pytest.approx(22.2) and e.lane_width == 3.75
                for e in g.edges.values() if e.road_class == "highway")
 
 

@@ -73,7 +73,7 @@ def test_median_shifts_driving_lanes_and_ends_before_junctions(tmp_path):
     for end, s_end in ((sections[0], 0.0), (sections[-1], length)):
         assert _types(end, "right")[:3] == ["median", "driving", "driving"]
         assert _lane_width(road, "median", "right", s_end) == pytest.approx(0.0, abs=1e-6)
-    assert _lane_width(road, "median", "right", length / 2) == pytest.approx(1.0)
+    assert _lane_width(road, "median", "right", length / 2) == pytest.approx(1.5)
     # junction connections start from the driving lanes at the road's ends
     for conn in root.iter("connection"):
         if conn.get("incomingRoad") != road.get("id"):

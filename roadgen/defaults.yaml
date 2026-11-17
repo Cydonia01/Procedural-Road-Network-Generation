@@ -33,7 +33,8 @@ generators:
     major_lanes: [2, 2]        # arterials
     minor_lanes: [1, 1]        # local roads
     collector_lanes: [1, 1]    # collectors
-    lane_width: 3.5
+    lane_width: 3.5            # arterials, collectors and the ring road [m]
+    minor_lane_width: 3.0      # local roads: narrower than collectors [m]
     major_speed: 13.9          # [m/s] (50 km/h)
     minor_speed: 11.1          # [m/s] (40 km/h)
     collector_speed: 12.5      # [m/s] (45 km/h)
@@ -61,8 +62,10 @@ generators:
     highway_branch_prob: 0.1   # new highway per side per segment
     highway_branch_delay: 6
     highway_min_density: 1500.0  # highways start and branch only where this many live [people/km^2]; a running one goes on to the edge
-    highway_lanes: [2, 2]
-    highway_speed: 22.2        # [m/s] (80 km/h)
+    highway_lanes: [3, 3]      # one lane more each way than an arterial
+    highway_lane_width: 3.75   # [m]
+    highway_speed: 22.2        # [m/s] (80 km/h) of at-grade highways
+    freeway_speed: 27.8        # [m/s] (100 km/h) of highways with highway_crossings: separated
     max_bridge_length: 250.0   # [m] of water a highway may cross
     street_min_density: 500.0  # streets stop below this [people/km^2]
     avoid_vegetation: true     # streets stay out of parks / forest
@@ -300,7 +303,7 @@ hdmap:  # HD-map content of the built roads (stage B): medians, pockets, marks, 
 
 cross_section:  # what a road has besides its driving lanes (roadgen/geometry/cross_section.py); no side lanes
   profile: urban            # area type of edges without Edge.cross_section: urban | suburban | rural | none (no median)
-  median: [0.0, 0.0, 2.0]   # street, avenue, highway: total median width on two-way roads [m]
+  median: [0.0, 2.0, 3.0]   # street, avenue, highway: total median width on two-way roads [m]
   median_min_lanes: 2       # ... with at least this many lanes each way
   median_end: 5.0           # medians end this far before a junction [m]
 

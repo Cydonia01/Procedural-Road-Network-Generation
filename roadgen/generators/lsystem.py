@@ -199,7 +199,8 @@ class LSystemParams:
     major_lanes: tuple[int, int] = _D["major_lanes"]
     minor_lanes: tuple[int, int] = _D["minor_lanes"]
     collector_lanes: tuple[int, int] = _D["collector_lanes"]
-    lane_width: float = _D["lane_width"]
+    lane_width: float = _D["lane_width"]  # [m] arterials, collectors, ring road
+    minor_lane_width: float = _D["minor_lane_width"]  # [m] local roads
     major_speed: float = _D["major_speed"]
     minor_speed: float = _D["minor_speed"]
     collector_speed: float = _D["collector_speed"]
@@ -228,7 +229,9 @@ class LSystemParams:
     highway_branch_delay: int = _D["highway_branch_delay"]
     highway_min_density: float = _D["highway_min_density"]  # [people/km^2] highways start (and branch) only above
     highway_lanes: tuple[int, int] = _D["highway_lanes"]
-    highway_speed: float = _D["highway_speed"]
+    highway_lane_width: float = _D["highway_lane_width"]  # [m]
+    highway_speed: float = _D["highway_speed"]  # [m/s] at-grade highways
+    freeway_speed: float = _D["freeway_speed"]  # [m/s] highways with highway_crossings: separated
     max_bridge_length: float = _D["max_bridge_length"]  # [m] of water a highway may cross
     street_min_density: float = _D["street_min_density"]  # [people/km^2] streets stop below
     avoid_vegetation: bool = _D["avoid_vegetation"]  # streets stay out of parks / forest
@@ -312,6 +315,9 @@ class LSystemParams:
                       self.ring_lanes):
             if len(lanes) != 2 or min(lanes) < 0 or sum(lanes) < 1:
                 raise ValueError(f"invalid lane counts {lanes}")
+        if min(self.lane_width, self.minor_lane_width, self.highway_lane_width,
+               self.highway_speed, self.freeway_speed) <= 0:
+            raise ValueError("lane widths, highway_speed and freeway_speed must be positive")
         if self.highway_length < self.min_segment_length or self.highway_ray_length <= 0:
             raise ValueError("highway_length must be >= min_segment_length, highway_ray_length > 0")
         if self.highway_rays < 1 or self.highway_ray_samples < 1:
@@ -472,7 +478,7 @@ def _max_turn(p: LSystemParams, axis: int) -> float:
     params = DesignParams()
     e = params.e_max_street if params.banking else 0.0
     radius = design.min_radius(v, e, params)
-    spiral = design.spiral_length(v, radius, e, max(p.minor_lanes) * p.lane_width, params)
+    spiral = design.spiral_length(v, radius, e, max(p.minor_lanes) * p.minor_lane_width, params)
     room = max(p.block_size[axis] / 2 - spiral / 2, 1.0)
     return 2 * math.atan(room / radius)
 
@@ -509,7 +515,7 @@ class _Growth:
         # but a highway or the ring is assumed a local road with room beside it.
         street = sum(p.minor_lanes)
         self.half_width = {STREET_X: street * p.lane_width / 2 + p.side_width,
-                           HIGHWAY: sum(p.highway_lanes) * p.lane_width / 2 + HIGHWAY_SIDE,
+                           HIGHWAY: sum(p.highway_lanes) * p.highway_lane_width / 2 + HIGHWAY_SIDE,
                            RING: sum(p.ring_lanes) * p.lane_width / 2 + p.side_width}
         self.half_width[AVENUE_Y] = self.half_width[STREET_X]
         self.widest = max(self.half_width.values())
@@ -1107,7 +1113,7 @@ class _Growth:
         Highways at its start node are left to the angle check there."""
         p = self.p
         a = self.pos[start]
-        corridor = max(p.highway_lanes) * p.lane_width + p.snap_radius
+        corridor = max(p.highway_lanes) * p.highway_lane_width + p.snap_radius
         for eid in self.edge_index.query(a, b, corridor):
             if not self.passes(eid):
                 continue
@@ -1597,12 +1603,17 @@ class _MapView:
         return bool(cover.max() >= p.tunnel_min_cover) and len(under) * self.step <= p.max_tunnel_length
 
 
+def highway_speed(p: LSystemParams) -> float:
+    """Speed [m/s] of the highways: freeways (grade-separated) are faster than at-grade highways."""
+    return p.freeway_speed if p.highway_crossings == "separated" else p.highway_speed
+
+
 def hierarchy_params(p: LSystemParams) -> HierarchyParams:
     """Stroke hierarchy settings of an lsystem: arterials and collectors are avenues."""
     return HierarchyParams(
-        levels={ARTERIAL: Level("avenue", p.major_lanes, p.major_speed),
-                COLLECTOR: Level("avenue", p.collector_lanes, p.collector_speed),
-                LOCAL: Level("street", p.minor_lanes, p.minor_speed)},
+        levels={ARTERIAL: Level("avenue", p.major_lanes, p.major_speed, p.lane_width),
+                COLLECTOR: Level("avenue", p.collector_lanes, p.collector_speed, p.lane_width),
+                LOCAL: Level("street", p.minor_lanes, p.minor_speed, p.minor_lane_width)},
         max_deflection_deg=p.stroke_max_deflection_deg, arterial_share=p.arterial_share,
         collector_share=p.collector_share, samples=p.betweenness_samples)
 
@@ -1757,15 +1768,15 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
         # Grid roads get placeholders, two-way unless a one-way pattern says otherwise;
         # the stroke hierarchy sets their class, lanes and speed.
         roads = {
-            HIGHWAY: ("highway", p.highway_lanes, p.highway_speed),
-            AVENUE_Y: ("street", (1, 1), p.minor_speed),
-            STREET_X: ("street", (1, 1), p.minor_speed),
-            RING: ("avenue", p.ring_lanes, p.major_speed),
+            HIGHWAY: ("highway", p.highway_lanes, highway_speed(p), p.highway_lane_width),
+            AVENUE_Y: ("street", (1, 1), p.minor_speed, p.lane_width),
+            STREET_X: ("street", (1, 1), p.minor_speed, p.lane_width),
+            RING: ("avenue", p.ring_lanes, p.major_speed, p.lane_width),
         }
         pattern = {AVENUE_Y: p.oneway_pattern[0], STREET_X: p.oneway_pattern[1]}
         bridges, tunnels, fixed = [], [], []
         for k, (old, (a, b, axis)) in enumerate(sorted(g.edges.items()), 1):
-            road_class, lanes, speed = roads[axis]
+            road_class, lanes, speed, width = roads[axis]
             if axis in (HIGHWAY, RING):
                 fixed.append(k)
             if pattern.get(axis) == "alternating":
@@ -1775,7 +1786,7 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                     a, b = b, a
                 lanes = (sum(lanes), 0)
             graph.add_edge(Edge(k, new_id[a], new_id[b], road_class, *lanes,
-                                lane_width=p.lane_width, speed_limit=speed))
+                                lane_width=width, speed_limit=speed))
             if old in g.bridges:
                 bridges.append(k)
             if old in g.tunnels:

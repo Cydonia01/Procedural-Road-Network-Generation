@@ -33,11 +33,12 @@ CS = CrossSectionParams()
 
 def test_medians_by_class_and_profile():
     assert CS.median_width(Edge(1, 1, 2, "street", 1, 1)) == 0.0
-    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2)) == 2.0
+    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2)) == 3.0
+    assert CS.median_width(Edge(1, 1, 2, "avenue", 2, 2)) == 2.0  # arterials: narrower than highways
     assert CS.median_width(Edge(1, 1, 2, "highway", 2, 0)) == 0.0  # one-way: no median
     assert CS.median_width(Edge(1, 1, 2, "highway", 1, 1)) == 0.0  # 1 + 1: too narrow
     assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2, cross_section="none")) == 0.0
-    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2, cross_section="rural")) == 2.0
+    assert CS.median_width(Edge(1, 1, 2, "highway", 2, 2, cross_section="rural")) == 3.0
     with pytest.raises(ValueError, match="unknown cross-section profile"):
         CS.median_width(Edge(7, 1, 2, "highway", 2, 2, cross_section="downtown"))
     with pytest.raises(ValueError, match="unknown cross-section profile"):
@@ -57,7 +58,7 @@ def test_half_widths_are_the_driving_lanes_and_half_the_median():
     street = Edge(1, 1, 2, "street", 1, 1)
     assert half_widths(street, CS, 1, 1) == pytest.approx((3.5, 3.5))  # no side lanes (polish N1)
     highway = Edge(1, 1, 2, "highway", 2, 2)
-    assert half_widths(highway, CS, 2, 2) == pytest.approx((8.0, 8.0))  # 7 + 1 of the median
+    assert half_widths(highway, CS, 2, 2) == pytest.approx((8.5, 8.5))  # 7 + 1.5 of the median
     assert half_widths(highway, CS, 2, 2, at_junction=True) == pytest.approx((7.0, 7.0))  # it has ended
     assert half_widths(highway, CS, 2, 2, loop=True) == pytest.approx((7.0, 7.0))
     one_way = Edge(1, 1, 2, "street", 2, 0)  # reference line on its left edge

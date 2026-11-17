@@ -130,7 +130,7 @@ def test_replay_uses_the_recorded_config(store, tmp_path):
     cfg.unlink()  # the config file is gone; run.yaml has its content
     assert main([h]) == 0
     edges = json.loads((store.root / h / "g.json").read_text())["edges"]
-    assert {e["lane_width"] for e in edges} == {4.25}
+    assert {e["lane_width"] for e in edges if e["road_class"] != "street"} == {4.25}  # local roads: minor_lane_width
 
 
 def test_params_file_content_is_in_the_run(store, tmp_path):

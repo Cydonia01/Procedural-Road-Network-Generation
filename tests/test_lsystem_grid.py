@@ -14,6 +14,7 @@ from roadgen.generators.lsystem import LSystemParams, grid_extent
 from roadgen.graph.io import load_json
 from roadgen.graph.model import Edge, Node, RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
+from roadgen.opendrive.hdmap import HdMapParams
 from roadgen.validate.connectivity import check_traffic_connectivity
 from tests.grids import GRID, SPACING, grid_cli, node_at, small_grid
 from tests.shared import needs_rm
@@ -225,7 +226,7 @@ def test_one_way_avenue_into_t_uses_every_lane():
 @pytest.mark.parametrize("boundary", ["ring", "none"])
 def test_every_incoming_lane_has_a_movement(boundary):
     g = small_grid(4, 6, preset="manhattan_like", boundary=boundary)
-    b = OpenDriveBuilder()
+    b = OpenDriveBuilder(hd=HdMapParams(enabled=False))  # the helpers count driving lanes from 1
     b.build(g)
     exits = defaultdict(set)
     for m in b.movements:

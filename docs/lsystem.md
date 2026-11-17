@@ -99,7 +99,8 @@ At the end, the graph passes through the enabled
 | `angle_jitter_deg`, `length_jitter` | 0, 0 | Heading noise (std, deg) and relative length noise |
 | `snap_radius`, `min_segment_length`, `min_angle_deg` | 15, 30, 30 | Local constraints [m, m, deg] |
 | `max_segments` | 20000 | Safety cap |
-| `lane_width` | 3.5 | [m] |
+| `lane_width` | 3.5 | Lane width of arterials, collectors and the ring road [m] |
+| `minor_lane_width` | 3.0 | Lane width of local roads [m] |
 
 ## Road hierarchy
 
@@ -117,9 +118,19 @@ A road's lanes follow the job it does in the network (`roadgen/generators/hierar
    `collector_share` more; the rest are **local** roads. Highways and the
    ring road keep their own lanes and take no part.
 
-Every edge of a stroke gets its class, lanes and speed, so lane counts change
-only at junctions with three or more roads. Arterials and collectors are
-`avenue` edges (pockets, priority), local roads `street` edges.
+Every edge of a stroke gets its class, lanes, lane width and speed, so lane
+counts change only at junctions with three or more roads. Arterials and
+collectors are `avenue` edges (pockets, priority, centre line), local roads
+`street` edges with narrower lanes (`minor_lane_width`). With HD maps,
+arterials (2 + 2) get a 2 m median, highways (3 + 3, wider lanes) a 3 m one
+([cross-sections](geometry.md#cross-sections)).
+
+| Level | Class | Lanes | Lane width | Speed |
+|-------|-------|-------|------------|-------|
+| Highway (fixed) | `highway` | 3 + 3 | 3.75 m | 80 km/h, freeways 100 km/h |
+| Arterial, ring road | `avenue` | 2 + 2 | 3.5 m | 50 km/h |
+| Collector | `avenue` | 1 + 1 | 3.5 m | 45 km/h |
+| Local | `street` | 1 + 1 | 3.0 m | 40 km/h |
 One-way edges (`oneway_pattern`) keep their direction with all lanes forward,
 and asymmetric lane tuples are oriented along the stroke.
 
@@ -432,7 +443,8 @@ cell. Maps are sampled every half of the finest cell size.
 | `highway_ray_length`, `highway_ray_samples` | 800, 8 | Population rays [m] |
 | `highway_branch_prob`, `highway_branch_delay` | 0.1, 6 | New highways per side and segment |
 | `highway_min_density` | 1500 | Highways start and branch only where this many live [people/km²] |
-| `highway_lanes`, `highway_speed` | (2, 2), 22.2 | Lanes and speed [m/s] |
+| `highway_lanes`, `highway_lane_width` | (3, 3), 3.75 | Lanes and lane width [m] |
+| `highway_speed`, `freeway_speed` | 22.2, 27.8 | Speed of at-grade highways, and of freeways (`highway_crossings: separated`) [m/s] |
 | `max_bridge_length` | 250 | Longest water crossing [m] |
 | `street_min_density` | 500 | Streets stop below this [people/km²] |
 | `avoid_vegetation` | true | Streets stay out of parks and forest |

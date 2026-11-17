@@ -66,10 +66,10 @@ def test_sweep_seed_60_now_builds():
 @pytest.mark.slow
 def test_buildable_networks_are_unchanged(monkeypatch):
     # The repair only touches edges the builder would reject: a seed that built
-    # before (seed 3) gives the same graph with the repair switched off.
-    repaired = graph_to_dict(grown("city", 3, maps=True))
+    # before (seed 1) gives the same graph with the repair switched off.
+    repaired = graph_to_dict(grown("city", 1, maps=True))
     monkeypatch.setattr("roadgen.generators.lsystem.repair_short_edges", lambda graph, **kw: 0)
-    unrepaired = LSystemGenerator().generate(LSystemParams.preset("city"), 3, grown_maps("city", 3))
+    unrepaired = LSystemGenerator().generate(LSystemParams.preset("city"), 1, grown_maps("city", 1))
     assert graph_to_dict(unrepaired) == repaired
 
 

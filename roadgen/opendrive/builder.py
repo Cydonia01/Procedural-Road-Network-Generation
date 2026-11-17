@@ -174,6 +174,26 @@ def _cubic_at(records: list, s: float) -> float:
     return rec[1] + rec[2] * ds + rec[3] * ds * ds + rec[4] * ds ** 3
 
 
+def _cubic_slope(records: list, s: float) -> float:
+    """Slope d/ds at s of piecewise cubic records (s, a, b, c, d); 0 without records."""
+    rec = None
+    for r in records:
+        if r[0] <= s + 1e-9:
+            rec = r
+    if rec is None:
+        return 0.0
+    ds = s - rec[0]
+    return rec[2] + 2 * rec[3] * ds + 3 * rec[4] * ds * ds
+
+
+def surface_tilt(elevation: list, superelevation: list, s: float) -> tuple[float, float]:
+    """A unit offset across the road surface at s in plan view, as (along the heading,
+    left of it): the surface is pitched by the grade and rolled by the superelevation."""
+    p = math.atan(_cubic_slope(elevation, s))
+    r = _cubic_at(superelevation, s)
+    return -math.sin(r) * math.sin(p), math.cos(r)
+
+
 def _lane_width(lane: ET.Element) -> float:
     """A lane's widest width record start [m] (0 for the centre lane)."""
     return max((float(w.get("a")) for w in lane.findall("width")), default=0.0)
@@ -848,5 +868,6 @@ class OpenDriveBuilder:
                 edge_id=edge.id, road_id=road_id, contact=contact, pose=pose,
                 right_lanes=right, left_lanes=left, lane_width=edge.lane_width,
                 speed_limit=edge.speed_limit, lane_t=lane_t, cross=cross,
+                tilt=surface_tilt(elevation, superelevation, at),
             )))
         return road, ends, bridge_spans(graph, ca), layout, (elevation, superelevation)

@@ -26,6 +26,7 @@ from roadgen.validate.topology import check_topology
 from tests.shared import needs_rm
 
 HD = HdMapParams(enabled=True)
+NO_AVENUE_MEDIAN = dataclasses.replace(HD, cross_section=dataclasses.replace(HD.cross_section, median=(0.0, 0.0, 3.0)))
 
 
 def _build(graph: RoadGraph, tmp_path, hd: HdMapParams = HD, name: str = "net"):
@@ -64,7 +65,7 @@ def test_trims_count_the_pocket():
 
 
 def test_pocket_lane_geometry_and_ids(tmp_path):
-    path, root, sidecar, _ = _build(_cross(), tmp_path)
+    path, root, sidecar, _ = _build(_cross(), tmp_path, NO_AVENUE_MEDIAN)
     assert check_topology(path) == [] and check_continuity(path) == [] and check_hdmap(path) == []
     road = next(r for r in root.findall("road") if r.get("name") == "edge_1")  # arrives at the junction at its end
     length = RoadEval(road).length
@@ -73,7 +74,7 @@ def test_pocket_lane_geometry_and_ids(tmp_path):
     def right(sec):
         return {int(lane.get("id")): lane for lane in sec.findall("right/lane")}
 
-    # the pocket position (-1, no median on avenues) runs the whole road: none where 0 m wide
+    # the pocket position (-1, no median here) runs the whole road: none where 0 m wide
     first, last = right(sections[0]), right(sections[-1])
     assert first[-1].get("type") == "none" and last[-1].get("type") == "driving"
     assert [first[k].get("type") for k in (-2, -3)] == ["driving", "driving"]  # through lanes keep their ids

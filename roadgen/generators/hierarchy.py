@@ -9,7 +9,7 @@ Strokes are ranked by length x betweenness: the sum over their edges of edge
 length times sampled edge betweenness (shortest paths weighted by length).
 The best strokes become arterials until they hold arterial_share of the
 length, then collectors up to collector_share more, the rest local roads.
-Every edge of a stroke gets the stroke's class, lanes and speed, so lane
+Every edge of a stroke gets the stroke's class, lanes, lane width and speed, so lane
 counts change only where strokes meet at junctions with three or more roads.
 
 Fixed edges (highways, ring roads) keep what they have and take no part,
@@ -43,6 +43,7 @@ class Level:
     road_class: RoadClass
     lanes: tuple[int, int]  # (forward, backward) along the stroke
     speed: float  # [m/s]
+    lane_width: float = 3.5  # [m]
 
 
 @dataclass(frozen=True)
@@ -193,6 +194,7 @@ def assign_hierarchy(graph: RoadGraph, params: HierarchyParams, seed: int,
             e = graph.edges[eid]
             e.road_class = spec.road_class
             e.speed_limit = spec.speed
+            e.lane_width = spec.lane_width
             if e.is_one_way:
                 fwd, bwd = sum(spec.lanes), 0
                 if e.lanes_forward == 0:

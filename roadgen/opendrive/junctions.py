@@ -53,7 +53,6 @@ from roadgen.geometry.planar import (
     Poly3Curve,
     Pose,
     hermite_poly3,
-    offset_point,
     segment_start,
     wrap_angle,
 )
@@ -106,6 +105,10 @@ class RoadEnd:
     # Stage B: every lane at the contact point as (id, kind, inner t, outer t); () = driving
     # lanes only.
     cross: tuple[tuple[int, str, float, float], ...] = ()
+    # A unit offset across the road surface at the contact point, pitched by the grade and
+    # rolled by the superelevation, as (along the heading, left of it) in plan view; (0, 1)
+    # on a flat road. OpenDRIVE measures lane offsets t across that surface.
+    tilt: tuple[float, float] = (0.0, 1.0)
 
     @property
     def key(self) -> tuple[int, str]:
@@ -147,8 +150,11 @@ class RoadEnd:
         return wrap_angle(self.heading_in + math.pi)
 
     def lane_pose(self, lane_id: int, incoming: bool) -> Pose:
-        """Lane center at the contact point, heading in the travel direction."""
-        x, y = offset_point(self.pose, self.lane_offset(lane_id))
+        """Lane center at the contact point (t across the tilted surface), heading in the
+        travel direction."""
+        t, (along, left) = self.lane_offset(lane_id), self.tilt
+        c, s = math.cos(self.pose.hdg), math.sin(self.pose.hdg)
+        x, y = self.pose.x + t * (along * c - left * s), self.pose.y + t * (along * s + left * c)
         return Pose(x, y, self.heading_in if incoming else self.heading_out)
 
 

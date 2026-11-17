@@ -9,7 +9,7 @@ from shapely.geometry import LineString
 from cli import fit_graph
 from roadgen.config import DEFAULTS
 from roadgen.generators.base import build_params
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
+from roadgen.generators.lsystem import LSystemGenerator, LSystemParams, highway_speed
 from roadgen.graph.model import RoadGraph
 from roadgen.opendrive.builder import OpenDriveBuilder
 from roadgen.opendrive.hdmap import HdMapParams
@@ -155,6 +155,8 @@ def test_max_segments_budget():
     {"highway_max_turn_deg": 70.0, "highway_max_detour_deg": 60.0},
     {"prune_factor": 1.5},
     {"highway_lanes": (0, 0)},
+    {"minor_lane_width": 0.0},
+    {"freeway_speed": -1.0},
     {"highway_crossings": "maybe"},
     {"interchanges": True},
     {"interchange_spacing": 0.0},
@@ -163,6 +165,12 @@ def test_max_segments_budget():
 def test_invalid_params(kw):
     with pytest.raises(ValueError):
         LSystemParams(**kw)
+
+
+def test_freeways_are_faster_than_at_grade_highways():
+    p = LSystemParams()
+    assert highway_speed(p) == p.highway_speed
+    assert highway_speed(LSystemParams(highway_crossings="separated")) == p.freeway_speed > p.highway_speed
 
 
 def test_unknown_preset():

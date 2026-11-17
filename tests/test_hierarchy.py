@@ -62,6 +62,18 @@ def test_main_road_of_a_grid_becomes_arterial():
     assert all(levels[k] == LOCAL and g.edges[k].road_class == "street" for k in range(9, 12))
 
 
+def test_levels_set_lane_widths():
+    # Collectors keep the arterial lane width; local roads are narrower.
+    nodes = {k: (100.0 * k, 0.0) for k in range(9)}
+    nodes |= {10 + k: (100.0 * k, 80.0) for k in range(2, 7, 2)}
+    g = graph(nodes, [(k, k + 1) for k in range(8)] + [(k, 10 + k) for k in range(2, 7, 2)])
+    levels = {ARTERIAL: Level("avenue", (2, 2), 13.9, 3.5), COLLECTOR: Level("avenue", (1, 1), 12.5, 3.5),
+              LOCAL: Level("street", (1, 1), 11.1, 3.0)}
+    assigned = assign_hierarchy(g, HierarchyParams(levels, arterial_share=0.5, collector_share=0.0), 0)
+    assert all(g.edges[k].lane_width == levels[lv].lane_width for k, lv in assigned.items())
+    assert {lv for lv in assigned.values()} == {ARTERIAL, LOCAL}
+
+
 def test_fixed_edges_keep_their_class():
     g = graph({1: (0, 0), 2: (100, 0), 3: (200, 0)}, [(1, 2), (2, 3)])
     g.edges[1].road_class, g.edges[1].lanes_forward = "highway", 2

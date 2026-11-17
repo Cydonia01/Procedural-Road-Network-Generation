@@ -22,6 +22,8 @@ HD = HdMapParams(enabled=True)
 MARKS = RoadMarkParams()
 # Streets with a centre line in every profile, to test its pattern and zones.
 STREET_LINES = dataclasses.replace(HD, marks=dataclasses.replace(MARKS, no_street_centre=()))
+# Avenues without a median, to test the centre line a median would replace.
+NO_AVENUE_MEDIAN = dataclasses.replace(HD, cross_section=dataclasses.replace(HD.cross_section, median=(0.0, 0.0, 3.0)))
 
 
 def _build(graph: RoadGraph, tmp_path, hd: HdMapParams = HD):
@@ -109,7 +111,7 @@ def test_street_centre_line_broken_with_solid_approaches(tmp_path):
 
 
 def test_avenue_2_2_solid_centre_and_lane_line_zones(tmp_path):
-    path, root = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path)
+    path, root = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path, NO_AVENUE_MEDIAN)
     assert check_hdmap(path) == [] and check_continuity(path) == []
     for road in root.findall("road"):
         if road.get("junction") != "-1" or not road.get("name").startswith("edge_"):

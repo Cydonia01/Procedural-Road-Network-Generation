@@ -109,7 +109,7 @@ side lanes (parking, bike lanes, shoulders, curbs, sidewalks).
   [`annotate`](maps.md#annotate-profiles-and-control-from-the-maps) sets
   from the population map. The [road marks](opendrive.md#road-marks-hd-maps)
   read it (`no_street_centre`), and the profile `none` has no median.
-- **Medians** (`median`: 0 / 0 / 2 m for street / avenue / highway) sit at
+- **Medians** (`median`: 0 / 2 / 3 m for street / avenue / highway) sit at
   the centre line of two-way roads with at least `median_min_lanes` (2) lanes
   each way. Loops (roundabout rings and cul-de-sac bulbs, from the graph
   metadata) have none. They taper out to end `median_end` (5 m) before every

@@ -84,8 +84,8 @@ reference line, and left lanes (positive ids) drive against it.
   type: it decides the median and the road marks.
 - **Medians** (`median` lanes, HD maps on) sit next to the centre line on
   two-way roads with 2 or more lanes each way (`cross_section.median_min_lanes`;
-  width per class from `cross_section.median`: 2 m on highways, none on
-  streets and avenues), not in the profile `none` and not on loops. They taper out
+  width per class from `cross_section.median`: 3 m on highways, 2 m on
+  avenues, none on streets), not in the profile `none` and not on loops. They taper out
   (MUTCD shift taper) to end 5 m (`median_end`) before every junction. The median lane runs
   the whole road, 0 m wide where there is no median, so the driving lanes
   keep their ids (−2, −3, … and 2, 3, …) along the road. Anything that
@@ -248,6 +248,10 @@ and drive. `tests/test_junction_variety.py` covers 5-, 6- and 7-leg stars, a
 - **Lane.** The reference line *is* the lane centre path. Its single lane `-1`
   is centred with a `laneOffset` of half the lane width. The width blends
   linearly if the two roads' lane widths differ.
+- **Start and end.** The lane centres of the roads it joins, where OpenDRIVE
+  puts them: a lane's offset is measured across the road surface, which the
+  grade pitches and the superelevation rolls, so on a sloped junction the
+  centre of an outer lane sits slightly along and inside the flat offset.
 - **Straight ahead, same heading:** a `<line>`.
 - **Otherwise:** **three clothoids** (`<spiral>`, the middle one an `<arc>`
   when its curvature is constant) from [`g2_hermite`](geometry.md#curve-pieces-and-clothoids).
