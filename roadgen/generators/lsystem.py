@@ -208,6 +208,11 @@ class LSystemParams:
     arterial_share: float = _D["arterial_share"]  # share of the road length that is arterial
     collector_share: float = _D["collector_share"]  # ... collector (after the arterials)
     betweenness_samples: int = _D["betweenness_samples"]  # sampled source nodes; 0 = exact
+    # Lanes from demand: the busiest arterials and collectors (betweenness x population) get more lanes.
+    demand_lanes: bool = _D["demand_lanes"]
+    busy_major_lanes: tuple[int, int] = _D["busy_major_lanes"]  # the busiest arterials
+    busy_collector_lanes: tuple[int, int] = _D["busy_collector_lanes"]  # the busiest collectors
+    busy_share: float = _D["busy_share"]  # share of each level's length that is busy
     # --- width-aware growth (stage R2) ----------------------------------------------------
     body_check: bool = _D["body_check"]  # keep road bodies apart while growing
     side_width: float = _D["side_width"]  # [m] room assumed beside non-highway roads
@@ -305,6 +310,8 @@ class LSystemParams:
         if not 0.0 <= self.arterial_share <= 1.0 or not 0.0 <= self.collector_share <= 1.0 \
                 or self.arterial_share + self.collector_share > 1.0:
             raise ValueError("need arterial_share, collector_share in [0, 1] with sum <= 1")
+        if not 0.0 <= self.busy_share <= 1.0:
+            raise ValueError("busy_share must be in [0, 1]")
         if self.dead_end_reach < 0 or self.dead_end_trim < 0:
             raise ValueError("need dead_end_reach, dead_end_trim >= 0")
         if self.side_width < 0 or self.min_block_depth < 0 or not 0.0 <= self.parallel_deg < 90.0:
@@ -312,7 +319,7 @@ class LSystemParams:
         if not 0.0 < self.stroke_max_deflection_deg < 90.0 or self.betweenness_samples < 0:
             raise ValueError("need stroke_max_deflection_deg in (0, 90) and betweenness_samples >= 0")
         for lanes in (self.major_lanes, self.minor_lanes, self.collector_lanes, self.highway_lanes,
-                      self.ring_lanes):
+                      self.ring_lanes, self.busy_major_lanes, self.busy_collector_lanes):
             if len(lanes) != 2 or min(lanes) < 0 or sum(lanes) < 1:
                 raise ValueError(f"invalid lane counts {lanes}")
         if min(self.lane_width, self.minor_lane_width, self.highway_lane_width,
@@ -1610,12 +1617,27 @@ def highway_speed(p: LSystemParams) -> float:
 
 def hierarchy_params(p: LSystemParams) -> HierarchyParams:
     """Stroke hierarchy settings of an lsystem: arterials and collectors are avenues."""
+    busy = p.demand_lanes
     return HierarchyParams(
-        levels={ARTERIAL: Level("avenue", p.major_lanes, p.major_speed, p.lane_width),
-                COLLECTOR: Level("avenue", p.collector_lanes, p.collector_speed, p.lane_width),
+        levels={ARTERIAL: Level("avenue", p.major_lanes, p.major_speed, p.lane_width,
+                                p.busy_major_lanes if busy else None),
+                COLLECTOR: Level("avenue", p.collector_lanes, p.collector_speed, p.lane_width,
+                                 p.busy_collector_lanes if busy else None),
                 LOCAL: Level("street", p.minor_lanes, p.minor_speed, p.minor_lane_width)},
         max_deflection_deg=p.stroke_max_deflection_deg, arterial_share=p.arterial_share,
-        collector_share=p.collector_share, samples=p.betweenness_samples)
+        collector_share=p.collector_share, samples=p.betweenness_samples,
+        busy_share=p.busy_share if busy else 0.0)
+
+
+def edge_density(graph: RoadGraph, population: MapLayer) -> dict[int, float]:
+    """Mean population density [people/km^2] at the quarter, middle and three-quarter
+    points of each edge (the straight line between its nodes)."""
+    out = {}
+    ts = np.array([0.25, 0.5, 0.75])
+    for eid, e in graph.edges.items():
+        a, b = graph.nodes[e.from_node], graph.nodes[e.to_node]
+        out[eid] = float(np.mean(population.sample(a.x + ts * (b.x - a.x), a.y + ts * (b.y - a.y))))
+    return out
 
 
 def _wrap(angle: float) -> float:
@@ -1791,7 +1813,9 @@ class LSystemGenerator(RoadNetworkGenerator[LSystemParams]):
                 bridges.append(k)
             if old in g.tunnels:
                 tunnels.append(k)
-        assign_hierarchy(graph, hierarchy_params(p), seed, fixed)
+        density = (edge_density(graph, maps.population)
+                   if p.demand_lanes and maps is not None and maps.population is not None else None)
+        assign_hierarchy(graph, hierarchy_params(p), seed, fixed, density)
         if maps is not None:
             graph.metadata["bridges"] = bridges  # edge ids of highways crossing water
             if tunnels:

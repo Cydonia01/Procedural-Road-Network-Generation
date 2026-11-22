@@ -9,7 +9,8 @@ drape and the HD fit come after it and are not the generator's network. The
 expected values were recorded before stage C (41b8363), re-recorded in stage R1
 (the road hierarchy from strokes), when the polish stage removed old presets
 (2026-11-08), and when the fingerprint moved from the pipeline's output to the
-generator's (2026-11-14).
+generator's (2026-11-14), and when the city preset turned on lanes from demand
+(2026-11-22, city_maps only).
 """
 
 from __future__ import annotations

@@ -42,6 +42,12 @@ generators:
     arterial_share: 0.15       # share of the road length (highways and ring aside) that is arterial
     collector_share: 0.25      # ... collector, after the arterials; the rest is local
     betweenness_samples: 200   # source nodes of the sampled edge betweenness; 0 = exact
+    # Lanes from demand: per level, the strokes with the highest betweenness x population
+    # density (betweenness alone without a population map) get more lanes.
+    demand_lanes: false        # off: one lane tuple per level
+    busy_major_lanes: [3, 3]   # the busiest arterials
+    busy_collector_lanes: [2, 2]  # the busiest collectors
+    busy_share: 0.3            # share of each level's length that is busy
     # Width-aware growth: road bodies (driving lanes + side_width; highways + shoulder) stay apart
     body_check: true           # also: a road passing within snap_radius of a node ends there
     side_width: 2.5            # room assumed beside each non-highway road while growing (ground, buildings) [m]

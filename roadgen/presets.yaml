@@ -96,6 +96,7 @@ generators:
       snap_radius: 20.0
       min_segment_length: 40.0
       min_angle_deg: 40.0
+      demand_lanes: true  # the busiest arterials 3 + 3, collectors 2 + 2
 
     # Suburb (field goal): curvy, sparsely branching streets, few loops, turn-around
     # bulbs at most dead ends (Teng & Bidarra's suburban patches).
@@ -150,6 +151,7 @@ generators:
       detour_ratio: 2.5
       max_degree: 7
       roundabout_prob: 0.08
+      demand_lanes: true  # the busiest arterials 3 + 3, collectors 2 + 2
 
 maps:
   terrain:

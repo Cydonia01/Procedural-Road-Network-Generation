@@ -12,6 +12,12 @@ length, then collectors up to collector_share more, the rest local roads.
 Every edge of a stroke gets the stroke's class, lanes, lane width and speed, so lane
 counts change only where strokes meet at junctions with three or more roads.
 
+Lanes from demand (optional): within each level that has busy_lanes, strokes
+are sorted by demand, the length-weighted mean over their edges of betweenness
+x population density, and the busiest get busy_lanes until they hold busy_share
+of the level's length. Demand picks lanes only; the level ranking stays as above.
+Without densities the demand is the betweenness alone.
+
 Fixed edges (highways, ring roads) keep what they have and take no part,
 except that a stroke running straight on from a highway at a junction (and
 straighter than the highway goes on, if it does), or meeting a highway's
@@ -26,7 +32,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Optional
 
 import networkx as nx
 
@@ -44,6 +50,7 @@ class Level:
     lanes: tuple[int, int]  # (forward, backward) along the stroke
     speed: float  # [m/s]
     lane_width: float = 3.5  # [m]
+    busy_lanes: Optional[tuple[int, int]] = None  # lanes of the busiest strokes; None = lanes for all
 
 
 @dataclass(frozen=True)
@@ -53,6 +60,7 @@ class HierarchyParams:
     arterial_share: float = 0.15  # share of the ranked length that is arterial
     collector_share: float = 0.25  # share that is collector (after the arterials)
     samples: int = 200  # source nodes of the sampled betweenness; 0 = exact
+    busy_share: float = 0.0  # share of a level's length that gets its busy_lanes
 
 
 def _away(graph: RoadGraph, eid: int, node: int) -> tuple[float, float]:
@@ -154,8 +162,10 @@ def _orientation(graph: RoadGraph, stroke: list[int],
 
 
 def assign_hierarchy(graph: RoadGraph, params: HierarchyParams, seed: int,
-                     fixed: Iterable[int] = ()) -> dict[int, str]:
-    """Set class, lanes and speed of every edge not in fixed; returns edge -> level."""
+                     fixed: Iterable[int] = (), density: Optional[dict[int, float]] = None) -> dict[int, str]:
+    """Set class, lanes and speed of every edge not in fixed; returns edge -> level.
+
+    density: people/km^2 per edge, for lanes from demand (missing edges count 1)."""
     fixed = set(fixed)
     free = [eid for eid in sorted(graph.edges) if eid not in fixed]
     if not free:
@@ -181,33 +191,68 @@ def assign_hierarchy(graph: RoadGraph, params: HierarchyParams, seed: int,
     bounds = ((ARTERIAL, params.arterial_share),
               (COLLECTOR, params.arterial_share + params.collector_share))
     after_highway = _highway_continuations(graph, fixed, free, max_def)
-    out: dict[int, str] = {}
+    ranked: list[tuple[list[int], float, str]] = []  # (stroke, length, level)
     cum = 0.0
     for _, _, _, stroke, total in scored:
         level = next((name for name, share in bounds if cum < share * all_length - 1e-9), LOCAL)
         if after_highway.intersection(stroke):
             level = ARTERIAL
         cum += total
+        ranked.append((stroke, total, level))
+    busy = _busy_strokes(ranked, params, by_edge, length, density or {})
+    out: dict[int, str] = {}
+    for stroke, _, level in ranked:
         spec = params.levels[level]
-        along = _orientation(graph, stroke, links) if spec.lanes[0] != spec.lanes[1] else {}
+        lanes = spec.busy_lanes if stroke[0] in busy else spec.lanes
+        along = _orientation(graph, stroke, links) if lanes[0] != lanes[1] else {}
         for eid in stroke:
             e = graph.edges[eid]
             e.road_class = spec.road_class
             e.speed_limit = spec.speed
             e.lane_width = spec.lane_width
-            if e.is_one_way:
+            if e.is_one_way:  # all lanes one way; a busy stroke's one-way edges keep the level's lanes
                 fwd, bwd = sum(spec.lanes), 0
                 if e.lanes_forward == 0:
                     fwd, bwd = bwd, fwd
             elif along.get(eid, True):
-                fwd, bwd = spec.lanes
+                fwd, bwd = lanes
             else:
-                bwd, fwd = spec.lanes
+                bwd, fwd = lanes
             e.lanes_forward, e.lanes_backward = fwd, bwd
             out[eid] = level
     counts = {lv: sum(1 for v in out.values() if v == lv) for lv in LEVELS}
-    log.debug("hierarchy: %d strokes, edges per level %s", len(groups), counts)
+    log.debug("hierarchy: %d strokes (%d busy), edges per level %s", len(groups), len(busy), counts)
     return out
+
+
+def stroke_demand(stroke: list[int], between: dict[int, float], length: dict[int, float],
+                  density: dict[int, float]) -> float:
+    """Length-weighted mean of betweenness x density over a stroke's edges."""
+    total = sum(length[e] for e in stroke) or 1.0
+    return sum(length[e] * between.get(e, 0.0) * density.get(e, 1.0) for e in stroke) / total
+
+
+def _busy_strokes(ranked: list[tuple[list[int], float, str]], params: HierarchyParams,
+                  between: dict[int, float], length: dict[int, float],
+                  density: dict[int, float]) -> set[int]:
+    """First edge ids of the strokes that get their level's busy_lanes: per level, the
+    highest demand first until busy_share of the level's length."""
+    busy: set[int] = set()
+    if params.busy_share <= 0.0:
+        return busy
+    for level in LEVELS:
+        if params.levels[level].busy_lanes is None:
+            continue
+        members = [(s, total) for s, total, lv in ranked if lv == level]
+        level_length = sum(total for _, total in members)
+        order = sorted(members, key=lambda m: (-stroke_demand(m[0], between, length, density), m[0][0]))
+        cum = 0.0
+        for stroke, total in order:
+            if cum >= params.busy_share * level_length - 1e-9:
+                break
+            busy.add(stroke[0])
+            cum += total
+    return busy
 
 
 def _highway_continuations(graph: RoadGraph, fixed: set[int], free: Iterable[int],

@@ -34,9 +34,9 @@ with `--set` or a `--params` file ([Generators](generators.md)).
 | `hill_town` | contour | field | Contour streets that follow the slopes everywhere (no style map), slightly bowed. For `--maps` |
 | `suburb` | suburb | field | Suburb pattern only, 30 km/h streets, bulbs at 90 % of dead ends, some roundabouts |
 | `skewed_grid` | skew | field | Streets meet avenues at 60–90°, in patches |
-| `city` | noisy grid | grid | 3000 × 2400 m noisy grid, `min_angle_deg` 40 so streets can leave curved highways. For `--maps` |
+| `city` | noisy grid | grid | 3000 × 2400 m noisy grid, `min_angle_deg` 40 so streets can leave curved highways, lanes from demand. For `--maps` |
 | `highway_corridor` | noisy grid | grid | `city` with straight freeways, diamond interchanges every 1000 m, lane adds and drops. For `--maps` |
-| `mixed_city` | all | field | Districts of every pattern from a style map, connectors, staggers, roundabouts. For `--maps` |
+| `mixed_city` | all | field | Districts of every pattern from a style map, connectors, staggers, roundabouts, lanes from demand. For `--maps` |
 
 Layouts without a preset of their own:
 
@@ -117,6 +117,13 @@ A road's lanes follow the job it does in the network (`roadgen/generators/hierar
    `arterial_share` of the road length, then **collectors** up to
    `collector_share` more; the rest are **local** roads. Highways and the
    ring road keep their own lanes and take no part.
+4. **Lanes from demand** (`demand_lanes`, on in the `city` and `mixed_city`
+   presets). Within arterials, and within collectors, strokes are sorted by
+   demand: the length-weighted mean over their edges of betweenness ×
+   population density (sampled on the population map; betweenness alone
+   without one). The busiest get `busy_major_lanes` (arterials) or
+   `busy_collector_lanes` (collectors) until they hold `busy_share` of their
+   level's length. Demand changes lanes only, not the class.
 
 Every edge of a stroke gets its class, lanes, lane width and speed, so lane
 counts change only at junctions with three or more roads. Arterials and
@@ -128,11 +135,14 @@ arterials (2 + 2) get a 2 m median, highways (3 + 3, wider lanes) a 3 m one
 | Level | Class | Lanes | Lane width | Speed |
 |-------|-------|-------|------------|-------|
 | Highway (fixed) | `highway` | 3 + 3 | 3.75 m | 80 km/h, freeways 100 km/h |
-| Arterial, ring road | `avenue` | 2 + 2 | 3.5 m | 50 km/h |
-| Collector | `avenue` | 1 + 1 | 3.5 m | 45 km/h |
+| Arterial, ring road | `avenue` | 2 + 2 (busiest 3 + 3) | 3.5 m | 50 km/h |
+| Collector | `avenue` | 1 + 1 (busiest 2 + 2) | 3.5 m | 45 km/h |
 | Local | `street` | 1 + 1 | 3.0 m | 40 km/h |
-One-way edges (`oneway_pattern`) keep their direction with all lanes forward,
-and asymmetric lane tuples are oriented along the stroke.
+
+The busiest lanes apply with `demand_lanes` only. One-way edges
+(`oneway_pattern`) keep their direction with all lanes forward (the level's
+lanes, also on a busy stroke), and asymmetric lane tuples are oriented along
+the stroke.
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
@@ -142,6 +152,9 @@ and asymmetric lane tuples are oriented along the stroke.
 | `stroke_max_deflection_deg` | 35 | Arms of one road at a junction turn less than this [deg] |
 | `arterial_share`, `collector_share` | 0.15, 0.25 | Shares of the road length |
 | `betweenness_samples` | 200 | Sampled source nodes; 0 = exact |
+| `demand_lanes` | false | Lanes from demand (step 4) |
+| `busy_major_lanes`, `busy_collector_lanes` | (3, 3), (2, 2) | Lanes of the busiest arterials, collectors |
+| `busy_share` | 0.3 | Share of each level's length that is busy |
 
 ## Grids
 

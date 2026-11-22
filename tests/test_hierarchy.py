@@ -18,6 +18,7 @@ from roadgen.generators.hierarchy import (
 from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
 from roadgen.graph.model import Edge, Node, RoadGraph
 from tests.grids import SPACING, small_grid
+from tests.shared import grown
 
 LEVELS = {ARTERIAL: Level("avenue", (2, 2), 13.9), COLLECTOR: Level("avenue", (1, 1), 12.5),
           LOCAL: Level("street", (1, 1), 11.1)}
@@ -173,3 +174,62 @@ def test_road_meeting_a_highway_end_at_a_bend_is_arterial():
     g.edges[1].lanes_forward = g.edges[1].lanes_backward = 2
     levels = assign_hierarchy(g, HierarchyParams(LEVELS, arterial_share=0.0, collector_share=0.0), 0, fixed={1})
     assert levels[2] == ARTERIAL and g.edges[2].total_lanes == 4  # no lane jump at the bend
+
+
+# --- lanes from demand (NF1) ----------------------------------------------------------------
+
+BUSY = {**LEVELS, ARTERIAL: Level("avenue", (2, 2), 13.9, busy_lanes=(3, 3))}
+
+
+def _ladder() -> RoadGraph:
+    """Two equal 600 m roads (edges 1-6 at y = 0, 7-12 at y = 200) joined by two rungs."""
+    nodes = {k: (100.0 * k, 0.0) for k in range(7)} | {10 + k: (100.0 * k, 200.0) for k in range(7)}
+    edges = [(k, k + 1) for k in range(6)] + [(10 + k, 11 + k) for k in range(6)] + [(2, 12), (4, 14)]
+    return graph(nodes, edges)
+
+
+def _lanes(g: RoadGraph, edges) -> set[tuple[int, int]]:
+    return {(g.edges[e].lanes_forward, g.edges[e].lanes_backward) for e in edges}
+
+
+BOTTOM, TOP = range(1, 7), range(7, 13)
+
+
+@pytest.mark.parametrize("busy_share, density, busy_road", [
+    (0.0, None, None),  # off: one lane tuple per level
+    (0.5, None, BOTTOM),  # equal betweenness: the tie goes to the lower edge ids
+    (0.5, {e: 5000.0 if e in TOP else 1000.0 for e in range(1, 15)}, TOP),  # density decides
+    (1.0, None, "both"),
+])
+def test_busiest_strokes_get_busy_lanes(busy_share, density, busy_road):
+    g = _ladder()
+    params = HierarchyParams(BUSY, arterial_share=0.75, collector_share=0.0, samples=0, busy_share=busy_share)
+    levels = assign_hierarchy(g, params, 0, density=density)
+    assert all(levels[e] == ARTERIAL for e in (*BOTTOM, *TOP))
+    for road in (BOTTOM, TOP):
+        busy = busy_road == "both" or busy_road == road
+        assert _lanes(g, road) == {(3, 3) if busy else (2, 2)}
+    assert _lanes(g, (13, 14)) == {(1, 1)}  # local rungs: no busy lanes at that level
+
+
+def test_one_way_edges_of_a_busy_stroke_keep_the_level_lanes():
+    g = _ladder()
+    g.edges[3].lanes_forward, g.edges[3].lanes_backward = 1, 0
+    assign_hierarchy(g, HierarchyParams(BUSY, arterial_share=0.75, collector_share=0.0, samples=0,
+                                        busy_share=0.5), 0)
+    assert _lanes(g, [3]) == {(4, 0)}
+    assert _lanes(g, [1, 2, 4, 5, 6]) == {(3, 3)}
+
+
+def test_lsystem_demand_lanes_on_maps():
+    """On the city's maps, busy arterials have 3 + 3 lanes and busy collectors 2 + 2;
+    lanes still change only where strokes meet; off leaves the network as it was."""
+    g = grown("city", 1, maps=True, demand_lanes=True)
+    lanes = {(e.road_class, e.lanes_forward, e.lanes_backward) for e in g.edges.values()}
+    assert {("avenue", 3, 3), ("avenue", 2, 2), ("avenue", 1, 1)} <= lanes
+    two_way_avenues = [e for e in g.edges.values() if e.road_class == "avenue" and not e.is_one_way]
+    assert any(e.total_lanes == 4 and e.speed_limit == LSystemParams().collector_speed
+               for e in two_way_avenues)  # busy collector
+    assert _two_road_changes(g) == 0
+    off = grown("city", 1, maps=True, demand_lanes=False)
+    assert {e.total_lanes for e in off.edges.values() if e.road_class == "avenue"} <= {2, 4}
