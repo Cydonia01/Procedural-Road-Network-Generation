@@ -7,6 +7,7 @@ import pytest
 from cli import main
 from roadgen.generators import base
 from roadgen.generators.base import (
+    assign_node_kinds,
     RoadNetworkGenerator,
     build_params,
     generator_names,
@@ -16,7 +17,7 @@ from roadgen.generators.base import (
 )
 from roadgen.generators.lsystem import LSystemParams
 from roadgen.graph.io import load_json
-from roadgen.graph.model import Node, RoadGraph
+from roadgen.graph.model import Edge, Node, RoadGraph
 
 
 def test_builtin_generators_are_registered():
@@ -92,3 +93,45 @@ def test_cli_generate_lsystem_with_yaml_and_set(tmp_path):
 def test_cli_bad_set_value(tmp_path):
     with pytest.raises(SystemExit):
         main(["generate", "lsystem", "--set", "no_equals_sign", "-o", str(tmp_path / "x.json")])
+
+
+@dataclass(frozen=True)
+class CrossParams:
+    arm: float = 150.0  # [m]
+
+
+class CrossGenerator(RoadNetworkGenerator[CrossParams]):
+    """A third-party style generator: no maps, no config section, one 4-way junction."""
+
+    params_type = CrossParams
+    description = "one crossing"
+
+    def generate(self, params, seed):
+        g = RoadGraph()
+        g.add_node(Node(1, 0.0, 0.0))
+        for k, (dx, dy) in enumerate(((1, 0), (0, 1), (-1, 0), (0, -1)), 2):
+            g.add_node(Node(k, dx * params.arm, dy * params.arm))
+            g.add_edge(Edge(k, 1, k, "avenue", 1, 1))
+        assign_node_kinds(g)
+        g.metadata.update(name="cross", generator="cross", seed=seed, params={"arm": params.arm})
+        return g
+
+
+def test_pipeline_runs_a_generator_other_than_lsystem(monkeypatch, tmp_path, capsys):
+    """The registry stays open to new generators: one that reads no maps and has no
+    defaults.yaml section runs through generate and pipeline like lsystem."""
+    monkeypatch.setattr(base, "_REGISTRY", dict(base._REGISTRY))
+    register("cross")(CrossGenerator)
+    assert main(["generate", "cross", "--set", "arm=120", "-o", str(tmp_path / "c.json")]) == 0
+    assert load_json(tmp_path / "c.json").nodes[2].x == 120.0
+    prefix = tmp_path / "cross"
+    assert main(["pipeline", "cross", "--allow-traps", "--no-hd", "-o", str(prefix)]) == 0
+    assert prefix.with_suffix(".xodr").exists()
+    # Maps are built around a network that doesn't read them.
+    assert main(["pipeline", "cross", "--allow-traps", "--maps", "--flat", "-o", str(tmp_path / "m")]) == 0
+    assert main(["generators"]) == 0
+    assert "arm = 150.0" in capsys.readouterr().out  # the params class's default
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("generators:\n  crosss: {arm: 1}\n")
+    with pytest.raises(SystemExit, match="crosss"):
+        main(["--config", str(bad), "generate", "cross", "-o", str(tmp_path / "x.json")])

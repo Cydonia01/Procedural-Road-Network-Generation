@@ -5,10 +5,20 @@ from __future__ import annotations
 import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Generic, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Generic,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import yaml
 
+from roadgen.config import section
 from roadgen.graph.model import NodeKind, RoadGraph
 
 if TYPE_CHECKING:  # roadgen.maps imports this module
@@ -80,6 +90,12 @@ def get_generator(name: str) -> RoadNetworkGenerator:
     if name not in _REGISTRY:
         raise ValueError(f"unknown generator {name!r}; available: {sorted(_REGISTRY)}")
     return _REGISTRY[name]()
+
+
+def generator_defaults(cfg: dict[str, Any], name: str) -> dict[str, Any]:
+    """The config's ``generators.<name>`` section; empty for a generator whose params
+    class holds its own defaults (no section in defaults.yaml)."""
+    return section(cfg["generators"], name) if name in (cfg.get("generators") or {}) else {}
 
 
 def presets_of(params_type: type) -> list[str]:

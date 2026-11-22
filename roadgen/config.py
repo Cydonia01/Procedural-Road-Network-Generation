@@ -32,7 +32,9 @@ def merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
 
 # Params sections (a generator's, a map generator's): their keys are checked against
 # the params dataclass instead, since they may name a preset or a required field.
-PARAMS_SECTIONS = re.compile(r"generators\.[^.]+|maps\.(terrain|elevation|population|style)\.[^.]+")
+# Under `generators` any registered generator may have a section, also one that keeps
+# its defaults in its params class and has none in defaults.yaml (checked by the CLI).
+PARAMS_SECTIONS = re.compile(r"generators(\.[^.]+)?|maps\.(terrain|elevation|population|style)\.[^.]+")
 
 
 def _check_keys(base: Any, override: Any, where: str) -> None:

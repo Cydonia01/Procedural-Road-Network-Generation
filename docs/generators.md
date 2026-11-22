@@ -153,9 +153,11 @@ lsystem builds them on its freeways
 ## Adding a generator
 
 1. Create `roadgen/generators/<name>.py` with a frozen params dataclass,
-   validated in `__post_init__`, with defaults in `defaults.yaml` under
-   `generators.<name>`, and optional presets (`presets.yaml` under
-   `generators.<name>`, `PRESETS` plus `preset()`).
+   validated in `__post_init__`, and optional presets (`presets.yaml` under
+   `generators.<name>`, `PRESETS` plus `preset()`). Defaults can stay in the
+   dataclass; the built-in generators keep theirs in `defaults.yaml` under
+   `generators.<name>` (read through `generator_defaults`), so a config file
+   can change them.
 2. Subclass `RoadNetworkGenerator`, set `params_type` and `description`,
    decorate it with `@register("<name>")`, and implement
    `generate(params, seed)`. Draw all randomness from
@@ -167,7 +169,9 @@ lsystem builds them on its freeways
    implement `map_bounds`, and sample with `MapLayer.sample(x, y)` in world
    coordinates.
 6. Add tests: determinism, `graph.validate() == []`, and a build with
-   `OpenDriveBuilder` without errors.
+   `OpenDriveBuilder` without errors. `tests/test_registry.py` runs a minimal
+   generator (one crossing, no maps, no config section) through `generate`
+   and `pipeline`; it is a working template.
 
 The CLI picks the generator up automatically: `generate <name>`, `pipeline
 <name>`, `--preset`, `--params` and `--set`.

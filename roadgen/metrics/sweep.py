@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
 from roadgen.config import DEFAULTS, section
-from roadgen.generators.base import get_generator, load_params
+from roadgen.generators.base import generator_defaults, get_generator, load_params
 from roadgen.generators.repair import fit_cross_sections
 from roadgen.geometry.design import DesignParams
 from roadgen.maps.annotate import AnnotateParams, annotate
@@ -52,7 +52,7 @@ def build_one(generator: str, preset: Optional[str], seed: int, cfg: dict = DEFA
     """Maps, network and OpenDRIVE build for one seed (with HD maps if hd is enabled)."""
     gen = get_generator(generator)
     params = load_params(gen.params_type, preset=preset,
-                         defaults=section(cfg, "generators", generator))
+                         defaults=generator_defaults(cfg, generator))
     maps = None
     if gen.uses_maps:
         grid_cfg = cfg["maps"]["grid"]

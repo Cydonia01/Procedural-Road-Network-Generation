@@ -23,6 +23,7 @@ from lxml import etree
 from roadgen.config import DEFAULTS, load_config, section, with_overrides
 from roadgen.generators.base import (
     build_params,
+    generator_defaults,
     generator_names,
     get_generator,
     presets_of,
@@ -256,7 +257,7 @@ def generator_params(args: argparse.Namespace):
     gen = get_generator(args.generator)
     values, preset = spec_params(args, "generators", args.generator)
     try:
-        defaults = section(args.cfg, "generators", args.generator)
+        defaults = generator_defaults(args.cfg, args.generator)
         return build_params(gen.params_type, values, preset, defaults)
     except TypeError as e:  # missing required fields
         raise SystemExit(f"error: {e}") from e
@@ -829,9 +830,16 @@ def cmd_generators(args: argparse.Namespace) -> int:
         print(f"{name}: {gen.description}")
         presets = presets_of(gen.params_type)
         print(f"  presets: {', '.join(presets) if presets else '-'}")
-        defaults = section(args.cfg, "generators", name)
+        defaults = generator_defaults(args.cfg, name)
         for f in dataclasses.fields(gen.params_type):
-            default = repr(defaults[f.name]) if f.name in defaults else "required"
+            if f.name in defaults:
+                default = repr(defaults[f.name])
+            elif f.default is not dataclasses.MISSING:
+                default = repr(f.default)
+            elif f.default_factory is not dataclasses.MISSING:
+                default = repr(f.default_factory())
+            else:
+                default = "required"
             print(f"  {f.name} = {default}")
     return 0
 
@@ -1352,7 +1360,8 @@ def _fold_params(args: argparse.Namespace, config: dict) -> None:
     sec.update(plain(parse_set(args.set)))
     preset = args.preset or preset
     # Keep only what differs from defaults + preset: that is what this run changes.
-    base = plain({**section(DEFAULTS, *keys), **getattr(params_type, "PRESETS", {}).get(preset, {})})
+    base = plain({**(generator_defaults(DEFAULTS, keys[1]) if keys[0] == "generators" else section(DEFAULTS, *keys)),
+                  **getattr(params_type, "PRESETS", {}).get(preset, {})})
     for key in [k for k in sec if k in base and plain(sec[k]) == base[k]]:
         del sec[key]
     if preset:
@@ -1408,7 +1417,7 @@ def _check_params(config: dict) -> None:
     for where, get, names, sec in sections:
         try:
             fields = {f.name for f in dataclasses.fields(get(*names).params_type)}
-        except KeyError as e:
+        except (KeyError, ValueError) as e:
             raise SystemExit(f"error: config {where}: {e}") from e
         unknown = set(sec or {}) - fields - {"preset"}
         if unknown:
