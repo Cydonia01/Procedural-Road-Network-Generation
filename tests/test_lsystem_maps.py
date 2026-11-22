@@ -8,11 +8,11 @@ import numpy as np
 import pytest
 
 from cli import main
-from roadgen.config import DEFAULTS, section
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.graph.model import RoadGraph
-from roadgen.maps.base import make_map
-from roadgen.maps.model import (
+from kadmos.config import DEFAULTS, section
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.graph.model import RoadGraph
+from kadmos.maps.base import make_map
+from kadmos.maps.model import (
     LAND,
     VEGETATION,
     WATER,
@@ -21,10 +21,10 @@ from roadgen.maps.model import (
     MapSet,
     save_npz,
 )
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.continuity import check_continuity
-from roadgen.validate.topology import check_topology
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.continuity import check_continuity
+from kadmos.validate.topology import check_topology
 from tests.shared import grown
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
@@ -221,7 +221,7 @@ def test_no_growth_is_reported(caplog):
 def test_snapped_streets_do_not_cross_water():
     """A street end snapped onto an existing node must not jump a narrow strip of
     water (found with these maps: drape made a bridge on an avenue)."""
-    from roadgen.maps.drape import drape
+    from kadmos.maps.drape import drape
 
     grid = GridSpec((0.0, 0.0), (3000.0, 3000.0), 10.0)
     maps = MapSet()

@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from roadgen.generators.hierarchy import (
+from kadmos.generators.hierarchy import (
     ARTERIAL,
     COLLECTOR,
     LOCAL,
@@ -15,8 +15,8 @@ from roadgen.generators.hierarchy import (
     assign_hierarchy,
     strokes,
 )
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.graph.model import Edge, Node, RoadGraph
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.graph.model import Edge, Node, RoadGraph
 from tests.grids import SPACING, small_grid
 from tests.shared import grown
 

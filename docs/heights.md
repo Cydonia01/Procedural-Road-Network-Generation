@@ -26,7 +26,7 @@ flowchart LR
 
 ## 1. Align: bends that leave legal ground
 
-`roadgen/maps/align.py`, parameters under `align:`. Runs whenever there are
+`kadmos/maps/align.py`, parameters under `align:`. Runs whenever there are
 maps.
 
 Roads are built along [fitted curves](geometry.md#fitted-roads) that cut
@@ -42,7 +42,7 @@ builder, drape and scene all honour it.
 
 ## 2. Drape: heights from the elevation map
 
-`roadgen/maps/drape.py`, parameters under `drape:`.
+`kadmos/maps/drape.py`, parameters under `drape:`.
 
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
@@ -92,7 +92,7 @@ grade instead of following the terrain. Their stretches at least
 
 ## 3. Grade separation: overpasses
 
-`roadgen/geometry/grade_separation.py`, parameters under
+`kadmos/geometry/grade_separation.py`, parameters under
 `grade_separation:`. A RoadGraph is planar, except where a generator lets two
 roads cross without a shared node (lsystem's freeways). Every such crossing
 becomes an overpass:
@@ -120,7 +120,7 @@ The crossings are listed in `metadata["overpasses"]`, and the
 
 ## 4. In the builder: vertical fit, junction planes, banking
 
-`roadgen/geometry/vertical.py`. The builder writes heights only if
+`kadmos/geometry/vertical.py`. The builder writes heights only if
 `RoadGraph.has_elevation`.
 
 - **Junction planes** (`junction_planes`). Every junction area is a plane
@@ -155,7 +155,7 @@ The crossings are listed in `metadata["overpasses"]`, and the
   Their elevation and superelevation are cubic Hermite pieces that match the
   plane's height, grade, roll and roll rate exactly at both ends. Every road
   of a junction therefore meets at the same height, grade and roll.
-- **Lane centres.** esmini evaluates a lane centre as roadgen does: `t`
+- **Lane centres.** esmini evaluates a lane centre as KADMOS does: `t`
   across the road surface, pitched by the grade and rolled about its pitched
   tangent.
 - **Bridges and tunnels** become `<objects><bridge type="concrete">` and

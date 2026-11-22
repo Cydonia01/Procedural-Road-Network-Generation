@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Project: Procedural Road Network Generation for esmini.
+Project: KADMOS, procedural road network generation for esmini.
 
 We are building a Python pipeline that procedurally generates road networks
 and converts them to ASAM OpenDRIVE (.xodr). The aim is the road network: the
@@ -40,7 +40,7 @@ not a current goal: 4000 x 4000 m networks already work.
 ## Repo layout
 
 ```
-  roadgen/        (full module map: docs/architecture.md#module-map)
+  kadmos/        (full module map: docs/architecture.md#module-map)
     graph/        model.py, io.py, plot.py
     maps/         base.py, model.py, noise.py, terrain.py, elevation.py, population.py, style.py,
                   image.py, plot.py, align.py, drape.py, annotate.py
@@ -87,25 +87,25 @@ not a current goal: 4000 x 4000 m networks already work.
 - Generated files go under `out/` (git-ignored).
 - Every successful CLI run gets a folder `out/<hash>/` with its outputs
   (`-o` only names them) and `run.yaml`: the command plus only the args and
-  parameters that differ from defaults (`roadgen/history.py`). `python -m cli
+  parameters that differ from defaults (`kadmos/history.py`). `python -m cli
   HASH` or `python -m cli run out/HASH/run.yaml` reruns it. Use
   `--no-history` for throwaway runs (no folder, `-o` is a path); tests run
   with recording off (`tests/conftest.py`).
 
 ## Where things are
 
-- All default parameters: `roadgen/defaults.yaml`. Params dataclasses read
-  their field defaults from it (`roadgen/config.py`); a test checks they match,
+- All default parameters: `kadmos/defaults.yaml`. Params dataclasses read
+  their field defaults from it (`kadmos/config.py`); a test checks they match,
   so new params go in both places.
-- Road generators: `roadgen/generators/` (registry in `base.py`).
-- Input maps (terrain, elevation, population, style): `roadgen/maps/` —
+- Road generators: `kadmos/generators/` (registry in `base.py`).
+- Input maps (terrain, elevation, population, style): `kadmos/maps/` —
   separate per-kind registry, same params/preset pattern. `lsystem` reads
   them (`uses_maps`, `map_bounds`, `map_kinds`, `generate(..., maps=MapSet)`);
   the CLI builds them before generating. New lsystem features must default
   to off: `tests/test_lsystem_identity.py` checks the existing presets
   against fingerprints; re-record them (`python -m tests.lsystem_identity`)
   only for an intended change, and say so in the plan.
-- Presets: `roadgen/presets.yaml` (keyed like `defaults.yaml`), read with
+- Presets: `kadmos/presets.yaml` (keyed like `defaults.yaml`), read with
   `config.presets()`. One per street pattern plus the map cities; other
   layouts are parameter sets, not new presets.
 - HD maps (medians, marks, signs, lights, junction control, turn lanes; no side lanes)
@@ -118,7 +118,7 @@ not a current goal: 4000 x 4000 m networks already work.
 - lsystem is the only generator (`manhattan` was removed in stage C, the
   single-junction `junction` generator and the cloverleaf on 2026-11-17):
   grids, pattern fields (`patterns.py`) and graph transforms
-  (`roadgen/generators/transforms/`, diamond interchanges only).
+  (`kadmos/generators/transforms/`, diamond interchanges only).
 - Docs: `docs/` (index in `docs/README.md`, by task and by source folder).
   Each topic has one home page; other pages link to it instead of repeating
   it (parameters and run folders: `cli-reference.md`; module map and output

@@ -9,12 +9,12 @@ import pytest
 from shapely.geometry import LineString, Polygon
 
 from cli import main
-from roadgen.geometry.alignment import network_alignment
-from roadgen.graph.io import graph_to_dict, load_json, save_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.maps.align import align
-from roadgen.maps.model import LAND, WATER, GridSpec, MapLayer, save_npz
-from roadgen.scene.buildings import (
+from kadmos.geometry.alignment import network_alignment
+from kadmos.graph.io import graph_to_dict, load_json, save_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.maps.align import align
+from kadmos.maps.model import LAND, WATER, GridSpec, MapLayer, save_npz
+from kadmos.scene.buildings import (
     BuildingParams,
     footprints,
     road_half_extent,

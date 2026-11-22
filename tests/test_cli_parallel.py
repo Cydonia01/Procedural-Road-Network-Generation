@@ -7,7 +7,7 @@ import os
 import pytest
 
 from cli import run_side_by_side
-from roadgen.validate.stages import StageReport
+from kadmos.validate.stages import StageReport
 
 # pytest-xdist workers run threads of their own, so Python warns on fork; the CLI forks
 # from its single Python thread.

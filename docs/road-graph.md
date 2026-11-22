@@ -1,6 +1,6 @@
 # RoadGraph
 
-`roadgen/graph/model.py` defines the interface between generators and the
+`kadmos/graph/model.py` defines the interface between generators and the
 rest of the pipeline. A RoadGraph is a plain undirected graph with lane
 information on its edges. Units are metres, radians and m/s.
 
@@ -75,7 +75,7 @@ The [network metrics](validation.md#network-metrics) count these features.
 
 ## JSON format
 
-`roadgen/graph/io.py` reads and writes the graph (`save_json`, `load_json`).
+`kadmos/graph/io.py` reads and writes the graph (`save_json`, `load_json`).
 Nodes and edges are sorted by id. Loading any `schema_version` other than 1
 is an error.
 

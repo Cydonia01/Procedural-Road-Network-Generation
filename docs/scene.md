@@ -1,6 +1,6 @@
 # 3D scene
 
-esmini draws only the roads. `roadgen/scene/` adds the ground, bridge and
+esmini draws only the roads. `kadmos/scene/` adds the ground, bridge and
 tunnel structures and simple buildings around them, as an OpenSceneGraph
 file esmini loads as its `SceneGraphFile`. The ground and the structures
 follow the built `.xodr` itself (what esmini draws), the buildings the

@@ -1,6 +1,6 @@
 # lsystem: city generator
 
-`roadgen/generators/lsystem.py` grows a city's roads with the loop from
+`kadmos/generators/lsystem.py` grows a city's roads with the loop from
 Parish & Müller, *Procedural Modeling of Cities* (2001). It is the only city
 generator. It covers plain and Manhattan-style grids, curved and organic
 streets, blended street patterns, cul-de-sacs, roundabouts, and freeways on
@@ -104,7 +104,7 @@ At the end, the graph passes through the enabled
 
 ## Road hierarchy
 
-A road's lanes follow the job it does in the network (`roadgen/generators/hierarchy.py`, step `hierarchy: strokes`):
+A road's lanes follow the job it does in the network (`kadmos/generators/hierarchy.py`, step `hierarchy: strokes`):
 
 1. **Strokes.** Edges are joined into continuous roads. At a node with two
    roads, both belong to the same road, however sharp the bend. At a node with
@@ -205,7 +205,7 @@ The builder turns these bend nodes into smooth curves
 
 ## Pattern fields (`global_goal: field`)
 
-`roadgen/generators/patterns.py`, after Chen et al. (2008, sec. 5) and
+`kadmos/generators/patterns.py`, after Chen et al. (2008, sec. 5) and
 Parish & Müller's pattern rules (sec. 3.2.2).
 
 Each pattern gives, at every point, a direction field as a symmetric tensor.

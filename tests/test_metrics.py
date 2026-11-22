@@ -6,13 +6,13 @@ import math
 import pytest
 
 from cli import main
-from roadgen.metrics.geometry import (
+from kadmos.metrics.geometry import (
     GeometryMetricsParams,
     geometry_metrics,
     speed_records,
 )
-from roadgen.metrics.sweep import build_one
-from roadgen.validate.continuity import RoadEval
+from kadmos.metrics.sweep import build_one
+from kadmos.validate.continuity import RoadEval
 
 K = 0.01  # arc curvature [1/m]
 W = 3.5  # lane width [m]

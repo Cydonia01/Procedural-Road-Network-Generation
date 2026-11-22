@@ -1,8 +1,8 @@
 import pytest
 import yaml
 
-import roadgen.config
-from roadgen.history import ENV_VAR
+import kadmos.config
+from kadmos.history import ENV_VAR
 
 # What `pipeline` adds by default (defaults.yaml `pipeline:`): off in tests, which ask
 # for it with --buildings, --ground, ... where they need it (the drive-check alone would
@@ -25,9 +25,9 @@ def _pipeline_outputs_off(monkeypatch, tmp_path_factory, request):
         return
     path = tmp_path_factory.getbasetemp() / "defaults_pipeline_off.yaml"
     if not path.exists():
-        data = yaml.safe_load(roadgen.config.DEFAULTS_PATH.read_text())
+        data = yaml.safe_load(kadmos.config.DEFAULTS_PATH.read_text())
         data["pipeline"].update(PIPELINE_OFF)
         path.write_text(yaml.safe_dump(data, sort_keys=False))
-    monkeypatch.setattr(roadgen.config, "DEFAULTS_PATH", path)
+    monkeypatch.setattr(kadmos.config, "DEFAULTS_PATH", path)
     for key, value in PIPELINE_OFF.items():
-        monkeypatch.setitem(roadgen.config.DEFAULTS["pipeline"], key, value)
+        monkeypatch.setitem(kadmos.config.DEFAULTS["pipeline"], key, value)

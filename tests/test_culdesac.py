@@ -7,20 +7,20 @@ import math
 import numpy as np
 import pytest
 
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.generators.transforms.culdesac import (
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.generators.transforms.culdesac import (
     LOOP_NODES,
     add_culdesacs,
     bulb_points,
     cut_dead_ends,
 )
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.metrics.network import arm_headings, network_metrics
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.connectivity import check_traffic_connectivity, exits
-from roadgen.validate.continuity import check_continuity
-from roadgen.validate.topology import check_topology
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.metrics.network import arm_headings, network_metrics
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.connectivity import check_traffic_connectivity, exits
+from kadmos.validate.continuity import check_continuity
+from kadmos.validate.topology import check_topology
 from tests.shared import grown
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)

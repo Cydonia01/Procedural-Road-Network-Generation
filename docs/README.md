@@ -30,17 +30,17 @@ what you need.
 
 | Code | Page |
 |------|------|
-| `cli.py`, `roadgen/config.py`, `roadgen/history.py`, `roadgen/defaults.yaml`, `roadgen/presets.yaml` | [CLI reference](cli-reference.md) |
-| `roadgen/graph/` | [RoadGraph](road-graph.md) |
-| `roadgen/maps/` (except `align.py`, `drape.py`) | [Input maps](maps.md) |
-| `roadgen/maps/align.py`, `roadgen/maps/drape.py` | [Heights](heights.md) |
-| `roadgen/generators/lsystem.py`, `patterns.py`, `hierarchy.py` | [lsystem](lsystem.md) |
-| `roadgen/generators/base.py`, `repair.py`, `transforms/` | [Generators](generators.md) |
-| `roadgen/geometry/` | [Road geometry](geometry.md); `vertical.py` and `grade_separation.py` in [Heights](heights.md) |
-| `roadgen/opendrive/` | [OpenDRIVE builder](opendrive.md) |
-| `roadgen/validate/`, `roadgen/metrics/`, `roadgen/sim/drive_check.py` | [Validation and metrics](validation.md) |
-| `roadgen/sim/esmini.py`, `roadgen/sim/screenshot.py` | [CLI reference → view](cli-reference.md#view) |
-| `roadgen/scene/` | [3D scene](scene.md) |
+| `cli.py`, `kadmos/config.py`, `kadmos/history.py`, `kadmos/defaults.yaml`, `kadmos/presets.yaml` | [CLI reference](cli-reference.md) |
+| `kadmos/graph/` | [RoadGraph](road-graph.md) |
+| `kadmos/maps/` (except `align.py`, `drape.py`) | [Input maps](maps.md) |
+| `kadmos/maps/align.py`, `kadmos/maps/drape.py` | [Heights](heights.md) |
+| `kadmos/generators/lsystem.py`, `patterns.py`, `hierarchy.py` | [lsystem](lsystem.md) |
+| `kadmos/generators/base.py`, `repair.py`, `transforms/` | [Generators](generators.md) |
+| `kadmos/geometry/` | [Road geometry](geometry.md); `vertical.py` and `grade_separation.py` in [Heights](heights.md) |
+| `kadmos/opendrive/` | [OpenDRIVE builder](opendrive.md) |
+| `kadmos/validate/`, `kadmos/metrics/`, `kadmos/sim/drive_check.py` | [Validation and metrics](validation.md) |
+| `kadmos/sim/esmini.py`, `kadmos/sim/screenshot.py` | [CLI reference → view](cli-reference.md#view) |
+| `kadmos/scene/` | [3D scene](scene.md) |
 | `tests/` | [Development](development.md#tests) |
 | `Dockerfile`, `compose.yaml`, `docker/` | [Docker](docker.md) |
 

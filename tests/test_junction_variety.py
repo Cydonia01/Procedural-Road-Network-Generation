@@ -8,21 +8,21 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.generators.transforms.stagger import stagger_crossings
-from roadgen.geometry.planar import Pose
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.metrics.network import network_metrics, offset_t_pairs
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.junctions import (
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.generators.transforms.stagger import stagger_crossings
+from kadmos.geometry.planar import Pose
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.metrics.network import network_metrics, offset_t_pairs
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.junctions import (
     JunctionParams,
     RoadEnd,
     plan_movements,
     straight_pairs,
 )
-from roadgen.validate.continuity import check_continuity, check_curvature
-from roadgen.validate.dynamics import check_dynamics
-from roadgen.validate.topology import check_topology
+from kadmos.validate.continuity import check_continuity, check_curvature
+from kadmos.validate.dynamics import check_dynamics
+from kadmos.validate.topology import check_topology
 from tests.grids import GRID
 from tests.shared import rm_available
 
@@ -49,7 +49,7 @@ def build_and_check(g: RoadGraph, tmp_path: Path, params: JunctionParams = Junct
     assert check_curvature(path)[0] == []
     assert check_dynamics(path, connecting=True) == []
     if drive and rm_available():
-        from roadgen.sim.drive_check import drive_lanes, drive_movements
+        from kadmos.sim.drive_check import drive_lanes, drive_movements
 
         assert [r.describe() for r in drive_movements(path) if not r.ok] == []
         assert [r.describe() for r in drive_lanes(path) if not r.ok] == []

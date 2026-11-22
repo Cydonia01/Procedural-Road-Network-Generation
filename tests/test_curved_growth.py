@@ -6,11 +6,11 @@ import math
 
 import numpy as np
 
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.maps.model import GridSpec, MapLayer, MapSet
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.validate.continuity import check_continuity_tree, check_curvature_tree
-from roadgen.validate.dynamics import check_dynamics_tree
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.maps.model import GridSpec, MapLayer, MapSet
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.validate.continuity import check_continuity_tree, check_curvature_tree
+from kadmos.validate.dynamics import check_dynamics_tree
 
 
 def grow(preset: str, seed: int = 1, maps=None, **overrides):
@@ -61,7 +61,7 @@ def test_hill_town_turns_streets_along_the_contours():
 
 
 def test_hill_town_ignores_the_style_map():
-    from roadgen.generators.base import get_generator
+    from kadmos.generators.base import get_generator
 
     gen = get_generator("lsystem")
     assert "style" not in gen.map_kinds(LSystemParams.preset("hill_town"))

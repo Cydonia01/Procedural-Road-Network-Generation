@@ -6,8 +6,8 @@ import pytest
 from lxml import etree
 from shapely.geometry import LineString
 
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.scene.buildings import (
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.scene.buildings import (
     BuildingParams,
     blocks,
     building_mesh,
@@ -64,7 +64,7 @@ def test_walls_face_outward():
     from shapely.geometry import Point
     from shapely.ops import unary_union
 
-    from roadgen.scene.buildings import building_footprints
+    from kadmos.scene.buildings import building_footprints
 
     g, p = grid(2, 2), BuildingParams(corner_radius=0)
     tris, normals, _ = building_mesh(g, p)
@@ -82,7 +82,7 @@ def test_osgt_structure(tmp_path):
     n = export_buildings(grid(), path, BuildingParams())
     text = path.read_text()
     assert n > 12
-    assert text.startswith("#Ascii Scene \n#Version 161 \n#Generator roadgen 0.1 ")
+    assert text.startswith("#Ascii Scene \n#Version 161 \n#Generator kadmos 0.1 ")
     count = int(re.search(r"Count (\d+)", text).group(1))
     sizes = [int(x) for x in re.findall(r"vector (\d+) \{", text)]
     assert sizes == [count, count, 1]  # positions, normals, one overall color
@@ -126,7 +126,7 @@ def test_parcels_split_a_block_with_street_frontage():
     import numpy as np
     from shapely.geometry import Polygon, box
 
-    from roadgen.scene.parcels import split_parcels, with_frontage
+    from kadmos.scene.parcels import split_parcels, with_frontage
 
     block = box(0, 0, 200, 70)
     parcels = split_parcels(block, np.random.default_rng(0), (15.0, 40.0), (20.0, 40.0))
@@ -151,8 +151,8 @@ def test_one_building_per_parcel_not_per_block():
 def test_heights_follow_the_population():
     import numpy as np
 
-    from roadgen.maps.model import GridSpec, MapLayer
-    from roadgen.scene.buildings import building_footprints
+    from kadmos.maps.model import GridSpec, MapLayer
+    from kadmos.scene.buildings import building_footprints
 
     g = grid()
     spec = GridSpec((-100.0, -100.0), (1000.0, 600.0), 10.0)

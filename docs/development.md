@@ -6,7 +6,7 @@
 docker compose run --rm -T dev python -m pytest -q -m "not slow"   # daily run (~740 tests, under a minute)
 docker compose run --rm -T dev python -m pytest -q                 # whole suite, before a merge (~1.5 min)
 docker compose run --rm -T dev python -m pytest tests/test_junctions.py -k acute
-docker compose run --rm -T dev ruff check                          # lint (mypy roadgen is available too)
+docker compose run --rm -T dev ruff check                          # lint (mypy kadmos is available too)
 ```
 
 `pyproject.toml` configures pytest (`testpaths = ["tests"]`, repo root on
@@ -73,7 +73,7 @@ The full rules are in [`CLAUDE.md`](../CLAUDE.md). In short:
 - Every new module gets tests.
 - Respect the [architecture rules](architecture.md#design-rules):
   - generators output only RoadGraphs, and the builder reads only RoadGraphs;
-  - esmini is found only through `roadgen/sim/esmini.py`.
+  - esmini is found only through `kadmos/sim/esmini.py`.
 - Update the matching doc page, the CLI reference and the README with every
   new command or module. Record plans and decisions in `plans/`.
 
@@ -82,9 +82,9 @@ The full rules are in [`CLAUDE.md`](../CLAUDE.md). In short:
 Generators, map generators and graph transforms all follow one pattern:
 
 1. **Params.** A frozen params dataclass validated in `__post_init__`, with
-   its defaults in `roadgen/defaults.yaml`. A test checks that the dataclass
+   its defaults in `kadmos/defaults.yaml`. A test checks that the dataclass
    defaults match the YAML, so add new parameters in both places.
-2. **Presets** in `roadgen/presets.yaml`, read into a `PRESETS` dict with
+2. **Presets** in `kadmos/presets.yaml`, read into a `PRESETS` dict with
    `config.presets(...)`.
 3. **Registration.** An ABC subclass registered with a decorator (`@register`,
    `@register_map`), and its module imported in the package `__init__.py`.
@@ -125,7 +125,7 @@ prompts and decisions.
 | Road classes (2026-11-17) | Highways 3 + 3 lanes at 3.75 m, freeways (`separated`) 100 km/h, 2 m medians on arterials and 3 m on highways, local roads 3.0 m lanes against 3.5 m on collectors; connecting roads start at the lane centres measured across the tilted road surface (an outer-lane gap of up to 1 cm on sloped junctions) | `defaults.yaml`, `lsystem.py`, `hierarchy.py`, `opendrive/junctions.py`, `opendrive/builder.py` |
 | Lanes from demand, open registry (2026-11-22) | The busiest arterials get 3 + 3 lanes and the busiest collectors 2 + 2, by betweenness × population density (`demand_lanes`, on in `city` and `mixed_city`); a generator needs no `defaults.yaml` section, and a test runs a minimal non-lsystem generator through `pipeline` | `hierarchy.py`, `lsystem.py`, `generators/base.py`, `config.py`, `cli.py` |
 | Junction generator removed (2026-11-17) | The `junction` generator (one junction or interchange per seed) and the cloverleaf template went: lsystem grows every network, its diamonds cover interchanges, and the junction-variety tests drive the unusual shapes in esmini | `generators/`, `transforms/interchange.py`, `runs/examples.sh` |
-| Polish N1–N4 (2026-11-13) | Side lanes removed (parking, bike lanes, shoulders, curbs, sidewalks, corner roads, curb returns, crosswalks, pedestrian phases; roads keep driving lanes, pockets and medians; buildings `setback` 7 m), presets moved to `roadgen/presets.yaml`, `pipeline` builds buildings, ground, lane plot and drive-check by default, Copilot instructions merged into `CLAUDE.md` ([plan](../plans/2026-11-13-polish-n-items.md)) | `geometry/cross_section.py`, `opendrive/`, `generators/repair.py`, `config.py`, `presets.yaml`, `cli.py` |
+| Polish N1–N4 (2026-11-13) | Side lanes removed (parking, bike lanes, shoulders, curbs, sidewalks, corner roads, curb returns, crosswalks, pedestrian phases; roads keep driving lanes, pockets and medians; buildings `setback` 7 m), presets moved to `kadmos/presets.yaml`, `pipeline` builds buildings, ground, lane plot and drive-check by default, Copilot instructions merged into `CLAUDE.md` ([plan](../plans/2026-11-13-polish-n-items.md)) | `geometry/cross_section.py`, `opendrive/`, `generators/repair.py`, `config.py`, `presets.yaml`, `cli.py` |
 
 Phase 6 (a scalability benchmark) was removed
 ([plan](../plans/2026-10-27-slim-benchmark.md)), and the `simulate` command

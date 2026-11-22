@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from cli import main, run_argv
-from roadgen.history import ENV_VAR, RUN_FILE, RunStore
+from kadmos.history import ENV_VAR, RUN_FILE, RunStore
 
 GEN = ["generate", "lsystem", "--preset", "manhattan_like", "--set", "extent=[500,80]"]  # 3 x 2 grid
 
@@ -56,7 +56,7 @@ def test_preset_values_are_kept_when_they_differ_from_the_preset(store):
     sec = run_file(store, h)["config"]["generators"]["lsystem"]
     assert sec["preset"] == "city"
     # 1.0 is the default, but city sets its own branch_prob: this run changes it back
-    from roadgen.generators.lsystem import LSystemParams
+    from kadmos.generators.lsystem import LSystemParams
     if LSystemParams.PRESETS["city"].get("branch_prob", 1.0) != 1.0:
         assert sec["branch_prob"] == 1.0
 

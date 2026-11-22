@@ -19,8 +19,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from roadgen.graph.io import graph_to_dict
-from roadgen.graph.model import RoadGraph
+from kadmos.graph.io import graph_to_dict
+from kadmos.graph.model import RoadGraph
 from tests.shared import grown
 
 EXPECTED = Path(__file__).parent / "data" / "lsystem_identity.json"

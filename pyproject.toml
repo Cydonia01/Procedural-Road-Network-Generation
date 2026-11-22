@@ -3,7 +3,7 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "roadgen"
+name = "kadmos"
 version = "0.1.0"
 description = "Procedural road network generation for OpenDRIVE and esmini"
 readme = "README.md"
@@ -27,10 +27,10 @@ dev = ["pytest"]
 py-modules = ["cli"]
 
 [tool.setuptools.packages.find]
-include = ["roadgen*"]
+include = ["kadmos*"]
 
 [tool.setuptools.package-data]
-roadgen = ["defaults.yaml", "presets.yaml"]
+kadmos = ["defaults.yaml", "presets.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

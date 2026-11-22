@@ -1,6 +1,6 @@
 # Procedural-Road-Network-Generation
 
-**roadgen** is a Python pipeline that procedurally generates road networks
+**KADMOS** is a Python pipeline that procedurally generates road networks
 and writes them as ASAM OpenDRIVE (`.xodr`) with HD-map content, checked by
 validators and by driving them with [esmini](https://github.com/esmini/esmini)'s
 RoadManager, and viewable in esmini. All networks are generated;
@@ -59,7 +59,7 @@ page by task or by source folder. The main pages:
 
 ```
 cli.py          command-line entry point (python -m cli ...)
-roadgen/        the package (module map: docs/architecture.md#module-map)
+kadmos/        the package (module map: docs/architecture.md#module-map)
   defaults.yaml every default parameter
 tests/          pytest suite and RoadGraph fixtures
 docs/           documentation

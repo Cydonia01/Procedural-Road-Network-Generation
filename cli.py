@@ -20,40 +20,40 @@ from typing import Callable, Iterator, Optional, Sequence, Union
 import yaml
 from lxml import etree
 
-from roadgen.config import DEFAULTS, load_config, section, with_overrides
-from roadgen.generators.base import (
+from kadmos.config import DEFAULTS, load_config, section, with_overrides
+from kadmos.generators.base import (
     build_params,
     generator_defaults,
     generator_names,
     get_generator,
     presets_of,
 )
-from roadgen.geometry.alignment import NetworkAlignment, network_alignment
-from roadgen.geometry.cross_section import PROFILES
-from roadgen.geometry.design import DesignParams
-from roadgen.graph.io import load_json, save_json
-from roadgen.graph.model import RoadGraph
-from roadgen.graph.plot import plot_graph
-from roadgen.history import RunStore, diff, load_spec, plain, run_hash
-from roadgen.maps.base import get_map_generator, make_map, map_generator_names
-from roadgen.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
-from roadgen.opendrive.builder import OpenDriveBuilder, sidecar_path
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.sim.esmini import esmini_binary
-from roadgen.validate import stages
-from roadgen.validate.clearance import check_body_overlaps_tree, check_clearance_tree
-from roadgen.validate.connectivity import check_traffic_connectivity
-from roadgen.validate.continuity import (
+from kadmos.geometry.alignment import NetworkAlignment, network_alignment
+from kadmos.geometry.cross_section import PROFILES
+from kadmos.geometry.design import DesignParams
+from kadmos.graph.io import load_json, save_json
+from kadmos.graph.model import RoadGraph
+from kadmos.graph.plot import plot_graph
+from kadmos.history import RunStore, diff, load_spec, plain, run_hash
+from kadmos.maps.base import get_map_generator, make_map, map_generator_names
+from kadmos.maps.model import MAP_KINDS, GridSpec, MapLayer, MapSet, load_npz, save_npz
+from kadmos.opendrive.builder import OpenDriveBuilder, sidecar_path
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.sim.esmini import esmini_binary
+from kadmos.validate import stages
+from kadmos.validate.clearance import check_body_overlaps_tree, check_clearance_tree
+from kadmos.validate.connectivity import check_traffic_connectivity
+from kadmos.validate.continuity import (
     check_continuity_tree,
     check_curvature_tree,
     road_evals,
 )
-from roadgen.validate.dynamics import check_dynamics_tree, check_resultant_grade_tree
-from roadgen.validate.hdmap import check_hdmap_tree
-from roadgen.validate.schema import validate_schema
-from roadgen.validate.topology import check_topology_tree
+from kadmos.validate.dynamics import check_dynamics_tree, check_resultant_grade_tree
+from kadmos.validate.hdmap import check_hdmap_tree
+from kadmos.validate.schema import validate_schema
+from kadmos.validate.topology import check_topology_tree
 
-log = logging.getLogger("roadgen.cli")
+log = logging.getLogger("kadmos.cli")
 
 MAX_LISTED_WARNINGS = 5
 DYNAMICS_CHECKS_JUNCTIONS = True  # junction turns get speeds from their curvature
@@ -71,7 +71,7 @@ def cmd_plot_graph(args: argparse.Namespace) -> int:
 
 
 def cmd_plot_xodr(args: argparse.Namespace) -> int:
-    from roadgen.opendrive.plot import plot_xodr
+    from kadmos.opendrive.plot import plot_xodr
 
     output = artifact(args, args.output, Path(args.input).with_suffix(".lanes.png"))
     plot_xodr(args.input, output, args.step)
@@ -86,7 +86,7 @@ def timed(label: str) -> Iterator[None]:
 
 
 def report(reports: Optional[list], r: "stages.StageReport", stop: bool = False) -> list[str]:
-    """Log a stage's check (roadgen.validate.stages), keep it in reports, and return its
+    """Log a stage's check (kadmos.validate.stages), keep it in reports, and return its
     errors; stop: exit on them (a map the later stages would build on)."""
     r.log()
     if reports is not None:
@@ -109,7 +109,7 @@ def check_traffic(graph: RoadGraph, allow_traps: bool) -> list[str]:
 
 def junction_params(cfg: dict):
     """JunctionParams from the config's opendrive section (junction_margin is separate)."""
-    from roadgen.opendrive.junctions import JunctionParams
+    from kadmos.opendrive.junctions import JunctionParams
 
     return JunctionParams(**{k: v for k, v in section(cfg, "opendrive").items() if k != "junction_margin"})
 
@@ -127,7 +127,7 @@ def hd_params(args: argparse.Namespace) -> HdMapParams:
 def fit_graph(graph: RoadGraph, cfg: dict, hd: HdMapParams, junction_margin: float) -> RoadGraph:
     """With HD maps on, repair the edges too short for the junction trims of roads with
     their medians and turn pockets (generators only know the driving lanes); unchanged otherwise."""
-    from roadgen.generators.repair import fit_cross_sections
+    from kadmos.generators.repair import fit_cross_sections
 
     if hd.active_cross_section is None or not graph.edges:
         return graph
@@ -161,7 +161,7 @@ def build_and_validate(
     evaluators by id; None if not built), for the lane plot and the scene. na: the graph's
     alignment (final_alignment), if already computed."""
     builder = OpenDriveBuilder(
-        name=graph.metadata.get("name", "roadgen"), junction_margin=junction_margin,
+        name=graph.metadata.get("name", "kadmos"), junction_margin=junction_margin,
         design=DesignParams(**section(cfg or DEFAULTS, "design")),
         junctions=junction_params(cfg or DEFAULTS), hd=hd,
     )
@@ -289,7 +289,7 @@ def generate_graph(args: argparse.Namespace, reports: Optional[list] = None
     A generator that reads maps (uses_maps) gets them, built on a grid around
     the area it reports. For any other generator the maps are only built
     afterwards, around the finished network, for reference. Every stage is
-    checked after it runs (roadgen.validate.stages; kept in reports).
+    checked after it runs (kadmos.validate.stages; kept in reports).
     """
     gen = get_generator(args.generator)
     params = generator_params(args)
@@ -328,7 +328,7 @@ def generate_graph(args: argparse.Namespace, reports: Optional[list] = None
 def separate_graph(graph: RoadGraph, cfg: dict, cross_section=None) -> RoadGraph:
     """Roads crossing without a junction raised over each other (unchanged if none do);
     with a cross-section (HD maps) the overpass spans the lower road's median too."""
-    from roadgen.geometry.grade_separation import (
+    from kadmos.geometry.grade_separation import (
         GradeSeparationParams,
         find_crossings,
         separate,
@@ -345,7 +345,7 @@ def separate_graph(graph: RoadGraph, cfg: dict, cross_section=None) -> RoadGraph
 def annotate_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
     """HD maps: cross-section profiles and junction control from the population (and style)
     map; unchanged without a population map."""
-    from roadgen.maps.annotate import AnnotateParams, annotate
+    from kadmos.maps.annotate import AnnotateParams, annotate
 
     if "population" not in layers:
         return graph
@@ -357,7 +357,7 @@ def annotate_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> 
 
 def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> RoadGraph:
     """Radius caps for bends whose fitted curve would leave legal ground."""
-    from roadgen.maps.align import AlignParams, align
+    from kadmos.maps.align import AlignParams, align
 
     with timed("align"):
         return align(graph, layers.get("terrain"), layers.get("elevation"),
@@ -368,7 +368,7 @@ def align_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict) -> Roa
 def drape_graph(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict, cross_section=None) -> RoadGraph:
     """Heights from the elevation (and terrain) map into the graph; with a cross-section
     (HD maps) bridges span the roads' full width."""
-    from roadgen.maps.drape import DrapeParams, drape
+    from kadmos.maps.drape import DrapeParams, drape
 
     with timed("drape"):
         return drape(graph, layers["elevation"], layers.get("terrain"),
@@ -489,7 +489,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     # After the .xodr: the lane plot, the scene and the drive-check read only the built
     # file and the graph, and none needs another's output: they run side by side.
     def lane_plot() -> list:
-        from roadgen.opendrive.plot import plot_xodr
+        from kadmos.opendrive.plot import plot_xodr
 
         with timed("plot lanes"):
             plot_xodr(xodr, Path(f"{prefix}_hd.png"), tree=tree, evals=evals)
@@ -503,8 +503,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         return scene_reports
 
     def buildings() -> list:
-        from roadgen.scene.buildings import BuildingParams, building_mesh
-        from roadgen.scene.osgt import Mesh, write_osgt
+        from kadmos.scene.buildings import BuildingParams, building_mesh
+        from kadmos.scene.osgt import Mesh, write_osgt
 
         scenegraph = Path(f"{prefix}_buildings.osgt")
         # Buildings stand on the ground only if the roads do.
@@ -600,8 +600,8 @@ def outputs(args: argparse.Namespace, elevation: bool) -> None:
 
 def junction_fills(xodr: Path, on: bool) -> list:
     """The junction fill outlines of a built .xodr (its sidecar), [] if off or not built."""
-    from roadgen.opendrive.builder import sidecar_path
-    from roadgen.scene.junctions import read_fills
+    from kadmos.opendrive.builder import sidecar_path
+    from kadmos.scene.junctions import read_fills
 
     sidecar = sidecar_path(xodr)
     return read_fills(sidecar) if on and sidecar.exists() else []
@@ -609,7 +609,7 @@ def junction_fills(xodr: Path, on: bool) -> list:
 
 def fill_meshes(fills: list, cfg: dict) -> list:
     """[the junction fill mesh] if there are fills, else []."""
-    from roadgen.scene.junctions import SceneParams, junction_fill_mesh
+    from kadmos.scene.junctions import SceneParams, junction_fill_mesh
 
     return [junction_fill_mesh(fills, SceneParams(**section(cfg, "scene")))] if fills else []
 
@@ -627,11 +627,11 @@ def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: 
     .xodr as validation parsed it (build_and_validate), if at hand."""
     import numpy as np
 
-    from roadgen.scene.buildings import BuildingParams, building_mesh
-    from roadgen.scene.ground import GroundParams, ground_mesh, poke_through
-    from roadgen.scene.osgt import Mesh, write_osgt
-    from roadgen.scene.structures import StructureParams, structure_mesh
-    from roadgen.scene.surface import read_surfaces
+    from kadmos.scene.buildings import BuildingParams, building_mesh
+    from kadmos.scene.ground import GroundParams, ground_mesh, poke_through
+    from kadmos.scene.osgt import Mesh, write_osgt
+    from kadmos.scene.structures import StructureParams, structure_mesh
+    from kadmos.scene.surface import read_surfaces
 
     elevation, terrain = layers["elevation"], layers.get("terrain")
     params = GroundParams(**section(cfg, "ground"))
@@ -761,7 +761,7 @@ def build_map(kind: str, name: str, grid: GridSpec, seed: int, cfg: dict,
 
 def write_map(layer: MapLayer, prefix: Path, graph: Optional[RoadGraph] = None) -> None:
     """<prefix>.npz and a <prefix>.png preview."""
-    from roadgen.maps.plot import plot_map
+    from kadmos.maps.plot import plot_map
 
     save_npz(layer, prefix.with_suffix(".npz"))
     plot_map(layer, prefix.with_suffix(".png"), graph)
@@ -798,7 +798,7 @@ def upstream_maps(args: argparse.Namespace) -> MapSet:
 
 
 def cmd_plot_map(args: argparse.Namespace) -> int:
-    from roadgen.maps.plot import plot_map
+    from kadmos.maps.plot import plot_map
 
     graph = load_json(args.graph) if args.graph else None
     output = artifact(args, args.output, Path(args.input).with_suffix(".png"))
@@ -846,7 +846,7 @@ def cmd_generators(args: argparse.Namespace) -> int:
 
 def cmd_view(args: argparse.Namespace) -> int:
     if args.screenshot:
-        from roadgen.sim.screenshot import screenshot
+        from kadmos.sim.screenshot import screenshot
 
         camera = [float(v) for v in args.camera.split(",")] if args.camera else None
         if camera is not None and len(camera) not in (3, 5):
@@ -876,7 +876,7 @@ def cmd_view(args: argparse.Namespace) -> int:
 
 
 def cmd_drive_check(args: argparse.Namespace) -> int:
-    from roadgen.sim.drive_check import drive_all
+    from kadmos.sim.drive_check import drive_all
 
     try:
         results, lanes = drive_all(args.input)
@@ -900,13 +900,13 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     build-failure sweep; optional JSON report."""
     import json
 
-    from roadgen.metrics import hdmap, network
-    from roadgen.metrics.geometry import (
+    from kadmos.metrics import hdmap, network
+    from kadmos.metrics.geometry import (
         GeometryMetricsParams,
         geometry_metrics,
         summary_lines,
     )
-    from roadgen.metrics.sweep import build_sweep
+    from kadmos.metrics.sweep import build_sweep
 
     if not args.inputs and not args.graph and not args.sweep:
         raise SystemExit("error: metrics needs .xodr files, --graph files and/or --sweep N")
@@ -962,7 +962,7 @@ def cmd_metrics(args: argparse.Namespace) -> int:
 def add_config_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config", dest="config_file", metavar="FILE",
-        help="YAML file overriding default parameters (see roadgen/defaults.yaml)",
+        help="YAML file overriding default parameters (see kadmos/defaults.yaml)",
     )
 
 
@@ -1268,7 +1268,7 @@ REMOVED_GENERATORS = {
 
 
 def store_of(cfg: dict) -> Optional[RunStore]:
-    """The run folders from config (history.dir) or $ROADGEN_HISTORY; None if off."""
+    """The run folders from config (history.dir) or $KADMOS_HISTORY; None if off."""
     return RunStore.from_env(cfg["history"]["dir"])
 
 

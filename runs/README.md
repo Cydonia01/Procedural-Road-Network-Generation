@@ -14,7 +14,7 @@ bash runs/examples.sh view       # view only
 
 Every successful `python -m cli` command gets its own folder `out/<hash>/`
 (git-ignored) with its outputs and `run.yaml`, which shows the command and
-the parameters that differ from `roadgen/defaults.yaml`. See
+the parameters that differ from `kadmos/defaults.yaml`. See
 [CLI reference → history](../docs/cli-reference.md#run-folders-history-replay-run).
 
 ```bash

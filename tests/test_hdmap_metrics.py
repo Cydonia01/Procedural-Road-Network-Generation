@@ -7,8 +7,8 @@ import shutil
 import pytest
 
 from cli import main
-from roadgen.metrics.hdmap import hdmap_metrics, summary_lines
-from roadgen.sim.screenshot import network_bounds, still_xosc, top_camera
+from kadmos.metrics.hdmap import hdmap_metrics, summary_lines
+from kadmos.sim.screenshot import network_bounds, still_xosc, top_camera
 
 
 def _lane(lid: int, kind: str, width: float, mark: str = "") -> str:

@@ -13,11 +13,11 @@ from typing import Any, Optional
 
 import pytest
 
-from roadgen.config import DEFAULTS, section
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.graph.model import RoadGraph
-from roadgen.maps.base import make_map
-from roadgen.maps.model import MAP_KINDS, GridSpec, MapSet
+from kadmos.config import DEFAULTS, section
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.graph.model import RoadGraph
+from kadmos.maps.base import make_map
+from kadmos.maps.model import MAP_KINDS, GridSpec, MapSet
 
 
 def lsystem_params(preset: Optional[str] = None, **overrides: Any) -> LSystemParams:
@@ -64,7 +64,7 @@ def grown_maps(preset: Optional[str], seed: int, **overrides: Any) -> MapSet:
 def rm_available() -> bool:
     """esmini's RoadManager library can be loaded (the drive-check needs it)."""
     try:
-        from roadgen.sim.drive_check import _load_rm
+        from kadmos.sim.drive_check import _load_rm
 
         _load_rm()
         return True

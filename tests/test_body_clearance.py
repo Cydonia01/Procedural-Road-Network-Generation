@@ -7,11 +7,11 @@ import math
 import pytest
 from shapely.geometry import LineString
 
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.clearance import check_body_overlaps
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.clearance import check_body_overlaps
 from tests.grids import GRID
 from tests.test_grade_separation import crossing_graph, separate
 
@@ -76,7 +76,7 @@ def test_body_check_off_keeps_old_growth():
 def test_min_angle_grows_with_width():
     import numpy as np
 
-    from roadgen.generators.lsystem import HIGHWAY, STREET_X, _Growth
+    from kadmos.generators.lsystem import HIGHWAY, STREET_X, _Growth
 
     p = LSystemParams(min_angle_deg=10.0, min_segment_length=30.0)
     g = _Growth(p, np.random.default_rng(0))

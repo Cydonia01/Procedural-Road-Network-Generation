@@ -48,7 +48,7 @@ python -m cli generators                   # generators, presets and parameters
 python -m cli pipeline lsystem --set start=[0,0] --set extent=[750,240] --seed 1 -o first
 ```
 
-A passing run ends with `INFO roadgen.cli: run <hash>: out/<hash>`. That
+A passing run ends with `INFO kadmos.cli: run <hash>: out/<hash>`. That
 folder holds:
 
 | File | Contents |

@@ -6,7 +6,7 @@ constraints keep roads out of water and off steep slopes. Their maps were
 drawn by hand or scanned from printed atlases, and the city in their Figure 2
 is imaginary.
 
-`roadgen/maps/` generates these maps procedurally, adds a **style** map of
+`kadmos/maps/` generates these maps procedurally, adds a **style** map of
 street patterns, and can also read real maps from images. Only
 [lsystem](lsystem.md#growing-on-input-maps) grows on them. The order the
 maps enter the pipeline in is described in
@@ -226,7 +226,7 @@ and `old_town` (a wide radial core, mostly organic, many angles).
 ## `annotate`: profiles and control from the maps
 
 With HD maps on, `pipeline` with maps runs it after grade separation, before
-the cross-section fit (`roadgen/maps/annotate.py`; `annotate` section). The
+the cross-section fit (`kadmos/maps/annotate.py`; `annotate` section). The
 builder never sees a map, so this step writes what depends on one into the
 graph's optional overrides:
 
@@ -301,8 +301,8 @@ Population grids give people per cell. Divide by the cell area in km² (or set
 from dataclasses import dataclass
 from typing import Optional
 import numpy as np
-from roadgen.maps.base import MapGenerator, register_map
-from roadgen.maps.model import GridSpec, MapLayer, MapSet
+from kadmos.maps.base import MapGenerator, register_map
+from kadmos.maps.model import GridSpec, MapLayer, MapSet
 
 @dataclass(frozen=True)
 class RampParams:
@@ -321,7 +321,7 @@ class RampGenerator(MapGenerator[RampParams]):
                         {"generator": self.name, "seed": seed})
 ```
 
-1. Import the module in `roadgen/maps/__init__.py`. It then shows up in
+1. Import the module in `kadmos/maps/__init__.py`. It then shows up in
    `maps`, `map elevation ramp` and `pipeline --elevation ramp`.
 2. Put the parameter defaults under `maps.elevation.ramp` in `defaults.yaml`.
 3. Draw all randomness from `self.rng(seed)`, or from

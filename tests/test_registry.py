@@ -5,8 +5,8 @@ from dataclasses import dataclass
 import pytest
 
 from cli import main
-from roadgen.generators import base
-from roadgen.generators.base import (
+from kadmos.generators import base
+from kadmos.generators.base import (
     assign_node_kinds,
     RoadNetworkGenerator,
     build_params,
@@ -15,9 +15,9 @@ from roadgen.generators.base import (
     load_params,
     register,
 )
-from roadgen.generators.lsystem import LSystemParams
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
+from kadmos.generators.lsystem import LSystemParams
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
 
 
 def test_builtin_generators_are_registered():

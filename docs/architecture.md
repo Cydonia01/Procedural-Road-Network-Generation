@@ -1,6 +1,6 @@
 # Architecture
 
-roadgen generates road networks. A network starts as a generator's abstract
+KADMOS generates road networks. A network starts as a generator's abstract
 graph and ends as an esmini-ready OpenDRIVE file, the product, and optionally
 a 3D scene (ground and buildings) for viewing it in esmini.
 
@@ -24,16 +24,16 @@ flowchart LR
 
 | Stage | Input → output | Code | Docs |
 |-------|----------------|------|------|
-| Maps | params + grid + seed → `MapLayer` (`.npz` + `.png`) | `roadgen/maps/` | [Input maps](maps.md) |
-| Generate | params + seed (+ `MapSet`) → `RoadGraph` | `roadgen/generators/` | [lsystem](lsystem.md), [Generators](generators.md) |
-| Align | `RoadGraph` + maps → bend radius caps | `roadgen/maps/align.py` | [Heights](heights.md#1-align-bends-that-leave-legal-ground) |
-| Drape | `RoadGraph` + elevation (+ terrain) → heights, bridges, tunnels | `roadgen/maps/drape.py` | [Heights](heights.md#2-drape-heights-from-the-elevation-map) |
-| Separate | `RoadGraph` → overpasses where roads cross without a junction | `roadgen/geometry/grade_separation.py` | [Heights](heights.md#3-grade-separation-overpasses) |
-| Annotate (HD maps) | `RoadGraph` + population (+ style) → cross-section profiles, junction control | `roadgen/maps/annotate.py` | [Input maps](maps.md#annotate-profiles-and-control-from-the-maps) |
-| Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `roadgen/opendrive/` (shape from `roadgen/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
-| Validate | `RoadGraph` / `.xodr` → errors | `roadgen/validate/` | [Validation](validation.md) |
-| Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `roadgen/sim/drive_check.py` | [Validation](validation.md#drive-check) |
-| Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt` | `roadgen/scene/` | [3D scene](scene.md) |
+| Maps | params + grid + seed → `MapLayer` (`.npz` + `.png`) | `kadmos/maps/` | [Input maps](maps.md) |
+| Generate | params + seed (+ `MapSet`) → `RoadGraph` | `kadmos/generators/` | [lsystem](lsystem.md), [Generators](generators.md) |
+| Align | `RoadGraph` + maps → bend radius caps | `kadmos/maps/align.py` | [Heights](heights.md#1-align-bends-that-leave-legal-ground) |
+| Drape | `RoadGraph` + elevation (+ terrain) → heights, bridges, tunnels | `kadmos/maps/drape.py` | [Heights](heights.md#2-drape-heights-from-the-elevation-map) |
+| Separate | `RoadGraph` → overpasses where roads cross without a junction | `kadmos/geometry/grade_separation.py` | [Heights](heights.md#3-grade-separation-overpasses) |
+| Annotate (HD maps) | `RoadGraph` + population (+ style) → cross-section profiles, junction control | `kadmos/maps/annotate.py` | [Input maps](maps.md#annotate-profiles-and-control-from-the-maps) |
+| Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `kadmos/opendrive/` (shape from `kadmos/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
+| Validate | `RoadGraph` / `.xodr` → errors | `kadmos/validate/` | [Validation](validation.md) |
+| Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `kadmos/sim/drive_check.py` | [Validation](validation.md#drive-check) |
+| Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt` | `kadmos/scene/` | [3D scene](scene.md) |
 
 `python -m cli pipeline` runs the stages in this order; the lane plot, the scene
 and the drive-check, which read only the built `.xodr` and the graph, run side by
@@ -71,7 +71,7 @@ Details are in [Heights](heights.md).
    Generators never import OpenDRIVE code. The builder doesn't know which
    generator made the graph. A new generator therefore gets `.xodr` output,
    validation and scenarios for free. Road *shape* lives in the neutral
-   `roadgen/geometry/` package, which both sides may use.
+   `kadmos/geometry/` package, which both sides may use.
 2. **Map kinds form a linear pipeline and are pluggable.** A map generator
    reads only earlier kinds, never a RoadGraph, and gives its standalone
    result without them. Each kind has its own registry. An `image`
@@ -88,10 +88,10 @@ Details are in [Heights](heights.md).
 5. **Pluggable components share one pattern:**
    - an ABC plus a `register` decorator;
    - a frozen params dataclass whose defaults come from
-     `roadgen/defaults.yaml`, with presets from `roadgen/presets.yaml`;
+     `kadmos/defaults.yaml`, with presets from `kadmos/presets.yaml`;
    - a CLI subcommand ([Development](development.md#adding-a-component)).
 6. **External tools stay external.** esmini is found through `ESMINI_HOME`
-   (fallback `./esmini`) in `roadgen/sim/esmini.py`, never by a hard-coded
+   (fallback `./esmini`) in `kadmos/sim/esmini.py`, never by a hard-coded
    path. `scenariogeneration` is only used inside the builders, so it can be
    replaced. Its geometry auto-adjustment and slow pretty-printer are
    bypassed, and XML is indented with `ET.indent`: one space per level with
@@ -107,7 +107,7 @@ Details are in [Heights](heights.md).
 
 ```
 cli.py                     command-line entry point: one cmd_* per command
-roadgen/
+kadmos/
   defaults.yaml            every default parameter
   presets.yaml             every preset, keyed like defaults.yaml
   config.py                loads defaults.yaml and presets.yaml, merges --config, builds params dataclasses

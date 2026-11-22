@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends ca-certificates curl unzip
 
 # Binaries come from the "bin" bundle: unlike "demo", it also ships
-# libesminiRMLib.so, which roadgen's drive-check loads via ctypes.
+# libesminiRMLib.so, which KADMOS's drive-check loads via ctypes.
 # Resources (vehicle models, sample .xodr/.xosc) come from the "demo" bundle.
 ARG ESMINI_URL=https://github.com/esmini/esmini/releases/download/${ESMINI_VERSION}
 RUN curl -fsSL --retry 3 -o /tmp/bin.zip "${ESMINI_URL}/esmini-bin_Linux.zip" \
@@ -57,7 +57,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # pyproject.toml is the single source of truth for dependencies. Only the
-# dependency lists are installed here; the roadgen source itself is
+# dependency lists are installed here; the KADMOS source itself is
 # bind-mounted at /workspace and found through PYTHONPATH, so code edits never
 # require a rebuild (and only pyproject.toml changes invalidate this layer).
 COPY pyproject.toml /tmp/pyproject.toml

@@ -1,4 +1,4 @@
-# Config file for `--config`: overrides roadgen/defaults.yaml.
+# Config file for `--config`: overrides kadmos/defaults.yaml.
 generators:
   lsystem:
     lane_width: 3.75

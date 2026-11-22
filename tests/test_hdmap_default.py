@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 
-from roadgen.config import DEFAULTS
-from roadgen.graph.io import load_json
-from roadgen.opendrive import HDMAP_VERSION
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
+from kadmos.config import DEFAULTS
+from kadmos.graph.io import load_json
+from kadmos.opendrive import HDMAP_VERSION
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
 
 FIXTURE = "tests/fixtures/4way_avenue_x_street.json"
 

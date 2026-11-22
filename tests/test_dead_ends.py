@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 
-from roadgen.generators.lsystem import (
+from kadmos.generators.lsystem import (
     AVENUE_Y,
     STREET_X,
     LSystemGenerator,
     LSystemParams,
     _Growth,
 )
-from roadgen.metrics.network import network_metrics
+from kadmos.metrics.network import network_metrics
 
 P = LSystemParams(extent=(1000.0, 600.0), block_size=(200.0, 100.0))
 

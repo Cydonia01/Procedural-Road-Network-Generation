@@ -19,8 +19,8 @@ _run() {
     local service=$1 log
     shift
     log=$(docker compose run --rm -T "$service" python -m cli "$@" 2>&1)
-    echo "$log" | grep -E "error|ERROR|roadgen.cli: run [0-9a-f]{12}"
-    RUN=out/$(echo "$log" | grep -oE "roadgen.cli: run [0-9a-f]{12}" | tail -1 | grep -oE "[0-9a-f]{12}$")
+    echo "$log" | grep -E "error|ERROR|kadmos.cli: run [0-9a-f]{12}"
+    RUN=out/$(echo "$log" | grep -oE "kadmos.cli: run [0-9a-f]{12}" | tail -1 | grep -oE "[0-9a-f]{12}$")
 }
 
 # name | note | pipeline arguments (the output name is added)

@@ -15,33 +15,33 @@ from lxml import etree
 from scipy.spatial import cKDTree
 
 from cli import main
-from roadgen.geometry.alignment import network_alignment
-from roadgen.geometry.vertical import evaluate, junction_planes, road_elevation
-from roadgen.graph.io import graph_from_dict, graph_to_dict, load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.maps.drape import DrapeParams, drape
-from roadgen.maps.model import LAND, WATER, GridSpec, MapLayer, load_npz
-from roadgen.maps.terrain import TERRAIN_COLORS
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.scene.buildings import (
+from kadmos.geometry.alignment import network_alignment
+from kadmos.geometry.vertical import evaluate, junction_planes, road_elevation
+from kadmos.graph.io import graph_from_dict, graph_to_dict, load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.maps.drape import DrapeParams, drape
+from kadmos.maps.model import LAND, WATER, GridSpec, MapLayer, load_npz
+from kadmos.maps.terrain import TERRAIN_COLORS
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.scene.buildings import (
     FOUNDATION,
     BuildingParams,
     building_mesh,
     footprints,
 )
-from roadgen.scene.ground import (
+from kadmos.scene.ground import (
     GroundParams,
     ground_heights,
     ground_mesh,
     poke_through,
     water_area,
 )
-from roadgen.scene.osgt import write_osgt
-from roadgen.scene.structures import structure_mesh
-from roadgen.scene.surface import read_surfaces
-from roadgen.validate.continuity import RoadEval, check_continuity
-from roadgen.validate.topology import check_topology
+from kadmos.scene.osgt import write_osgt
+from kadmos.scene.structures import structure_mesh
+from kadmos.scene.surface import read_surfaces
+from kadmos.validate.continuity import RoadEval, check_continuity
+from kadmos.validate.topology import check_topology
 from tests.grids import ON_MAPS, grid_cli
 from tests.shared import needs_rm
 
@@ -135,7 +135,7 @@ def test_drape_follows_a_ramp_and_leaves_the_input_alone():
 
 def test_drape_warns_about_steep_roads(caplog):
     g = network()
-    caplog.set_level(logging.WARNING, logger="roadgen.maps.drape")
+    caplog.set_level(logging.WARNING, logger="kadmos.maps.drape")
     drape(g, SLOPE)  # 5 %
     assert not caplog.records
     drape(g, elevation(0.2 * X))  # 20 %
@@ -232,7 +232,7 @@ def test_continuity_catches_height_and_grade_jumps(tmp_path):
 def test_esmini_reads_the_heights(tmp_path):
     import ctypes
 
-    from roadgen.sim.drive_check import _load_rm, _PositionData
+    from kadmos.sim.drive_check import _load_rm, _PositionData
 
     g = drape(network(), VALLEY, terrain(RIVER))
     _, tree = build(g, tmp_path)
@@ -385,7 +385,7 @@ def test_cli_drape_and_ground_commands(tmp_path, caplog):
     xodr = tmp_path / "net.draped.xodr"
     assert main(["build-xodr", str(tmp_path / "net.draped.json"), str(xodr)]) == 0
     cut = tmp_path / "cut.osgt"
-    caplog.set_level(logging.INFO, logger="roadgen.scene.ground")
+    caplog.set_level(logging.INFO, logger="kadmos.scene.ground")
     assert main(["ground", str(cut), *files, "--xodr", str(xodr)]) == 0
     (msg,) = [r.getMessage() for r in caplog.records if "cells cut" in r.getMessage()]
     assert int(re.search(r"(\d+) of \d+ cells cut", msg).group(1)) > 0
@@ -405,7 +405,7 @@ def test_cli_ground_needs_an_elevation_map(tmp_path):
 
 
 def test_grid_surface_is_exact_on_a_plane():
-    from roadgen.scene.ground import grid_surface
+    from kadmos.scene.ground import grid_surface
 
     xs, ys = np.linspace(0, 100, 6), np.linspace(0, 60, 4)
     x, y = np.meshgrid(xs, ys)
@@ -452,7 +452,7 @@ def test_land_under_a_bridge_stays_below_the_deck_and_the_bridge_has_a_deck(tmp_
 
 
 def test_tunnel_portals_frame_the_road():
-    from roadgen.scene.surface import RoadSurfaces, Span
+    from kadmos.scene.surface import RoadSurfaces, Span
 
     s = np.linspace(0.0, 100.0, 21)
     centre = np.column_stack([s, np.zeros_like(s), np.full_like(s, 10.0)])

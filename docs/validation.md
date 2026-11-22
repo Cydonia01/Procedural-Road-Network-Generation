@@ -253,7 +253,7 @@ logic, the same logic its traffic uses, through `libesminiRMLib` loaded with
    - no step jumps by more than 5 cm. esmini moves 0.5 m along the reference
      line, so a lane far from it covers less ground on the inside of a curve
      and more on the outside. A step is therefore compared with the length of
-     the lane-centre path between its two positions, by roadgen's own
+     the lane-centre path between its two positions, by KADMOS's own
      evaluation (onto the next road: to where the first lane ends plus from
      where the next one starts). A gap between two roads still shows;
    - esmini returns no error code. Running off the end of a dead-end target
@@ -273,7 +273,7 @@ angles were calibrated against esmini 3.9.
   within 5 cm).
 
 This confirms that esmini reads the spirals, lane sections, tapers,
-elevation and superelevation exactly as roadgen does.
+elevation and superelevation exactly as KADMOS does.
 
 Both passes share one load of the RoadManager (`drive_all`): on large
 networks the load is most of the time (on `mixed_city` about 170 s of the
@@ -348,7 +348,7 @@ from the RoadGraph alone, for comparison with real-city statistics:
 python -m cli metrics NETWORK.xodr [--json OUT.json]   # HD counts unless --no-hd
 ```
 
-`roadgen/metrics/hdmap.py`, from the `.xodr` (and its sidecar, if present):
+`kadmos/metrics/hdmap.py`, from the `.xodr` (and its sidecar, if present):
 
 | Metric | Meaning |
 |---|---|

@@ -9,18 +9,18 @@ import math
 import pytest
 from lxml import etree
 
-from roadgen.graph.io import load_json
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.control import Approach
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.lights import (
+from kadmos.graph.io import load_json
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.control import Approach
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.lights import (
     GREEN,
     RED,
     TrafficLightParams,
     phase_groups,
     signal_plan,
 )
-from roadgen.validate.hdmap import check_hdmap, check_hdmap_tree
+from kadmos.validate.hdmap import check_hdmap, check_hdmap_tree
 
 HD = HdMapParams(enabled=True)
 P = TrafficLightParams()
@@ -187,7 +187,7 @@ def test_clashing_opposite_arms_get_their_own_phases():
 
 
 def _avenue_cross(arm: float = 200.0):
-    from roadgen.graph.model import Edge, Node, RoadGraph
+    from kadmos.graph.model import Edge, Node, RoadGraph
 
     g = RoadGraph()
     for nid, (x, y) in {1: (0.0, 0.0), 2: (-arm, 0.0), 3: (arm, 0.0), 4: (0.0, arm), 5: (0.0, -arm)}.items():

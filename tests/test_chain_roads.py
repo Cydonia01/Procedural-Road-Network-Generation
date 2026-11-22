@@ -8,15 +8,15 @@ import math
 import pytest
 from lxml import etree
 
-from roadgen.geometry import design
-from roadgen.geometry.profiles import WidthPiece
-from roadgen.geometry.vertical import evaluate
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.metrics.geometry import geometry_metrics
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.continuity import RoadEval, check_continuity
-from roadgen.validate.topology import check_topology
+from kadmos.geometry import design
+from kadmos.geometry.profiles import WidthPiece
+from kadmos.geometry.vertical import evaluate
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.metrics.geometry import geometry_metrics
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.continuity import RoadEval, check_continuity
+from kadmos.validate.topology import check_topology
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
@@ -132,7 +132,7 @@ def test_heights_run_through_the_bend_node(tmp_path):
                  z={1: 0.0, 2: 6.0, 3: 0.0})
     b, _, root = build(g, tmp_path)
     ca = b.alignment.chains[0]
-    from roadgen.geometry.vertical import Elevation
+    from kadmos.geometry.vertical import Elevation
 
     records = [Elevation(*(float(e.get(k)) for k in ("s", "a", "b", "c", "d")))
                for e in road(root).findall("elevationProfile/elevation")]

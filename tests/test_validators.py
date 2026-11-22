@@ -5,10 +5,10 @@ from __future__ import annotations
 
 from lxml import etree
 
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.validate.continuity import check_continuity_tree, check_curvature_tree
-from roadgen.validate.dynamics import check_dynamics_tree
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.validate.continuity import check_continuity_tree, check_curvature_tree
+from kadmos.validate.dynamics import check_dynamics_tree
 from tests.shared import needs_rm
 
 W = 3.5
@@ -96,7 +96,7 @@ def _bend_network() -> RoadGraph:
 
 @needs_rm
 def test_esmini_drives_every_chain_lane_on_our_centre_line(tmp_path):
-    from roadgen.sim.drive_check import drive_lanes
+    from kadmos.sim.drive_check import drive_lanes
 
     b = OpenDriveBuilder()
     b.build(_bend_network())

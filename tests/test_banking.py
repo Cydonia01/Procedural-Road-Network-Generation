@@ -7,13 +7,13 @@ import math
 import pytest
 from lxml import etree
 
-from roadgen.geometry import design
-from roadgen.geometry.design import DesignParams
-from roadgen.geometry.vertical import junction_planes
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.validate.continuity import RoadEval, check_continuity, check_curvature
-from roadgen.validate.dynamics import check_dynamics, check_resultant_grade
+from kadmos.geometry import design
+from kadmos.geometry.design import DesignParams
+from kadmos.geometry.vertical import junction_planes
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.validate.continuity import RoadEval, check_continuity, check_curvature
+from kadmos.validate.dynamics import check_dynamics, check_resultant_grade
 from tests.shared import needs_rm
 
 V = 13.9
@@ -84,14 +84,14 @@ def test_junction_plane_follows_the_approaches_and_is_capped(tmp_path):
 
 
 def _na(g):
-    from roadgen.geometry.alignment import network_alignment
+    from kadmos.geometry.alignment import network_alignment
 
     return network_alignment(g)
 
 
 @needs_rm
 def test_esmini_drives_banked_lanes_on_our_centre_line(tmp_path):
-    from roadgen.sim.drive_check import drive_lanes, drive_movements
+    from kadmos.sim.drive_check import drive_lanes, drive_movements
 
     g = l_shape(z=(0.0, 6.0, 2.0))
     g.add_node(Node(4, 400.0, 600.0, z=0.0))

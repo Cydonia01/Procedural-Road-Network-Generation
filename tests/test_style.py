@@ -8,11 +8,11 @@ import numpy as np
 import pytest
 
 from cli import main
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams, _MapView
-from roadgen.generators.patterns import PATTERNS
-from roadgen.graph.io import load_json
-from roadgen.maps.base import make_map
-from roadgen.maps.model import (
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams, _MapView
+from kadmos.generators.patterns import PATTERNS
+from kadmos.graph.io import load_json
+from kadmos.maps.base import make_map
+from kadmos.maps.model import (
     MAP_KINDS,
     STYLE_CLASSES,
     STYLE_CONTOUR,
@@ -24,7 +24,7 @@ from roadgen.maps.model import (
     MapSet,
     load_npz,
 )
-from roadgen.metrics.network import network_metrics
+from kadmos.metrics.network import network_metrics
 from tests.grids import GRID as GRID10
 from tests.lsystem_identity import fingerprint
 from tests.shared import grown
@@ -69,7 +69,7 @@ def test_uniform_dense_population_is_one_grid():
 def test_zones_judge_districts_by_their_open_land():
     # F16: a district half forest (dense on paper, but nobody builds there) and half
     # sparse land is a suburb: only open land counts, as for water.
-    from roadgen.maps.model import LAND, VEGETATION
+    from kadmos.maps.model import LAND, VEGETATION
 
     forest = X < 1500.0
     t = MapLayer("terrain", GRID, np.where(forest, VEGETATION, LAND).astype(np.uint8), {})

@@ -8,21 +8,21 @@ import json
 import pytest
 from lxml import etree
 
-from roadgen.geometry.cross_section import (
+from kadmos.geometry.cross_section import (
     CrossSectionParams,
     TurnLaneParams,
     pocket_ends,
 )
-from roadgen.geometry.junction_space import node_trims
-from roadgen.generators.repair import repair_short_edges, short_edges, stub_roads
-from roadgen.graph.io import load_json, save_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.junctions import lane_use
-from roadgen.validate.continuity import RoadEval, _width, check_continuity
-from roadgen.validate.hdmap import check_hdmap
-from roadgen.validate.topology import check_topology
+from kadmos.geometry.junction_space import node_trims
+from kadmos.generators.repair import repair_short_edges, short_edges, stub_roads
+from kadmos.graph.io import load_json, save_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.junctions import lane_use
+from kadmos.validate.continuity import RoadEval, _width, check_continuity
+from kadmos.validate.hdmap import check_hdmap
+from kadmos.validate.topology import check_topology
 from tests.shared import needs_rm
 
 HD = HdMapParams(enabled=True)
@@ -181,7 +181,7 @@ def test_junction_fill_in_the_scene_instead_of_patches(tmp_path):
 
     from shapely.geometry import Polygon
 
-    from roadgen.scene.junctions import junction_fill_mesh, read_fills
+    from kadmos.scene.junctions import junction_fill_mesh, read_fills
 
     # The .xodr always has the patch objects; the scene draws the same areas under them.
     path, root, sidecar, b = _build(_cross(), tmp_path)
@@ -205,7 +205,7 @@ def test_hd_off_unchanged_by_b8(tmp_path):
 
 @needs_rm
 def test_drive_check_through_pockets(tmp_path):
-    from roadgen.sim.drive_check import drive_lanes, drive_movements
+    from kadmos.sim.drive_check import drive_lanes, drive_movements
 
     path, _, sidecar, _ = _build(_cross(), tmp_path)
     results = drive_movements(path)
@@ -216,7 +216,7 @@ def test_drive_check_through_pockets(tmp_path):
     lanes = drive_lanes(path)
     assert all(r.ok for r in lanes)
     # one load of the RoadManager for both passes (the CLI's drive-check) drives the same
-    from roadgen.sim.drive_check import drive_all
+    from kadmos.sim.drive_check import drive_all
 
     both, both_lanes = drive_all(path)
     assert [(r.route, r.final_lane, r.max_jump) for r in both] == [(r.route, r.final_lane, r.max_jump)
@@ -238,7 +238,7 @@ def test_bans_only_on_approaches_with_arriving_traffic(tmp_path):
 
 
 def test_pockets_stay_out_of_curves(tmp_path):
-    from roadgen.validate.dynamics import check_dynamics
+    from kadmos.validate.dynamics import check_dynamics
 
     g = _cross()
     # the west arm bends 60 deg, 110 m before the junction: its last edge starts in the curve

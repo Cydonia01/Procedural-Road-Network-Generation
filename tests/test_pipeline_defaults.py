@@ -8,7 +8,7 @@ import logging
 import pytest
 
 from cli import main
-from roadgen.config import DEFAULTS
+from kadmos.config import DEFAULTS
 from tests.grids import ON_MAPS, grid_cli
 from tests.shared import needs_rm
 
@@ -21,7 +21,7 @@ def test_defaults_are_on():
 @pytest.mark.pipeline_defaults
 @needs_rm
 def test_pipeline_writes_everything_by_default(tmp_path, caplog):
-    caplog.set_level(logging.INFO, logger="roadgen.cli")
+    caplog.set_level(logging.INFO, logger="kadmos.cli")
     out = tmp_path / "net"
     assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps", "-o", str(out)]) == 0
     assert (tmp_path / "net_scene.osgt").is_file() and (tmp_path / "net_hd.png").is_file()
@@ -33,7 +33,7 @@ def test_pipeline_writes_everything_by_default(tmp_path, caplog):
 
 @pytest.mark.pipeline_defaults
 def test_switches_turn_them_off_and_ground_needs_an_elevation_map(tmp_path, caplog):
-    caplog.set_level(logging.INFO, logger="roadgen.cli")
+    caplog.set_level(logging.INFO, logger="kadmos.cli")
     out = tmp_path / "net"
     assert main(["--no-history", "pipeline", "lsystem", *grid_cli(3, 3), *ON_MAPS, "--maps", "--no-buildings",
                  "--no-ground", "--no-lane-plot", "--no-drive-check", "-o", str(out)]) == 0

@@ -47,11 +47,11 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 |----------------------|---------|
 | `ESMINI_HOME` | esmini root containing `bin/` (fallback `./esmini`) |
 | `OPENDRIVE_XSD` | ASAM OpenDRIVE XSD for the schema check |
-| `ROADGEN_HISTORY` | Root of the run folders (default `out`); `off` disables recording |
+| `KADMOS_HISTORY` | Root of the run folders (default `out`); `off` disables recording |
 
 ## Parameters and `--config`
 
-Every default lives in [`roadgen/defaults.yaml`](../roadgen/defaults.yaml),
+Every default lives in [`kadmos/defaults.yaml`](../kadmos/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
 `maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
 `cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `pipeline`, `scene`, `ground`, `structures`, `buildings`, `esmini`.
@@ -60,7 +60,7 @@ Parameters are layered. Each layer overrides the one before it:
 
 1. `defaults.yaml`;
 2. the preset (`--preset NAME`, or `preset:` in a params or config file); every
-   preset lives in [`roadgen/presets.yaml`](../roadgen/presets.yaml), keyed like
+   preset lives in [`kadmos/presets.yaml`](../kadmos/presets.yaml), keyed like
    `defaults.yaml`, and lists only what differs from the defaults;
 3. the `--config FILE` given before the command;
 4. the `--params FILE.yaml` given to a generator or map;
@@ -208,7 +208,7 @@ python -m cli plot-xodr INPUT.xodr [OUTPUT.png] [--step M]             # default
 
 `plot-xodr` draws a built `.xodr`'s lanes, connecting roads included, as
 polygons coloured by OpenDRIVE lane type, sampled every `--step` metres
-(default 2), from the file alone (`roadgen/opendrive/plot.py`). Road marks
+(default 2), from the file alone (`kadmos/opendrive/plot.py`). Road marks
 are drawn in white on the lane borders, broken ones dash by dash and double
 ones thicker; curb marks are left out, since the curb lane is drawn. Stop and
 yield lines, signs (by code) and, from the sidecar, a glyph per junction for
@@ -308,13 +308,13 @@ scenario without vehicles, a fixed custom camera, `--capture_screen`), under
 ## Run folders (history, replay, run)
 
 Every command that **succeeds** gets its own folder `out/<hash>/` (the root
-is `history.dir`, overridden by `$ROADGEN_HISTORY`). It holds everything the
+is `history.dir`, overridden by `$KADMOS_HISTORY`). It holds everything the
 command wrote, plus `run.yaml`:
 
 - A failing command runs in a temporary folder and leaves nothing behind.
 - Listing commands (`generators`, `maps`, `history`) and `view` are not recorded.
 - Each successful command logs its folder, e.g.
-  `INFO roadgen.cli: run 3fa2c81b9d04: out/3fa2c81b9d04`.
+  `INFO kadmos.cli: run 3fa2c81b9d04: out/3fa2c81b9d04`.
 
 ```yaml
 # out/3fa2c81b9d04/run.yaml

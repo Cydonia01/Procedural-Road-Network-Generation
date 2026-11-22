@@ -7,13 +7,13 @@ import pytest
 from lxml import etree
 
 from cli import main
-from roadgen.geometry.cross_section import CrossSectionParams
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.continuity import RoadEval, _width, check_continuity
-from roadgen.validate.topology import check_topology
+from kadmos.geometry.cross_section import CrossSectionParams
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.continuity import RoadEval, _width, check_continuity
+from kadmos.validate.topology import check_topology
 from tests.grids import grid_cli
 from tests.shared import needs_rm
 
@@ -85,7 +85,7 @@ def test_median_shifts_driving_lanes_and_ends_before_junctions(tmp_path):
 
 @needs_rm
 def test_esmini_drives_past_a_median(tmp_path):
-    from roadgen.sim.drive_check import drive_lanes, drive_movements
+    from kadmos.sim.drive_check import drive_lanes, drive_movements
 
     path, _ = _build(_highway(), tmp_path)
     assert all(r.ok for r in drive_movements(path))
@@ -113,7 +113,7 @@ def test_pipeline_writes_lane_plot_and_only_driven_lanes(tmp_path):
 
 
 def test_lane_step_follows_the_lane_on_curves():
-    from roadgen.sim.drive_check import STEP, _lane_steps
+    from kadmos.sim.drive_check import STEP, _lane_steps
 
     xml = ('<road id="1" length="100" junction="-1"><planView><geometry s="0" x="0" y="0" hdg="0" length="100">'
            '<arc curvature="0.05"/></geometry></planView><lanes><laneSection s="0"><left><lane id="1" '
@@ -131,7 +131,7 @@ def test_lane_step_follows_the_lane_on_curves():
 
 @needs_rm
 def test_drive_check_still_catches_a_jump(tmp_path):
-    from roadgen.sim.drive_check import drive_movements
+    from kadmos.sim.drive_check import drive_movements
 
     path, root = _build(load_json("tests/fixtures/4way_avenue_x_street.json"), tmp_path)
     conn = next(r for r in root.findall("road") if r.get("junction") != "-1")

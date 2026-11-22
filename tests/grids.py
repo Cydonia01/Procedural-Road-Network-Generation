@@ -5,8 +5,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams, grid_extent
-from roadgen.graph.model import RoadGraph
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams, grid_extent
+from kadmos.graph.model import RoadGraph
 
 SPACING = (250.0, 80.0)
 # A 10 x 10 grid grown from a corner (the default block size and branch_prob 1).

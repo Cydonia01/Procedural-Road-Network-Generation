@@ -6,26 +6,26 @@ import math
 
 import pytest
 
-from roadgen.generators.repair import repair_short_edges, short_edges, stub_roads
-from roadgen.geometry.cross_section import (
+from kadmos.generators.repair import repair_short_edges, short_edges, stub_roads
+from kadmos.geometry.cross_section import (
     CrossSectionParams,
     half_widths,
     loop_edges,
     outer_half_width,
 )
-from roadgen.geometry.junction_space import (
+from kadmos.geometry.junction_space import (
     Arm,
     junction_trims,
     node_arms,
     node_trims,
 )
-from roadgen.geometry.planar import Pose
-from roadgen.geometry.profiles import LaneLayout, WidthPiece
-from roadgen.graph.io import graph_from_dict, graph_to_dict, load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.junctions import RoadEnd
-from roadgen.opendrive.lanes import make_lane_sections
+from kadmos.geometry.planar import Pose
+from kadmos.geometry.profiles import LaneLayout, WidthPiece
+from kadmos.graph.io import graph_from_dict, graph_to_dict, load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.junctions import RoadEnd
+from kadmos.opendrive.lanes import make_lane_sections
 from tests.test_repair import two_junctions
 
 CS = CrossSectionParams()
@@ -164,14 +164,14 @@ def test_repair_keeps_existing_stubs():
 
 
 def test_hd_params_from_config():
-    from roadgen.config import DEFAULTS
+    from kadmos.config import DEFAULTS
 
     hd = HdMapParams.from_config(DEFAULTS)
     assert hd.enabled  # the default since B10
     off = HdMapParams.from_config(DEFAULTS, enabled=False)
     assert not off.enabled and off.active_cross_section is None
     on = HdMapParams.from_config(DEFAULTS, seed=4, enabled=True)
-    from roadgen.geometry.cross_section import TurnLaneParams
+    from kadmos.geometry.cross_section import TurnLaneParams
 
     assert on.seed == 4 and on.active_cross_section == CrossSectionParams(turn_lanes=TurnLaneParams())
 

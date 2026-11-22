@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from cli import main
-from roadgen.graph.io import SCHEMA_VERSION, load_json, save_json
-from roadgen.graph.model import Edge, Node, RoadGraph
+from kadmos.graph.io import SCHEMA_VERSION, load_json, save_json
+from kadmos.graph.model import Edge, Node, RoadGraph
 
 DATA = Path(__file__).parent / "data"
 

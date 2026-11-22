@@ -5,17 +5,17 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from roadgen.generators.base import assign_node_kinds
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.generators.transforms.culdesac import add_culdesacs
-from roadgen.generators.transforms.roundabout import add_roundabouts
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.metrics.network import network_metrics
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.junctions import JunctionParams, RoadEnd, u_turn_lane
-from roadgen.geometry.planar import Pose
-from roadgen.validate.connectivity import check_traffic_connectivity
+from kadmos.generators.base import assign_node_kinds
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.generators.transforms.culdesac import add_culdesacs
+from kadmos.generators.transforms.roundabout import add_roundabouts
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.metrics.network import network_metrics
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.junctions import JunctionParams, RoadEnd, u_turn_lane
+from kadmos.geometry.planar import Pose
+from kadmos.validate.connectivity import check_traffic_connectivity
 from tests.test_junction_variety import build_and_check, star
 from tests.shared import grown
 

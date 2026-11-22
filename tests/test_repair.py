@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from roadgen.config import DEFAULTS
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.generators.repair import MIN_ROAD_LENGTH, repair_short_edges, short_edges, stub_roads
-from roadgen.graph.io import graph_to_dict
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
+from kadmos.config import DEFAULTS
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.generators.repair import MIN_ROAD_LENGTH, repair_short_edges, short_edges, stub_roads
+from kadmos.graph.io import graph_to_dict
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
 from tests.shared import grown, grown_maps
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
@@ -68,7 +68,7 @@ def test_buildable_networks_are_unchanged(monkeypatch):
     # The repair only touches edges the builder would reject: a seed that built
     # before (seed 1) gives the same graph with the repair switched off.
     repaired = graph_to_dict(grown("city", 1, maps=True))
-    monkeypatch.setattr("roadgen.generators.lsystem.repair_short_edges", lambda graph, **kw: 0)
+    monkeypatch.setattr("kadmos.generators.lsystem.repair_short_edges", lambda graph, **kw: 0)
     unrepaired = LSystemGenerator().generate(LSystemParams.preset("city"), 1, grown_maps("city", 1))
     assert graph_to_dict(unrepaired) == repaired
 
@@ -92,7 +92,7 @@ def test_collapse_keeps_the_neighbours_buildable():
     """Collapsing an edge moves the surviving node, which turns the roads at its
     neighbours: a collapse that would leave a neighbour's roads under 10 deg apart is
     refused (B9: an HD sweep seed failed so at a two-road bend)."""
-    from roadgen.generators.repair import _collapse
+    from kadmos.generators.repair import _collapse
 
     g = RoadGraph()
     # Node 1 is a sharp two-road bend: roads to 2 (0 deg) and to 3 (about 17 deg).
@@ -109,7 +109,7 @@ def test_collapse_keeps_the_neighbours_buildable():
 def test_dissolve_bend_joins_the_same_road():
     """B9: a two-road bend between two junctions becomes one edge between them (the road
     stays, the bend node goes); lanes keep their direction, heights are resampled."""
-    from roadgen.generators.repair import _dissolve_bend
+    from kadmos.generators.repair import _dissolve_bend
 
     g = RoadGraph()
     for nid, (x, y) in {1: (0.0, 0.0), 2: (-50.0, 0.0), 3: (0.0, 50.0), 4: (10.0, 10.0), 5: (20.0, 0.0),
@@ -128,7 +128,7 @@ def test_dissolve_bend_joins_the_same_road():
 
 
 def test_dissolve_bend_needs_the_same_road():
-    from roadgen.generators.repair import _dissolve_bend
+    from kadmos.generators.repair import _dissolve_bend
 
     g = RoadGraph()
     for nid, (x, y) in {1: (0.0, 0.0), 4: (10.0, 10.0), 5: (20.0, 0.0)}.items():

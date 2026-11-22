@@ -1,9 +1,9 @@
 # Road geometry
 
-`roadgen/geometry/` decides the shape of every road: where it stops at a
+`kadmos/geometry/` decides the shape of every road: where it stops at a
 junction, how it curves through a bend, and how wide its lanes are along it.
 It is shared by the builder, the maps steps, the 3D scene and the generators.
-It never imports `scenariogeneration` or `roadgen.opendrive`, so generators
+It never imports `scenariogeneration` or `kadmos.opendrive`, so generators
 can use it without touching OpenDRIVE.
 
 Heights, banking and overpasses are in [Heights](heights.md). How the shapes

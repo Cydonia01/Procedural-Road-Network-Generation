@@ -6,11 +6,11 @@ import numpy as np
 import pytest
 from scipy.integrate import quad
 
-from roadgen.geometry import design
-from roadgen.geometry.clothoid import g2_hermite
-from roadgen.geometry.design import DesignParams
-from roadgen.geometry.planar import Pose
-from roadgen.geometry.primitives import Alignment, Piece, chain
+from kadmos.geometry import design
+from kadmos.geometry.clothoid import g2_hermite
+from kadmos.geometry.design import DesignParams
+from kadmos.geometry.planar import Pose
+from kadmos.geometry.primitives import Alignment, Piece, chain
 
 KMH = 1 / 3.6
 

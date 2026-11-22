@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from roadgen.geometry import design
-from roadgen.geometry.planar import Pose
-from roadgen.graph.io import load_json
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.junctions import TurnPath, turn_path, turn_speed
-from roadgen.validate.continuity import check_curvature
-from roadgen.validate.dynamics import check_dynamics
+from kadmos.geometry import design
+from kadmos.geometry.planar import Pose
+from kadmos.graph.io import load_json
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.junctions import TurnPath, turn_path, turn_speed
+from kadmos.validate.continuity import check_curvature
+from kadmos.validate.dynamics import check_dynamics
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

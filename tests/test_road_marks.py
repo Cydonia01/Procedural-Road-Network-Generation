@@ -8,15 +8,15 @@ import numpy as np
 import pytest
 from lxml import etree
 
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.marks import RoadMarkParams
-from roadgen.opendrive.plot import mark_lines
-from roadgen.validate.continuity import RoadEval, check_continuity
-from roadgen.validate.hdmap import check_hdmap, check_hdmap_tree
-from roadgen.validate.topology import check_topology
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.marks import RoadMarkParams
+from kadmos.opendrive.plot import mark_lines
+from kadmos.validate.continuity import RoadEval, check_continuity
+from kadmos.validate.hdmap import check_hdmap, check_hdmap_tree
+from kadmos.validate.topology import check_topology
 
 HD = HdMapParams(enabled=True)
 MARKS = RoadMarkParams()

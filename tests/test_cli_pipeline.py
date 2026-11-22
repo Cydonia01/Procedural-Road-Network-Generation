@@ -16,12 +16,12 @@ from pathlib import Path
 import pytest
 
 from cli import main
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.graph.io import load_json
-from roadgen.graph.model import RoadGraph
-from roadgen.maps.model import load_npz
-from roadgen.opendrive import HDMAP_VERSION
-from roadgen.validate.hdmap import check_hdmap
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.graph.io import load_json
+from kadmos.graph.model import RoadGraph
+from kadmos.maps.model import load_npz
+from kadmos.opendrive import HDMAP_VERSION
+from kadmos.validate.hdmap import check_hdmap
 from tests.grids import grid_cli
 from tests.shared import grown
 

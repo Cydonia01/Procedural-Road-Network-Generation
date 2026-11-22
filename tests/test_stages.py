@@ -1,4 +1,4 @@
-"""Polish V1: the check after every pipeline stage (roadgen.validate.stages) catches what
+"""Polish V1: the check after every pipeline stage (kadmos.validate.stages) catches what
 its stage could break, and the pipeline reports every stage."""
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import numpy as np
 import pytest
 
 from cli import main
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.maps.model import LAND, WATER, GridSpec, MapLayer, save_npz
-from roadgen.validate import stages
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.maps.model import LAND, WATER, GridSpec, MapLayer, save_npz
+from kadmos.validate import stages
 from tests.grids import ON_MAPS, grid_cli
 
 GRID = GridSpec((0.0, 0.0), (100.0, 50.0), 10.0)  # 10 x 5 cells
@@ -125,7 +125,7 @@ def _crossing() -> RoadGraph:
 
 
 def test_separate_needs_the_clearance_at_every_crossing():
-    from roadgen.geometry.grade_separation import separate
+    from kadmos.geometry.grade_separation import separate
 
     before = _crossing()
     assert stages.check_separate(before, separate(before), 6.0).ok

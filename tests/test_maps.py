@@ -8,23 +8,23 @@ import pytest
 from matplotlib.image import imsave
 
 from cli import main
-from roadgen.config import DEFAULTS, section
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Node, RoadGraph
-from roadgen.maps import base
-from roadgen.maps.base import (
+from kadmos.config import DEFAULTS, section
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Node, RoadGraph
+from kadmos.maps import base
+from kadmos.maps.base import (
     MapGenerator,
     get_map_generator,
     make_map,
     map_generator_names,
     register_map,
 )
-from roadgen.maps.elevation import (
+from kadmos.maps.elevation import (
     FbmElevationParams,
     ImageElevationParams,
     thermal_erosion,
 )
-from roadgen.maps.model import (
+from kadmos.maps.model import (
     LAND,
     VEGETATION,
     WATER,
@@ -34,7 +34,7 @@ from roadgen.maps.model import (
     load_npz,
     save_npz,
 )
-from roadgen.maps.noise import (
+from kadmos.maps.noise import (
     distance_to,
     fbm,
     majority_filter,
@@ -42,9 +42,9 @@ from roadgen.maps.noise import (
     permutation,
     slope_deg,
 )
-from roadgen.maps.plot import plot_map
-from roadgen.maps.population import CentersPopulationParams, ImagePopulationParams
-from roadgen.maps.terrain import ImageTerrainParams, NoiseTerrainParams
+from kadmos.maps.plot import plot_map
+from kadmos.maps.population import CentersPopulationParams, ImagePopulationParams
+from kadmos.maps.terrain import ImageTerrainParams, NoiseTerrainParams
 from tests.grids import ON_MAPS, grid_cli
 
 GRID = GridSpec((0.0, 0.0), (2000.0, 1500.0), 20.0)

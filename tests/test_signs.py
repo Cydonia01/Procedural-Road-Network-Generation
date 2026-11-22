@@ -9,18 +9,18 @@ import math
 import pytest
 from lxml import etree
 
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.control import priority_runs
-from roadgen.opendrive.furniture import (
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.control import priority_runs
+from kadmos.opendrive.furniture import (
     RoadSide,
     curve_warnings,
     kmh,
     speed_signs,
 )
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.continuity import RoadEval
-from roadgen.validate.hdmap import check_hdmap
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.continuity import RoadEval
+from kadmos.validate.hdmap import check_hdmap
 
 HD = HdMapParams(enabled=True)
 

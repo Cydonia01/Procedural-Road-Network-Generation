@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 from cli import main
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.generators.patterns import (
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.generators.patterns import (
     CONTOUR,
     GRID,
     MAJOR,
@@ -20,8 +20,8 @@ from roadgen.generators.patterns import (
     FieldParams,
     StreetField,
 )
-from roadgen.graph.io import load_json
-from roadgen.metrics.network import network_metrics
+from kadmos.graph.io import load_json
+from kadmos.metrics.network import network_metrics
 
 
 def field(weights=(1, 0, 0, 0, 0), seed: int = 0, gradient=None, **kw) -> StreetField:

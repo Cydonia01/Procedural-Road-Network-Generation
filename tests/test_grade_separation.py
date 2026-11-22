@@ -7,22 +7,22 @@ import numpy as np
 import pytest
 
 from cli import main
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.geometry.grade_separation import (
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.geometry.grade_separation import (
     GradeSeparationParams,
     clearance_at,
     find_crossings,
     separate,
 )
-from roadgen.graph.io import graph_from_dict, graph_to_dict, load_json, save_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.maps.drape import drape
-from roadgen.maps.model import MapSet
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.clearance import check_clearance
-from roadgen.validate.continuity import check_continuity
-from roadgen.validate.topology import check_topology
+from kadmos.graph.io import graph_from_dict, graph_to_dict, load_json, save_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.maps.drape import drape
+from kadmos.maps.model import MapSet
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.clearance import check_clearance
+from kadmos.validate.continuity import check_continuity
+from kadmos.validate.topology import check_topology
 from tests.test_lsystem_maps import X, Y, elevation, population
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)

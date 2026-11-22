@@ -10,12 +10,12 @@ from collections import Counter, defaultdict
 import pytest
 
 from cli import main
-from roadgen.generators.lsystem import LSystemParams, grid_extent
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.connectivity import check_traffic_connectivity
+from kadmos.generators.lsystem import LSystemParams, grid_extent
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.connectivity import check_traffic_connectivity
 from tests.grids import GRID, SPACING, grid_cli, node_at, small_grid
 from tests.shared import needs_rm
 
@@ -57,7 +57,7 @@ def test_alternating_avenues_whole_lines():
 def test_lines_count_from_the_seed_point():
     # Grown from the middle: lines are numbered from the seed's, so its own line runs +y.
     p = LSystemParams(**{**GRID, "start": (4 / 9, 0.5)}, oneway_pattern=("alternating", "none"))
-    from roadgen.generators.lsystem import LSystemGenerator
+    from kadmos.generators.lsystem import LSystemGenerator
 
     g = LSystemGenerator().generate(p, 0)
     for e in g.edges.values():
@@ -93,7 +93,7 @@ def test_manhattan_like_preset():
 
 
 def test_manhattan_like_is_strongly_connected():
-    from roadgen.generators.lsystem import LSystemGenerator
+    from kadmos.generators.lsystem import LSystemGenerator
 
     g = LSystemGenerator().generate(LSystemParams.preset("manhattan_like"), 1)
     assert check_traffic_connectivity(g) == []
@@ -147,7 +147,7 @@ def test_ring_extensions_follow_road_direction():
 
 
 def test_ring_is_rotated_and_in_map_bounds():
-    from roadgen.generators.lsystem import LSystemGenerator
+    from kadmos.generators.lsystem import LSystemGenerator
 
     p = LSystemParams.preset("manhattan_like")
     g = LSystemGenerator().generate(p, 0)
@@ -307,7 +307,7 @@ def test_cli_replaying_a_manhattan_run_explains_its_removal(tmp_path):
 
 @needs_rm
 def test_esmini_drives_every_movement_in_small_preset(tmp_path):
-    from roadgen.sim.drive_check import drive_movements
+    from kadmos.sim.drive_check import drive_movements
 
     b = OpenDriveBuilder()
     b.build(small_grid(4, 6, 2, preset="manhattan_like", angle_jitter_deg=1.0))

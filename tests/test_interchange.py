@@ -11,22 +11,22 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from roadgen.generators.base import assign_node_kinds
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams
-from roadgen.generators.transforms.interchange import (
+from kadmos.generators.base import assign_node_kinds
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams
+from kadmos.generators.transforms.interchange import (
     InterchangeParams,
     add_diamond,
 )
-from roadgen.geometry.grade_separation import find_crossings, separate
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.metrics.network import network_metrics
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.clearance import check_clearance
-from roadgen.validate.connectivity import check_traffic_connectivity
-from roadgen.validate.continuity import check_continuity, check_curvature
-from roadgen.validate.dynamics import check_dynamics
-from roadgen.validate.topology import check_topology
+from kadmos.geometry.grade_separation import find_crossings, separate
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.metrics.network import network_metrics
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.clearance import check_clearance
+from kadmos.validate.connectivity import check_traffic_connectivity
+from kadmos.validate.continuity import check_continuity, check_curvature
+from kadmos.validate.dynamics import check_dynamics
+from kadmos.validate.topology import check_topology
 
 
 def build_static(g: RoadGraph, tmp_path: Path) -> OpenDriveBuilder:
@@ -123,9 +123,9 @@ def test_diamond_needs_room_and_a_straight_road():
 
 @pytest.mark.slow
 def test_lsystem_freeway_corridor_has_a_diamond():
-    from roadgen.config import DEFAULTS, section
-    from roadgen.maps.base import make_map
-    from roadgen.maps.model import GridSpec, MapSet
+    from kadmos.config import DEFAULTS, section
+    from kadmos.maps.base import make_map
+    from kadmos.maps.model import GridSpec, MapSet
 
     gen = LSystemGenerator()
     params = LSystemParams.preset("highway_corridor")

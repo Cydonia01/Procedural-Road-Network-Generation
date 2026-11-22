@@ -11,21 +11,21 @@ import numpy as np
 import pytest
 from lxml import etree
 
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.maps.annotate import AnnotateParams, annotate
-from roadgen.maps.model import STYLE_GRID, STYLE_SUBURB, GridSpec, MapLayer
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.control import (
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.maps.annotate import AnnotateParams, annotate
+from kadmos.maps.model import STYLE_GRID, STYLE_SUBURB, GridSpec, MapLayer
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.control import (
     Approach,
     JunctionControlParams,
     junction_control,
     priority_pairs,
 )
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.junctions import Movement
-from roadgen.validate.hdmap import check_hdmap, check_hdmap_tree
-from roadgen.validate.topology import check_topology
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.junctions import Movement
+from kadmos.validate.hdmap import check_hdmap, check_hdmap_tree
+from kadmos.validate.topology import check_topology
 
 P = JunctionControlParams()
 
@@ -273,8 +273,8 @@ def test_signs_face_their_approach_and_stand_beside_the_carriageway(tmp_path):
 def test_every_sign_code_is_in_esmini_table():
     known = {line.split("=")[0] for line in Path("tests/data/esmini_de_signs.txt").read_text().splitlines()
              if line and not line.startswith("#")}
-    from roadgen.opendrive import furniture
-    from roadgen.opendrive.control import Control
+    from kadmos.opendrive import furniture
+    from kadmos.opendrive.control import Control
 
     used = set()
     for role in ("stop", "yield", "major"):
@@ -410,8 +410,8 @@ def test_signs_follow_the_road_width_at_their_station(tmp_path):
     sign = next(s for s in road.findall("signals/signal") if s.get("type") == "301")
     end = road.findall("lanes/laneSection")[-1]
     assert len([lane for lane in end.findall("right/lane") if lane.get("type") == "driving"]) == 2
-    from roadgen.validate.continuity import RoadEval
-    from roadgen.validate.hdmap import _outer_edges
+    from kadmos.validate.continuity import RoadEval
+    from kadmos.validate.hdmap import _outer_edges
 
     right, _ = _outer_edges(RoadEval(road), float(sign.get("s")))
     # one 3.5 m lane there, then 0.5 m beside it; valid for that lane only

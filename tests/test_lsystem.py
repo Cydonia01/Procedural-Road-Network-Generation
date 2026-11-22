@@ -7,14 +7,14 @@ import pytest
 from shapely.geometry import LineString
 
 from cli import fit_graph
-from roadgen.config import DEFAULTS
-from roadgen.generators.base import build_params
-from roadgen.generators.lsystem import LSystemGenerator, LSystemParams, highway_speed
-from roadgen.graph.model import RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.continuity import check_continuity
-from roadgen.validate.topology import check_topology
+from kadmos.config import DEFAULTS
+from kadmos.generators.base import build_params
+from kadmos.generators.lsystem import LSystemGenerator, LSystemParams, highway_speed
+from kadmos.graph.model import RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.continuity import check_continuity
+from kadmos.validate.topology import check_topology
 from tests.grids import GRID
 
 

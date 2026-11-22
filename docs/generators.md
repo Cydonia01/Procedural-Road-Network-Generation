@@ -12,7 +12,7 @@ deterministic and never touch OpenDRIVE.
 python -m cli generators          # generators, presets and every parameter
 ```
 
-## Interface (`roadgen/generators/base.py`)
+## Interface (`kadmos/generators/base.py`)
 
 ```python
 class RoadNetworkGenerator(ABC, Generic[P]):
@@ -27,9 +27,9 @@ class RoadNetworkGenerator(ABC, Generic[P]):
 
 - **Registry.** `@register("name")` makes a generator available to the CLI
   and configs. `generator_names()` and `get_generator(name)` look it up.
-  Built-ins register when `roadgen.generators` is imported.
+  Built-ins register when `kadmos.generators` is imported.
 - **Presets.** A params class may define `PRESETS: dict[str, dict]`, read from
-  `roadgen/presets.yaml` with `config.presets("generators", "<name>")`, and a
+  `kadmos/presets.yaml` with `config.presets("generators", "<name>")`, and a
   `preset(name, **overrides)` classmethod.
 - **Parameters.** Field defaults come from `generators.<name>` in
   `defaults.yaml`, and the CLI layers presets, `--config`, `--params` and
@@ -105,7 +105,7 @@ snapshot.
 
 ## Graph transforms
 
-`roadgen/generators/transforms/` holds passes from RoadGraph to RoadGraph
+`kadmos/generators/transforms/` holds passes from RoadGraph to RoadGraph
 that a generator runs at its end. They never touch OpenDRIVE, so the builder
 sees ordinary roads, and any generator can use them. Each is deterministic
 for the random generator it gets. lsystem gives each its own sub-stream.
@@ -152,7 +152,7 @@ lsystem builds them on its freeways
 
 ## Adding a generator
 
-1. Create `roadgen/generators/<name>.py` with a frozen params dataclass,
+1. Create `kadmos/generators/<name>.py` with a frozen params dataclass,
    validated in `__post_init__`, and optional presets (`presets.yaml` under
    `generators.<name>`, `PRESETS` plus `preset()`). Defaults can stay in the
    dataclass; the built-in generators keep theirs in `defaults.yaml` under
@@ -164,7 +164,7 @@ lsystem builds them on its freeways
    `np.random.default_rng(seed)`.
 3. End with `repair_short_edges` and `assign_node_kinds(graph)`, and fill
    `graph.metadata` (`name`, `generator`, `seed`, `params`).
-4. Import the module in `roadgen/generators/__init__.py`.
+4. Import the module in `kadmos/generators/__init__.py`.
 5. To read maps, set `uses_maps = True`, take `maps: Optional[MapSet]`,
    implement `map_bounds`, and sample with `MapLayer.sample(x, y)` in world
    coordinates.

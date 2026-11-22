@@ -6,24 +6,24 @@ import pytest
 import yaml
 
 from cli import build_parser, main
-from roadgen.config import DEFAULTS, load_config, merge, section
-from roadgen.generators.base import load_params
-from roadgen.generators.lsystem import LSystemParams
-from roadgen.geometry.cross_section import CrossSectionParams, TurnLaneParams
-from roadgen.geometry.design import DesignParams
-from roadgen.graph.io import load_json
-from roadgen.maps.align import AlignParams
-from roadgen.maps.annotate import AnnotateParams
-from roadgen.maps.drape import DrapeParams
-from roadgen.metrics.geometry import GeometryMetricsParams
-from roadgen.metrics.network import NetworkMetricsParams
-from roadgen.opendrive.control import JunctionControlParams
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.lights import TrafficLightParams
-from roadgen.opendrive.marks import RoadMarkParams
-from roadgen.scene.buildings import BuildingParams
-from roadgen.scene.ground import GroundParams
-from roadgen.scene.structures import StructureParams
+from kadmos.config import DEFAULTS, load_config, merge, section
+from kadmos.generators.base import load_params
+from kadmos.generators.lsystem import LSystemParams
+from kadmos.geometry.cross_section import CrossSectionParams, TurnLaneParams
+from kadmos.geometry.design import DesignParams
+from kadmos.graph.io import load_json
+from kadmos.maps.align import AlignParams
+from kadmos.maps.annotate import AnnotateParams
+from kadmos.maps.drape import DrapeParams
+from kadmos.metrics.geometry import GeometryMetricsParams
+from kadmos.metrics.network import NetworkMetricsParams
+from kadmos.opendrive.control import JunctionControlParams
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.lights import TrafficLightParams
+from kadmos.opendrive.marks import RoadMarkParams
+from kadmos.scene.buildings import BuildingParams
+from kadmos.scene.ground import GroundParams
+from kadmos.scene.structures import StructureParams
 
 
 @pytest.mark.parametrize("params_type, keys", [
@@ -129,14 +129,14 @@ def test_cli_precedence_preset_config_params_set(tmp_path):
 
 
 def test_every_preset_in_presets_yaml_builds_its_params():
-    """Polish N2: the presets live in roadgen/presets.yaml; each names fields of its
+    """Polish N2: the presets live in kadmos/presets.yaml; each names fields of its
     params class (keyed as in defaults.yaml) and builds."""
-    from roadgen.config import presets
-    from roadgen.maps.elevation import FbmElevationParams
-    from roadgen.maps.population import CentersPopulationParams
-    from roadgen.maps.style import ZonesStyleParams
-    from roadgen.maps.terrain import NoiseTerrainParams
-    from roadgen.opendrive.control import JunctionControlParams
+    from kadmos.config import presets
+    from kadmos.maps.elevation import FbmElevationParams
+    from kadmos.maps.population import CentersPopulationParams
+    from kadmos.maps.style import ZonesStyleParams
+    from kadmos.maps.terrain import NoiseTerrainParams
+    from kadmos.opendrive.control import JunctionControlParams
 
     classes = {("generators", "lsystem"): LSystemParams,
                ("maps", "terrain", "noise"): NoiseTerrainParams, ("maps", "elevation", "fbm"): FbmElevationParams,

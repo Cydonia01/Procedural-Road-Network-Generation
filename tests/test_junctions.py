@@ -8,14 +8,14 @@ import pytest
 from lxml import etree
 
 from cli import main
-from roadgen.geometry.junction_space import Arm, junction_trims
-from roadgen.geometry.planar import Pose, hermite_poly3, wrap_angle
-from roadgen.graph.io import load_json
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.junctions import classify, continuation_pairs, lane_pairs
-from roadgen.validate.continuity import check_continuity, check_continuity_tree
-from roadgen.validate.topology import check_topology, check_topology_tree
+from kadmos.geometry.junction_space import Arm, junction_trims
+from kadmos.geometry.planar import Pose, hermite_poly3, wrap_angle
+from kadmos.graph.io import load_json
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.junctions import classify, continuation_pairs, lane_pairs
+from kadmos.validate.continuity import check_continuity, check_continuity_tree
+from kadmos.validate.topology import check_topology, check_topology_tree
 from tests.shared import needs_rm
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
@@ -266,7 +266,7 @@ def test_edge_too_short_for_junction(tmp_path):
 
 
 def test_cli_reports_unbuildable_graph(tmp_path, caplog):
-    from roadgen.graph.io import save_json
+    from kadmos.graph.io import save_json
 
     graph = load_json(FIXTURES / "single_4way.json")
     graph.nodes[2].x = -4.0
@@ -317,7 +317,7 @@ def test_topology_detects_bad_lane_links(tmp_path):
 @needs_rm
 @pytest.mark.parametrize("name", ALL_FIXTURES)
 def test_esmini_drives_every_movement(tmp_path, name):
-    from roadgen.sim.drive_check import drive_movements
+    from kadmos.sim.drive_check import drive_movements
 
     builder, path = build(name, tmp_path)
     results = drive_movements(path)
@@ -383,7 +383,7 @@ def test_mixed_5way_respects_one_ways(tmp_path):
 
 
 def test_sliver_angle_rejected(tmp_path):
-    from roadgen.graph.model import Edge, Node, RoadGraph
+    from kadmos.graph.model import Edge, Node, RoadGraph
 
     g = RoadGraph()
     for i, (x, y) in enumerate([(0, 0), (100, 0), (100, 5), (-100, 0)], 1):
@@ -397,7 +397,7 @@ def test_sliver_angle_rejected(tmp_path):
 @needs_rm
 @pytest.mark.parametrize("name", ANGLED)
 def test_esmini_drives_angled_junctions(tmp_path, name):
-    from roadgen.sim.drive_check import drive_movements
+    from kadmos.sim.drive_check import drive_movements
 
     builder, path = build(name, tmp_path)
     results = drive_movements(path)
@@ -408,7 +408,7 @@ def test_esmini_drives_angled_junctions(tmp_path, name):
 def short_roads_graph():
     """Two 4-ways 35 m apart (the road between them is ~17 m after trimming,
     shorter than drive_check.APPROACH) and a 30 m dead-end spur off the second."""
-    from roadgen.graph.model import Edge, Node, RoadGraph
+    from kadmos.graph.model import Edge, Node, RoadGraph
 
     g = RoadGraph()
     points = [(0, 0), (35, 0), (-100, 0), (0, 100), (0, -100), (135, 0), (35, -100), (35, 30)]
@@ -421,7 +421,7 @@ def short_roads_graph():
 
 @needs_rm
 def test_esmini_drives_short_roads_and_dead_ends(tmp_path):
-    from roadgen.sim.drive_check import APPROACH, drive_movements
+    from kadmos.sim.drive_check import APPROACH, drive_movements
 
     builder = OpenDriveBuilder("short_roads", hd=PLAIN)
     builder.build(short_roads_graph())
@@ -439,7 +439,7 @@ def test_esmini_drives_short_roads_and_dead_ends(tmp_path):
 def test_esmini_drives_long_connecting_roads(tmp_path):
     """A big junction's connecting roads can be longer than the approach plus
     a fixed distance; the drive must still reach the target road."""
-    from roadgen.sim.drive_check import APPROACH, drive_movements
+    from kadmos.sim.drive_check import APPROACH, drive_movements
 
     builder = OpenDriveBuilder("big_junction", junction_margin=30.0, hd=PLAIN)
     builder.build(load_json(FIXTURES / "single_4way.json"))

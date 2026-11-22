@@ -7,11 +7,11 @@ from typing import Optional
 
 from lxml import etree
 
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import OpenDriveBuilder
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.validate.hdmap import check_hdmap_tree
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import OpenDriveBuilder
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.validate.hdmap import check_hdmap_tree
 
 HD = HdMapParams(enabled=True)
 

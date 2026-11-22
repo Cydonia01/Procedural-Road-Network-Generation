@@ -8,9 +8,9 @@ import math
 import pytest
 
 from cli import main
-from roadgen.graph.io import save_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.metrics.network import (
+from kadmos.graph.io import save_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.metrics.network import (
     junction_skew,
     network_metrics,
     offset_t_pairs,
@@ -115,7 +115,7 @@ def test_cli_metrics_graph(tmp_path):
 
 
 def test_naturalness_counts_on_a_hand_made_graph():
-    from roadgen.metrics.network import naturalness
+    from kadmos.metrics.network import naturalness
 
     g = RoadGraph()
     for n, (x, y) in {1: (0, 0), 2: (100, 0), 3: (200, 0), 4: (0, 3), 5: (-100, 3)}.items():
@@ -132,7 +132,7 @@ def test_naturalness_counts_on_a_hand_made_graph():
 
 
 def test_body_overlaps_read_heights():
-    from roadgen.metrics.network import naturalness
+    from kadmos.metrics.network import naturalness
 
     # A street crossing a highway without a node.
     g = RoadGraph()
@@ -152,7 +152,7 @@ def test_body_overlaps_read_heights():
 @pytest.mark.parametrize("preset, seed", [("organic_town", 1), ("paris", 0), ("city", 2), ("suburb", 1),
                                           ("skewed_grid", 0)])
 def test_presets_pass_the_naturalness_gates(preset, seed):
-    from roadgen.validate.connectivity import check_traffic_connectivity
+    from kadmos.validate.connectivity import check_traffic_connectivity
 
     g = grown(preset, seed)
     m = network_metrics(g)["naturalness"]

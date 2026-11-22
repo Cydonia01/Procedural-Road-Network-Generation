@@ -8,12 +8,12 @@ import numpy as np
 import pytest
 from shapely.geometry import LineString
 
-from roadgen.geometry import design
-from roadgen.geometry.alignment import align_chain, corner_shape, network_alignment
-from roadgen.geometry.chains import find_chains, is_mergeable, junction_nodes
-from roadgen.geometry.design import DesignParams
-from roadgen.geometry.planar import Pose
-from roadgen.graph.model import Edge, Node, RoadGraph
+from kadmos.geometry import design
+from kadmos.geometry.alignment import align_chain, corner_shape, network_alignment
+from kadmos.geometry.chains import find_chains, is_mergeable, junction_nodes
+from kadmos.geometry.design import DesignParams
+from kadmos.geometry.planar import Pose
+from kadmos.graph.model import Edge, Node, RoadGraph
 
 V = 13.9  # [m/s]
 E = DesignParams().e_max_street if DesignParams().banking else 0.0  # design superelevation of streets

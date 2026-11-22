@@ -9,14 +9,14 @@ import pytest
 from lxml import etree
 
 from cli import main
-from roadgen.geometry.planar import segment_start, trim
-from roadgen.graph.io import load_json
-from roadgen.graph.model import Edge, Node, RoadGraph
-from roadgen.opendrive.builder import XODR_DIGITS, OpenDriveBuilder, round_numbers, sidecar_path
-from roadgen.opendrive.hdmap import HdMapParams
-from roadgen.opendrive.lanes import make_lanes
-from roadgen.validate.schema import validate_schema
-from roadgen.validate.topology import check_topology, check_topology_tree
+from kadmos.geometry.planar import segment_start, trim
+from kadmos.graph.io import load_json
+from kadmos.graph.model import Edge, Node, RoadGraph
+from kadmos.opendrive.builder import XODR_DIGITS, OpenDriveBuilder, round_numbers, sidecar_path
+from kadmos.opendrive.hdmap import HdMapParams
+from kadmos.opendrive.lanes import make_lanes
+from kadmos.validate.schema import validate_schema
+from kadmos.validate.topology import check_topology, check_topology_tree
 
 PLAIN = HdMapParams(enabled=False)  # these tests build driving lanes only (HD maps on by default since B10)
 
@@ -245,7 +245,7 @@ def test_cli_build_xodr(tmp_path, monkeypatch, name):
 
 def test_cli_view_without_esmini(monkeypatch, tmp_path):
     monkeypatch.delenv("ESMINI_HOME", raising=False)
-    monkeypatch.setattr("roadgen.sim.esmini._BUNDLED_ESMINI", tmp_path / "no-esmini")
+    monkeypatch.setattr("kadmos.sim.esmini._BUNDLED_ESMINI", tmp_path / "no-esmini")
     assert main(["view", "missing.xodr"]) == 1
 
 
