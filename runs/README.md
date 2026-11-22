@@ -29,6 +29,55 @@ window and is not recorded as a run.
 
 ## Cities
 
+- `7d0bf8761f40` Diamond interchange: freeway crossing an arterial with ramps
+
+  ```bash
+  python -m cli pipeline junction --preset diamond --set interchange_length=800 --no-buildings -o diamond
+  python -m cli view out/7d0bf8761f40/diamond.xodr   # look at it
+  ```
+
+- `0bfc44351931` Cloverleaf interchange: freeway crossing a freeway with loop ramps
+
+  ```bash
+  python -m cli pipeline junction --preset cloverleaf --set interchange_length=800 --no-buildings -o cloverleaf
+  python -m cli view out/0bfc44351931/cloverleaf.xodr   # look at it
+  ```
+
+- `b32d9399e81c` City with tunnels
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 8 --set tunnels=true -o city_tunnels
+  python -m cli view out/b32d9399e81c/city_tunnels.xodr --scenegraph out/b32d9399e81c/city_tunnels_scene.osgt   # look at it
+  ```
+
+- `c051de292761` City with tunnels: highways at most 5 % grade
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 5 --set tunnels=true --set highway_max_grade=0.05 -o city_tunnels_steep
+  python -m cli view out/c051de292761/city_tunnels_steep.xodr --scenegraph out/c051de292761/city_tunnels_steep_scene.osgt   # look at it
+  ```
+
+- `ccaded6329a0` Freeways with tunnels and overpasses
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 5 --set tunnels=true --set highway_max_grade=0.05 --set highway_crossings=separated -o freeway_tunnels
+  python -m cli view out/ccaded6329a0/freeway_tunnels.xodr --scenegraph out/ccaded6329a0/freeway_tunnels_scene.osgt   # look at it
+  ```
+
+- `408bd9980661` Tunnels: city on high ridged hills
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 3 --set tunnels=true --set highway_max_grade=0.05 --map-set elevation.max_elevation=150 --map-set elevation.ridge=0.5 -o tunnels
+  python -m cli view out/408bd9980661/tunnels.xodr --scenegraph out/408bd9980661/tunnels_scene.osgt   # look at it
+  ```
+
+- `a8673f136922` City with tunnels
+
+  ```bash
+  python -m cli pipeline lsystem --preset city --maps --seed 5 --set tunnels=true -o city_tunnels
+  python -m cli view out/a8673f136922/city_tunnels.xodr --scenegraph out/a8673f136922/city_tunnels_scene.osgt   # look at it
+  ```
+
 - `5ab814f818a2` Mixed-density city on generated maps: highways, ring roads, river, hills
 
   ```bash
