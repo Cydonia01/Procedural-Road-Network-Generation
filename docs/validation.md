@@ -357,5 +357,3 @@ python -m cli metrics NETWORK.xodr [--json OUT.json]   # HD counts unless --no-h
 | **Signals** | By `country:type[-subtype]`, dynamic ones (lights) apart, per km of road and per junction |
 | **Objects** | By object type, per km and per junction (`<bridge>` / `<tunnel>` records are not objects) |
 | **Control** | `<controller>`s and their controls, junction controllers, junction `<priority>` records; from the sidecar the junction control mix, signal plans and phases, lane-use records, banned movements |
-
-Baselines of the example networks are in `plans/baselines/`.

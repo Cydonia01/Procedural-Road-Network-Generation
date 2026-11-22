@@ -10,7 +10,7 @@ a 3D scene (ground and buildings) for viewing it in esmini.
 flowchart LR
     MP["Map generators<br/>terrain → elevation →<br/>population → style"] -->|MapSet| G
     MF[(".npz<br/>--map-file")] -->|MapSet| G
-    G["Generator<br/>lsystem, junction"] -->|RoadGraph| H["Heights<br/>align, drape,<br/>grade separation"]
+    G["Generator<br/>lsystem"] -->|RoadGraph| H["Heights<br/>align, drape,<br/>grade separation"]
     MP -.-> H
     H -->|RoadGraph| J[(".json")]
     J --> B["OpenDRIVE<br/>builder"]
