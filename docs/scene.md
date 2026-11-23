@@ -84,8 +84,9 @@ a road under the ground.
 covers (corners no turn follows, slivers between turning lanes) are found by
 the builder and listed in the sidecar as `junction_fills`. When the pipeline
 writes a scene (ground or buildings), it draws them as flat triangles
-on the junction plane, `fill_below` (0.02 m) under the lanes, in
-`asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`).
+on the junction plane, `fill_below` (0.02 m) under the lanes and reaching
+`fill_grow` (0.05 m) in under them, since their outline is simplified by up to
+5 cm. The colour is `asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`).
 `junction_fill: false` leaves them out of the scene. The `.xodr` always
 describes the same areas as `<object type="patch">` ([OpenDRIVE](opendrive.md)),
 which esmini draws on top in a plain, lighter grey; making that look match
@@ -140,20 +141,58 @@ python -m cli export-gltf out/<hash>/hills.xodr --map-file elevation=out/<hash>/
 
 Blender: *File → Import → glTF 2.0*.
 
-- **Roads** (`roads.py`). Every lane of every road and connecting road is a
-  strip between its inner and outer border. It is sampled every `gltf.step`
-  (2 m) and at both ends of each lane section. It follows the reference
-  line, lane offset, widths, elevation, superelevation and lane `<height>`,
-  as `surface.py` does for the ground. Lanes of type `none` are left out.
-  UVs are (s, t) in metres, so a tiling texture keeps its scale along and
-  across the road. The junction fills join the roads with UVs (x, y).
-- **Nodes.** `roads`, `ground`, `structures` and `buildings`, one object
-  each in Blender. Each node has one primitive per material.
+- **Roads** (`roads.py`). Every lane of every road is a strip between its
+  inner and outer border. It is sampled every `gltf.step` (2 m) and at both
+  ends of each lane section. It follows the reference line, lane offset,
+  widths, elevation, superelevation and lane `<height>`, as `surface.py`
+  does for the ground. Lanes of type `none` are left out. UVs are (s, t) in
+  metres, so a tiling texture keeps its scale along and across the road.
+- **Junctions.** Connecting roads overlap by design. Drawn one by one,
+  their coinciding surfaces flicker and shade each other in a renderer. So
+  each junction's connecting-road lanes are merged into one flat surface on
+  the plane through them, with UVs (x, y). Hairline gaps between lanes are
+  closed. Junctions are planar to a few millimetres; one further than 5 cm
+  from a plane keeps its strips. The junction fills join the roads.
+- **Marks** (`marks.py`, `gltf.marks`). Every lane `<roadMark>` lies on its
+  lane's outer border, or on the lane offset for the centre lane. It runs
+  from its sOffset to the next mark or the end of the section:
+  - Each `<type>/<line>` is one line (tOffset, width, dash `length` and
+    `space`, sOffset).
+  - A mark without lines is one line, solid or broken (3 m / 9 m), or two
+    lines for double types.
+  - Type `none` draws nothing.
+  - Marking objects (`<object type="roadMark">`: stop and yield lines, turn
+    arrows) draw each `<marking>` as a line of its width through the
+    corners it references, dashed by `lineLength` / `spaceLength`.
+
+  Marks lie `gltf.mark_lift` (0.02 m) above the road surface, with UVs
+  (s, t).
+- **Signs and lights** (`signals.py`, `gltf.signals`). Every `<signal>`
+  stands at its (s, t) on the road surface, facing the traffic it is for
+  (orientation `+`: drivers going in +s), turned further by hOffset.
+  - A sign has a post, and a plate of its width and height from `zOffset`
+    up, in its shape: octagon (206), triangles (205, 301, 103, 105),
+    diamonds (306, 307), circles (274, 209, 214, 215), or a square.
+  - The plate has a rim, a face and a grey back. The face's material is
+    named after the sign (`sign_DE_274_80`, `sign_DE_206`, ...) and has UVs
+    0..1 across the plate, so an image of the real sign can replace its
+    colour.
+  - A light (dynamic signal) has a post, a dark housing and three lamps
+    (red, amber, green), all plain colours.
+- **Nodes.** `roads`, `marks`, `signals`, `ground`, `structures` and
+  `buildings`, one object each in Blender. Each node has one primitive per
+  material.
 - **Materials** are plain colours, named for texturing in Blender:
   - `lane_<type>` for each lane type in `gltf.lane_colors` (`driving`,
     `median`, ...); other types use `lane_other`.
+  - `mark_white`, `mark_yellow`, ... for the marks.
+  - `pole`, `sign_back`, `sign_rim_*`, `sign_<country>_<type>...`,
+    `light_housing` and `light_red` / `_amber` / `_green` for the signals.
   - `ground` keeps the terrain colours as vertex colours, with UVs (x, y).
   - `concrete` for the structures, `buildings` for the buildings.
+
+  Colours are given as displayed (sRGB) and written linear, as glTF
+  requires.
 - **Axes.** glTF is y-up. Points are written as (x, z, −y) after subtracting
   an origin near the network's centre, which keeps float32 vertices precise
   on big maps. Blender's importer turns the scene back to z-up, in OpenDRIVE

@@ -180,7 +180,7 @@ the stage summary at the end gathers their checks.
 | `--map-file KIND=FILE.npz` | Load one kind from a file; wins over a generator for that kind |
 | `--buildings`, `--no-buildings` | Buildings ([scene](scene.md)): in `PREFIX_scene.osgt` with the ground, else in `PREFIX_buildings.osgt` (default `pipeline.buildings`, on) |
 | `--ground`, `--no-ground` | `PREFIX_scene.osgt`: the ground cut around the roads, bridges and tunnels, plus the buildings (default `pipeline.ground`, on when there is an elevation map; asking `--ground` without one is an error) |
-| `--gltf`, `--no-gltf` | `PREFIX.glb` for Blender: the lanes of the built `.xodr`, the junction fills, and the ground, structures and buildings of the scene ([Blender export](scene.md#blender-export-glb)) (default `pipeline.gltf`, off) |
+| `--gltf`, `--no-gltf` | `PREFIX.glb` for Blender: the lanes, marks, signs and lights of the built `.xodr`, the junction fills, and the ground, structures and buildings of the scene ([Blender export](scene.md#blender-export-glb)) (default `pipeline.gltf`, off) |
 | `--drive-check`, `--no-drive-check` | Run [drive-check](#drive-check), if there are no errors so far (default `pipeline.drive_check`, on) |
 | `--lane-plot`, `--no-lane-plot` | With HD maps, draw the built lanes to `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr); about 5 s on a city) (default `pipeline.lane_plot`, on) |
 
@@ -292,11 +292,11 @@ python -m cli export-gltf NET.xodr [-o OUT.glb] [--map-file elevation=E.npz --ma
     [--graph NET.json --buildings] [--seed N]                                 # default: NET.glb
 ```
 
-The lanes of a built `.xodr` and its sidecar's junction fills as one binary
-glTF for Blender. With an elevation map, it adds the ground (cut around the
+The lanes, marks, signs and lights of a built `.xodr` and its sidecar's
+junction fills as one binary glTF for Blender. With an elevation map, it adds the ground (cut around the
 roads, so the network must be draped) and the bridge and tunnel structures.
 `--buildings` adds the `--graph`'s buildings. Parameters go in `gltf:`
-(sampling step, lane colours), `ground:`, `structures:` and `buildings:`.
+(sampling step, lane colours, `marks`, `mark_lift`, `signals`), `ground:`, `structures:` and `buildings:`.
 See [Blender export](scene.md#blender-export-glb).
 
 ## view

@@ -181,7 +181,7 @@ def test_junction_fill_in_the_scene_instead_of_patches(tmp_path):
 
     from shapely.geometry import Polygon
 
-    from kadmos.scene.junctions import junction_fill_mesh, read_fills
+    from kadmos.scene.junctions import SceneParams, junction_fill_mesh, read_fills
 
     # The .xodr always has the patch objects; the scene draws the same areas under them.
     path, root, sidecar, b = _build(_cross(), tmp_path)
@@ -191,7 +191,9 @@ def test_junction_fill_in_the_scene_instead_of_patches(tmp_path):
     assert check_hdmap(path) == []
     mesh = junction_fill_mesh(fills)
     area = sum(Polygon([p[:2] for p in t]).area for t in mesh.tris)
-    assert area == pytest.approx(sum(Polygon([p[:2] for p in f]).area for f in fills), rel=1e-6)
+    # each outline, reaching fill_grow in under the lanes
+    grown = sum(Polygon([p[:2] for p in f]).buffer(SceneParams().fill_grow, join_style="mitre").area for f in fills)
+    assert area == pytest.approx(grown, rel=1e-6)
     assert all(n[2] > 0.99 for n in mesh.normals)  # a flat junction: facing up
     z = {round(p[2], 6) for t in mesh.tris for p in t}
     assert max(z) <= max(p[2] for f in fills for p in f) - 0.02 + 1e-6  # under the lanes

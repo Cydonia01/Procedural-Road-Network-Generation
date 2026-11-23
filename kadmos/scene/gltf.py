@@ -34,8 +34,8 @@ ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER = 34962, 34963
 
 @dataclass(frozen=True)
 class Material:
-    """A PBR metallic-roughness material: a base colour, and a texture image (relative
-    URI) when one is given."""
+    """A PBR metallic-roughness material: a base colour (sRGB, as displayed; written
+    linear), and a texture image (relative URI) when one is given."""
 
     name: str
     color: RGB = (0.8, 0.8, 0.8)
@@ -53,7 +53,7 @@ class Primitive:
     normals: np.ndarray  # (n, 3), unit length
     indices: np.ndarray  # (3 m,)
     uvs: Optional[np.ndarray] = None  # (n, 2)
-    colors: Optional[np.ndarray] = None  # (n, 3) RGB in [0, 1]
+    colors: Optional[np.ndarray] = None  # (n, 3) sRGB in [0, 1] (written linear)
 
 
 @dataclass
@@ -86,6 +86,12 @@ def scene_origin(nodes: list[Node]) -> np.ndarray:
         return np.zeros(3)
     allp = np.vstack(pts)
     return np.round((allp.min(axis=0) + allp.max(axis=0)) / 2)
+
+
+def linear(c: np.ndarray) -> np.ndarray:
+    """sRGB colour values in [0, 1] -> linear, as glTF stores colours."""
+    c = np.clip(np.asarray(c, float), 0.0, 1.0)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
 
 
 def _y_up(v: np.ndarray) -> np.ndarray:
@@ -135,7 +141,7 @@ def write_glb(path: Union[str, Path], nodes: list[Node], materials: list[Materia
             if p.uvs is not None:
                 attrs["TEXCOORD_0"] = add(np.asarray(p.uvs, np.float32), "VEC2", ARRAY_BUFFER)
             if p.colors is not None:
-                attrs["COLOR_0"] = add(np.asarray(p.colors, np.float32), "VEC3", ARRAY_BUFFER)
+                attrs["COLOR_0"] = add(linear(p.colors).astype(np.float32), "VEC3", ARRAY_BUFFER)
             prims.append({"attributes": attrs, "indices": add(np.asarray(p.indices, np.uint32), "SCALAR",
                                                               ELEMENT_ARRAY_BUFFER),
                           "material": mat_index[p.material], "mode": 4})
@@ -145,7 +151,7 @@ def write_glb(path: Union[str, Path], nodes: list[Node], materials: list[Materia
 
     gl_materials = []
     for m in materials:
-        pbr: dict = {"baseColorFactor": [*map(float, m.color), 1.0],
+        pbr: dict = {"baseColorFactor": [*map(float, linear(m.color)), 1.0],
                      "metallicFactor": float(m.metallic), "roughnessFactor": float(m.roughness)}
         if m.texture:
             images.append({"uri": m.texture})

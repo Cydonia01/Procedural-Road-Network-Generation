@@ -245,6 +245,7 @@ scene:  # what the scene file (.osgt) draws besides ground and buildings (kadmos
   junction_fill: true       # junction surface no lane covers, in asphalt (the .xodr then has no patch objects)
   asphalt_color: [0.317, 0.317, 0.317]  # mean of esmini's resources/models/asphalt.jpg
   fill_below: 0.02          # the fill sits this far under the lanes [m]
+  fill_grow: 0.05           # ... and reaches this far in under them (its outline is simplified by 5 cm) [m]
 
 pipeline:  # what `pipeline` writes and checks besides the .xodr; each has a --no-... switch
   buildings: true          # buildings, in the scene file (PREFIX_scene.osgt or PREFIX_buildings.osgt)
@@ -263,7 +264,10 @@ ground:  # 3D ground mesh from the maps for esmini, cut around the roads (`pipel
   shore_smoothing: 1.0     # shoreline rounded with a radius of this many terrain cells
 
 gltf:  # Blender export (.glb): `export-gltf`, `pipeline --gltf` (kadmos/scene/export.py, roads.py)
-  step: 2.0                # lane strips sampled this often along a road [m]
+  step: 2.0                # lane strips and marks sampled this often along a road [m]
+  marks: true              # lane marks and marking objects (stop lines, arrows) from the .xodr
+  mark_lift: 0.02          # marks this far above the road surface [m]
+  signals: true            # signs and traffic lights from the .xodr's signals
   lane_colors:             # base colour per lane type (material lane_<type>), RGB in [0, 1]
     driving: [0.317, 0.317, 0.317]   # esmini's asphalt; also the junction fills
     median: [0.42, 0.55, 0.33]

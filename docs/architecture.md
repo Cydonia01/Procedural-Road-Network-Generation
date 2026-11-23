@@ -187,7 +187,9 @@ kadmos/
     junctions.py           junction surface no lane covers, drawn in asphalt
     parcels.py             blocks split into parcels, one building each, heights from population
     osgt.py                OpenSceneGraph ASCII writer
-    roads.py               road mesh of the .xodr (a strip per lane, UVs (s, t)) for the .glb
+    roads.py               road mesh of the .xodr (a strip per lane, UVs (s, t); junctions merged flat) for the .glb
+    marks.py               lane marks and marking objects (stop lines, arrows) of the .xodr for the .glb
+    signals.py             signs and traffic lights of the .xodr as simple models for the .glb
     gltf.py                binary glTF 2.0 writer (y-up, origin near the centre)
     export.py              the scene and the roads as one .glb (nodes, materials)
 tests/                     pytest suite; fixtures/ and data/ hold RoadGraph JSONs
@@ -212,5 +214,5 @@ per successful command
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
 | `net_buildings.osgt` | `pipeline` without a ground (`--no-buildings` leaves it out) | Buildings for esmini ([scene](scene.md)) |
 | `net_scene.osgt` | `pipeline` with an elevation map (`--no-ground` leaves it out), `ground` | Ground mesh, bridge and tunnel structures, junction surface, buildings |
-| `net.glb` | `pipeline --gltf`, `export-gltf` | Roads (a strip per lane), junction surface, ground, structures, buildings for Blender ([Blender export](scene.md#blender-export-glb)) |
+| `net.glb` | `pipeline --gltf`, `export-gltf` | Roads (a strip per lane), junction surface, marks, signs and lights, ground, structures, buildings for Blender ([Blender export](scene.md#blender-export-glb)) |
 | `run.yaml` | every recorded command | The command and every parameter that differs from the defaults |
