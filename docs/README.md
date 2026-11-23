@@ -22,6 +22,7 @@ what you need.
 | Know what is checked, and measure a network | [Validation and metrics](validation.md) |
 | Look at a network in esmini, or take a screenshot | [CLI reference → view](cli-reference.md#view) |
 | Add ground and buildings to the 3D view | [3D scene](scene.md) |
+| Open a network in Blender (`.glb`) | [3D scene → Blender export](scene.md#blender-export-glb), [CLI reference → export-gltf](cli-reference.md#export-gltf) |
 | Run in Docker, or open GUI windows from it | [Docker](docker.md) |
 | Add a generator, map or other component, or run tests | [Development](development.md) |
 | See example commands for every stage | [Example runs](../runs/README.md) |

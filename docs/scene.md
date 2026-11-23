@@ -20,6 +20,7 @@ python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osg
 | `pipeline` with an elevation map | `PREFIX_scene.osgt` | Ground, bridges and tunnels, plus the buildings (`--no-buildings` leaves them out) |
 | `pipeline` without one, or with `--no-ground` | `PREFIX_buildings.osgt` | Buildings only (`--no-buildings`: no scene) |
 | `ground` command | `scene.osgt` | The same, from map files and a built `.xodr` ([CLI](cli-reference.md#ground)) |
+| `pipeline --gltf`, `export-gltf` | `PREFIX.glb` | The same scene with our own road mesh, for Blender ([below](#blender-export-glb)) |
 
 esmini takes a single SceneGraphFile, so ground and buildings share one
 file. `view --scenegraph` shows it with the roads.
@@ -125,10 +126,49 @@ is open.
    lowest ground under it, and its height counts from the highest. Footprints
    touching water are dropped.
 
+## Blender export (.glb)
+
+esmini builds its road mesh from the `.xodr` itself, so the `.osgt` holds no
+roads. For Blender, `pipeline --gltf` (or `export-gltf` on a built `.xodr`)
+writes one binary glTF 2.0 file with the roads and the scene meshes:
+
+```bash
+python -m cli pipeline lsystem --preset hill_town --maps --gltf -o hills
+python -m cli export-gltf out/<hash>/hills.xodr --map-file elevation=out/<hash>/hills_elevation.npz \
+    --map-file terrain=out/<hash>/hills_terrain.npz --graph out/<hash>/hills.json --buildings
+```
+
+Blender: *File → Import → glTF 2.0*.
+
+- **Roads** (`roads.py`). Every lane of every road and connecting road is a
+  strip between its inner and outer border. It is sampled every `gltf.step`
+  (2 m) and at both ends of each lane section. It follows the reference
+  line, lane offset, widths, elevation, superelevation and lane `<height>`,
+  as `surface.py` does for the ground. Lanes of type `none` are left out.
+  UVs are (s, t) in metres, so a tiling texture keeps its scale along and
+  across the road. The junction fills join the roads with UVs (x, y).
+- **Nodes.** `roads`, `ground`, `structures` and `buildings`, one object
+  each in Blender. Each node has one primitive per material.
+- **Materials** are plain colours, named for texturing in Blender:
+  - `lane_<type>` for each lane type in `gltf.lane_colors` (`driving`,
+    `median`, ...); other types use `lane_other`.
+  - `ground` keeps the terrain colours as vertex colours, with UVs (x, y).
+  - `concrete` for the structures, `buildings` for the buildings.
+- **Axes.** glTF is y-up. Points are written as (x, z, −y) after subtracting
+  an origin near the network's centre, which keeps float32 vertices precise
+  on big maps. Blender's importer turns the scene back to z-up, in OpenDRIVE
+  axes around that origin. The origin is stored in the scene's extras
+  (`kadmos_origin`, [m]) and logged.
+
+`gltf.py` is a small writer of its own (numpy and `struct`, no glTF
+library).
+
 ## Formats
 
 - **`.osgt`** (OpenSceneGraph ASCII, z-up; `osgt.py`): what esmini loads.
   - esmini's bundled OSG can't read `.obj`.
   - esmini loads scene graphs only when it has a window (`view`).
-- **`.obj` + `.mtl`** (y-up by default, `buildings.y_up`): for Blender,
-  MeshLab and similar tools.
+- **`.glb`** (binary glTF 2.0, y-up; `gltf.py`): the whole scene with the
+  roads, for Blender ([above](#blender-export-glb)).
+- **`.obj` + `.mtl`** (y-up by default, `buildings.y_up`): buildings only, for
+  Blender, MeshLab and similar tools.

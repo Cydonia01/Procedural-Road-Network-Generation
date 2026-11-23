@@ -251,6 +251,7 @@ pipeline:  # what `pipeline` writes and checks besides the .xodr; each has a --n
   ground: true             # the ground mesh, when there is an elevation map (PREFIX_scene.osgt)
   lane_plot: true          # the built lanes, with HD maps (PREFIX_hd.png)
   drive_check: true        # every junction movement and lane driven with esmini's RoadManager
+  gltf: false              # the whole scene with our own road mesh as PREFIX.glb, for Blender
 
 ground:  # 3D ground mesh from the maps for esmini, cut around the roads (`pipeline --ground`, `ground`)
   cell_size: 20.0          # mesh resolution [m]
@@ -260,6 +261,16 @@ ground:  # 3D ground mesh from the maps for esmini, cut around the roads (`pipel
   slope_reach: 40.0        # ... within this distance of a road edge [m]
   under_bridge: 2.0        # land under a bridge stays this far below its deck [m]
   shore_smoothing: 1.0     # shoreline rounded with a radius of this many terrain cells
+
+gltf:  # Blender export (.glb): `export-gltf`, `pipeline --gltf` (kadmos/scene/export.py, roads.py)
+  step: 2.0                # lane strips sampled this often along a road [m]
+  lane_colors:             # base colour per lane type (material lane_<type>), RGB in [0, 1]
+    driving: [0.317, 0.317, 0.317]   # esmini's asphalt; also the junction fills
+    median: [0.42, 0.55, 0.33]
+    sidewalk: [0.7, 0.7, 0.68]
+    shoulder: [0.4, 0.4, 0.4]
+    border: [0.55, 0.55, 0.55]
+    other: [0.5, 0.45, 0.4]          # every other lane type (lane_other)
 
 structures:  # bridge decks, piers and tunnel portals in the scene (kadmos/scene/structures.py)
   enabled: true

@@ -54,7 +54,8 @@ not a current goal: 4000 x 4000 m networks already work.
                   hdmap.py, schema.py
     metrics/      geometry.py, network.py, hdmap.py, sweep.py
     sim/          esmini.py, drive_check.py, screenshot.py
-    scene/        surface.py, ground.py, structures.py, buildings.py, parcels.py, junctions.py, osgt.py
+    scene/        surface.py, ground.py, structures.py, buildings.py, parcels.py, junctions.py, osgt.py,
+                  roads.py, gltf.py, export.py
     config.py, history.py, defaults.yaml, presets.yaml
   cli.py
   tests/

@@ -21,6 +21,7 @@ from kadmos.graph.io import load_json
 from kadmos.graph.model import RoadGraph
 from kadmos.maps.model import load_npz
 from kadmos.opendrive import HDMAP_VERSION
+from kadmos.scene.gltf import read_glb
 from kadmos.validate.hdmap import check_hdmap
 from tests.grids import grid_cli
 from tests.shared import grown
@@ -52,7 +53,7 @@ def city(tmp_path_factory) -> tuple[Path, list[str]]:
         with pytest.MonkeyPatch.context() as mp:
             mp.delenv("OPENDRIVE_XSD", raising=False)
             code = main(["--no-history", "pipeline", "lsystem", *CITY, "--maps", "--ground", "--buildings",
-                         "--lane-plot", "--no-drive-check", "-o", str(prefix)])
+                         "--gltf", "--lane-plot", "--no-drive-check", "-o", str(prefix)])
     finally:
         root.removeHandler(records)
         root.setLevel(level)
@@ -72,6 +73,8 @@ def test_writes_every_output(city):
     assert not (out / "city_style.npz").exists() and not (out / "city_buildings.osgt").exists()
     text = (out / "city_scene.osgt").read_text()
     assert 'Name "ground"' in text and 'Name "buildings"' in text
+    doc, _ = read_glb(prefix.with_suffix(".glb"))  # --gltf: the same scene with our road mesh
+    assert {"roads", "ground", "buildings"} <= {n["name"] for n in doc["nodes"]}
 
 
 @pytest.mark.slow
