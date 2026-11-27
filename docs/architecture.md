@@ -191,7 +191,11 @@ kadmos/
     marks.py               lane marks and marking objects (stop lines, arrows) of the .xodr for the .glb
     signals.py             signs and traffic lights of the .xodr as simple models for the .glb
     gltf.py                binary glTF 2.0 writer (y-up, origin near the centre)
-    export.py              the scene and the roads as one .glb (nodes, materials)
+    export.py              the scene and the roads as one .glb (nodes, materials, UVs)
+    textures.py            the texture library (scripts/fetch_textures.py) the .glb embeds
+scripts/                   standalone tools: fetch_textures.py (texture library, run once),
+                           blender_scene.py (a .glb in Blender with sun, sky, camera; .blend, render)
+assets/textures/           texture library from fetch_textures.py (git-ignored)
 tests/                     pytest suite; fixtures/ and data/ hold RoadGraph JSONs
 runs/                      example runs (examples.sh, generated README) and inputs
 plans/                     plans, discussions and reviews, with the prompts behind them

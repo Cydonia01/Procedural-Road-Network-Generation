@@ -23,6 +23,7 @@ what you need.
 | Look at a network in esmini, or take a screenshot | [CLI reference → view](cli-reference.md#view) |
 | Add ground and buildings to the 3D view | [3D scene](scene.md) |
 | Open a network in Blender (`.glb`) | [3D scene → Blender export](scene.md#blender-export-glb), [CLI reference → export-gltf](cli-reference.md#export-gltf) |
+| Texture the `.glb`, render it in Blender | [3D scene → Textures](scene.md#textures), [Scene script](scene.md#scene-script) |
 | Run in Docker, or open GUI windows from it | [Docker](docker.md) |
 | Add a generator, map or other component, or run tests | [Development](development.md) |
 | See example commands for every stage | [Example runs](../runs/README.md) |
@@ -42,6 +43,7 @@ what you need.
 | `kadmos/validate/`, `kadmos/metrics/`, `kadmos/sim/drive_check.py` | [Validation and metrics](validation.md) |
 | `kadmos/sim/esmini.py`, `kadmos/sim/screenshot.py` | [CLI reference → view](cli-reference.md#view) |
 | `kadmos/scene/` | [3D scene](scene.md) |
+| `scripts/` | [3D scene → Textures](scene.md#textures), [Scene script](scene.md#scene-script) |
 | `tests/` | [Development](development.md#tests) |
 | `Dockerfile`, `compose.yaml`, `docker/` | [Docker](docker.md) |
 

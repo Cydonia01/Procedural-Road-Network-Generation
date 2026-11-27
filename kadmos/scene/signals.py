@@ -11,8 +11,8 @@ hOffset turns it further).
   (octagon, triangle, circle, diamond, square: SIGNS), with a rim and a face
   in the sign's colours, and a grey back. The face's material is named after
   the sign (sign_<country>_<type>[_<subtype>][_<value>], e.g. sign_DE_274_80)
-  and has UVs (0..1 across the plate's square), so an image of the real sign
-  can replace its colour in Blender.
+  and has UVs (0..1 across the plate's square); with an image of the real
+  sign (the texture library) the face covers the whole plate and shows it.
 - **Lights** (dynamic signals, OpenDRIVE 1000001): a post up to zOffset, a
   dark housing of the signal's width and height, and three lamps (red,
   amber, green; two for other light types) on its front.
@@ -121,11 +121,12 @@ def _polygon(soup: _Soup, material: str, outline: np.ndarray, centre: np.ndarray
              up: np.ndarray, normal: np.ndarray, size: tuple[float, float], uv_scale: float = 1.0) -> None:
     """A flat convex polygon (outline in the unit square, counter-clockwise seen from the
     front) at centre, spanned by across x width and up x height, facing normal; fan
-    triangles from the centre. UVs: the unit-square coordinates x uv_scale + 0.5."""
+    triangles from the centre. UVs: the unit-square coordinates x uv_scale + 0.5, v
+    downwards (glTF: v = 0 is the image's top)."""
     pts = centre + outline[:, :1] * size[0] * across + outline[:, 1:] * size[1] * up
     nxt = np.roll(np.arange(len(pts)), -1)
     tris = np.stack([np.broadcast_to(centre, pts.shape), pts, pts[nxt]], axis=1)
-    uv2 = outline * uv_scale + 0.5
+    uv2 = np.column_stack([outline[:, 0], -outline[:, 1]]) * uv_scale + 0.5
     uvs = np.stack([np.full_like(uv2, 0.5), uv2, uv2[nxt]], axis=1)
     if np.dot(np.cross(across, up), normal) < 0:  # mirrored frame: keep the front counter-clockwise
         tris, uvs = tris[:, ::-1], uvs[:, ::-1]
@@ -173,8 +174,10 @@ def is_light(signal: etree._Element) -> bool:
     return signal.get("dynamic") == "yes"
 
 
-def add_sign(soup: _Soup, ev: RoadEval, signal: etree._Element) -> str:
-    """A sign's post, plate (rim, face) and back; returns the face's material name."""
+def add_sign(soup: _Soup, ev: RoadEval, signal: etree._Element, imaged: frozenset[str] = frozenset()) -> str:
+    """A sign's post, plate (rim, face) and back; returns the face's material name. A sign
+    in imaged (it has an image of the real sign) gets one face over the whole plate
+    instead, UVs 0..1 across it: the image has the rim."""
     base, n = _place(ev, signal)
     up = np.array([0.0, 0.0, 1.0])
     across = np.array([-n[1], n[0], 0.0])
@@ -186,8 +189,11 @@ def add_sign(soup: _Soup, ev: RoadEval, signal: etree._Element) -> str:
     face = sign_name(signal)
     rim_material = {RED: "sign_rim_red", WHITE: "sign_rim_white"}.get(rim, "sign_rim_grey")
     _prism(soup, "pole", base - up * POLE_BELOW, base[2] + z0 + h, POLE_RADIUS)
-    _polygon(soup, rim_material, outline, centre, across, up, n, (w, h))
-    _polygon(soup, face, outline * FACE_SCALE, centre + n * 0.005, across, up, n, (w, h))
+    if face in imaged:
+        _polygon(soup, face, outline, centre + n * 0.005, across, up, n, (w, h))
+    else:
+        _polygon(soup, rim_material, outline, centre, across, up, n, (w, h))
+        _polygon(soup, face, outline * FACE_SCALE, centre + n * 0.005, across, up, n, (w, h))
     _polygon(soup, "sign_back", outline, centre - n * 0.005, -across, up, -n, (w, h))
     return face
 
@@ -211,9 +217,10 @@ def add_light(soup: _Soup, ev: RoadEval, signal: etree._Element) -> None:
                  (2 * r, 2 * r))
 
 
-def signal_primitives(root: etree._Element, evals: Optional[dict[str, RoadEval]] = None
-                      ) -> tuple[list[Primitive], list[Material]]:
-    """Every signal of the .xodr as primitives (one per material), and those materials."""
+def signal_primitives(root: etree._Element, evals: Optional[dict[str, RoadEval]] = None,
+                      imaged: frozenset[str] = frozenset()) -> tuple[list[Primitive], list[Material]]:
+    """Every signal of the .xodr as primitives (one per material), and those materials.
+    imaged: sign face materials with an image of the real sign (see add_sign)."""
     soup = _Soup()
     faces: dict[str, RGB] = {}
     signs = lights = 0
@@ -230,7 +237,7 @@ def signal_primitives(root: etree._Element, evals: Optional[dict[str, RoadEval]]
                 add_light(soup, ev, signal)
                 lights += 1
             else:
-                faces[add_sign(soup, ev, signal)] = SIGNS.get(signal.get("type", ""), OTHER_SIGN)[2]
+                faces[add_sign(soup, ev, signal, imaged)] = SIGNS.get(signal.get("type", ""), OTHER_SIGN)[2]
                 signs += 1
     prims = soup.primitives()
     used = {p.material for p in prims}

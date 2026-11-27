@@ -139,7 +139,64 @@ python -m cli export-gltf out/<hash>/hills.xodr --map-file elevation=out/<hash>/
     --map-file terrain=out/<hash>/hills_terrain.npz --graph out/<hash>/hills.json --buildings
 ```
 
-Blender: *File → Import → glTF 2.0*.
+Blender: *File → Import → glTF 2.0*, or the scene script below. A city is
+several kilometres wide: raise the view's *Clip End*.
+
+### Textures
+
+Without textures every material is a plain colour. To get real surfaces,
+download the texture library once per checkout:
+
+```bash
+python scripts/fetch_textures.py            # into assets/textures/ (git-ignored, about 30 MB)
+```
+
+The script needs only Python's standard library, so it runs on the host
+too. It downloads two kinds of files, and records each one's source and
+licence in `assets/textures/manifest.json`:
+
+- **Surfaces** from [ambientCG](https://ambientcg.com) (CC0): asphalt,
+  concrete, paving, grass, ground, a facade and roof gravel. Each comes with
+  its colour, OpenGL normal and roughness maps, and its real size.
+- **German sign images** from Wikimedia Commons (public domain as official
+  works): one PNG per sign type the builder writes, and every speed limit
+  from 10 to 130 km/h.
+
+From then on every `.glb` embeds the images of the materials the manifest
+names (`gltf.textures`; `$KADMOS_TEXTURES` overrides it, `off` for plain
+colours):
+
+- Surfaces are tiled at their real size: UVs are in metres, and
+  KHR_texture_transform scales them by 1 / tile.
+- A sign with an image gets one face over its whole plate showing it,
+  with transparent texels cut out.
+
+Any glTF viewer then shows the textured scene. Each `.glb` grows by about
+26 MB of images.
+
+### Scene script
+
+```bash
+blender -b --python scripts/blender_scene.py -- NET.glb --blend NET.blend [--render NET.png]
+        [--engine eevee|cycles] [--samples N] [--size W H] [--camera=X,Y,Z,TX,TY,TZ]
+```
+
+Use `flatpak run org.blender.Blender` for `blender` with the Flatpak, and
+give absolute paths, because the sandbox does not see `/tmp`. Leave out
+`-b` to stay in the UI.
+
+The script imports the `.glb` and adds what glTF has no place for:
+
+- a sun and a sky;
+- a camera, looking at the whole network from the south-west, or from
+  `--camera` (position and target in the `.glb`'s coordinates [m]);
+- clip distances that fit the city;
+- render settings.
+
+It then saves a `.blend` and/or renders one image. Cycles renders without a
+GPU; EEVEE needs one.
+
+### What the .glb holds
 
 - **Roads** (`roads.py`). Every lane of every road is a strip between its
   inner and outer border. It is sampled every `gltf.step` (2 m) and at both
@@ -175,24 +232,36 @@ Blender: *File → Import → glTF 2.0*.
     diamonds (306, 307), circles (274, 209, 214, 215), or a square.
   - The plate has a rim, a face and a grey back. The face's material is
     named after the sign (`sign_DE_274_80`, `sign_DE_206`, ...) and has UVs
-    0..1 across the plate, so an image of the real sign can replace its
-    colour.
+    0..1 across the plate. With the sign's image ([textures](#textures)), one
+    face covers the plate and shows it.
   - A light (dynamic signal) has a post, a dark housing and three lamps
     (red, amber, green), all plain colours.
 - **Nodes.** `roads`, `marks`, `signals`, `ground`, `structures` and
   `buildings`, one object each in Blender. Each node has one primitive per
   material.
-- **Materials** are plain colours, named for texturing in Blender:
+- **Ground, structures, buildings.**
+  - The ground is split per triangle into `ground_land`,
+    `ground_vegetation` (mostly vegetation colour) and `water` (a smooth,
+    reflecting blue), with UVs (x, y).
+  - Untextured land and vegetation keep the terrain colours as vertex
+    colours.
+  - Buildings are split into `building_wall` and `building_roof`. Walls
+    get UVs along the facade and up from its base, so a facade texture
+    stands upright on the ground. Roofs and anything else facing up get
+    (x, y).
+  - Structures (`concrete`) get UVs the same way.
+- **Materials.** Every material is named, so it can be textured or replaced
+  in Blender:
   - `lane_<type>` for each lane type in `gltf.lane_colors` (`driving`,
     `median`, ...); other types use `lane_other`.
   - `mark_white`, `mark_yellow`, ... for the marks.
   - `pole`, `sign_back`, `sign_rim_*`, `sign_<country>_<type>...`,
     `light_housing` and `light_red` / `_amber` / `_green` for the signals.
-  - `ground` keeps the terrain colours as vertex colours, with UVs (x, y).
-  - `concrete` for the structures, `buildings` for the buildings.
+  - `ground_land`, `ground_vegetation`, `water`, `concrete`,
+    `building_wall` and `building_roof` for the scene.
 
   Colours are given as displayed (sRGB) and written linear, as glTF
-  requires.
+  requires. UVs follow glTF, where v runs down the image.
 - **Axes.** glTF is y-up. Points are written as (x, z, −y) after subtracting
   an origin near the network's centre, which keeps float32 vertices precise
   on big maps. Blender's importer turns the scene back to z-up, in OpenDRIVE

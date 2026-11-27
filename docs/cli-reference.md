@@ -49,6 +49,7 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 | `ESMINI_HOME` | esmini root containing `bin/` (fallback `./esmini`) |
 | `OPENDRIVE_XSD` | ASAM OpenDRIVE XSD for the schema check |
 | `KADMOS_HISTORY` | Root of the run folders (default `out`); `off` disables recording |
+| `KADMOS_TEXTURES` | Texture library the `.glb` embeds (default `gltf.textures`, `assets/textures`); `off` for plain colours ([textures](scene.md#textures)) |
 
 ## Parameters and `--config`
 
@@ -296,7 +297,8 @@ The lanes, marks, signs and lights of a built `.xodr` and its sidecar's
 junction fills as one binary glTF for Blender. With an elevation map, it adds the ground (cut around the
 roads, so the network must be draped) and the bridge and tunnel structures.
 `--buildings` adds the `--graph`'s buildings. Parameters go in `gltf:`
-(sampling step, lane colours, `marks`, `mark_lift`, `signals`), `ground:`, `structures:` and `buildings:`.
+(sampling step, lane colours, `marks`, `mark_lift`, `signals`, `textures`: the
+library from `scripts/fetch_textures.py`, embedded when there), `ground:`, `structures:` and `buildings:`.
 See [Blender export](scene.md#blender-export-glb).
 
 ## view

@@ -30,18 +30,27 @@ log = logging.getLogger(__name__)
 RGB = tuple[float, float, float]
 FLOAT, UINT = 5126, 5125  # glTF component types
 ARRAY_BUFFER, ELEMENT_ARRAY_BUFFER = 34962, 34963
+REPEAT, CLAMP = 10497, 33071  # sampler wrap modes
+MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 
 
 @dataclass(frozen=True)
 class Material:
     """A PBR metallic-roughness material: a base colour (sRGB, as displayed; written
-    linear), and a texture image (relative URI) when one is given."""
+    linear), and image files embedded in the .glb when given: base colour, OpenGL normal
+    map, roughness map (greyscale; read from its green channel, metallic stays 0). tile:
+    what one image covers along u, v [m] (UVs are in metres: KHR_texture_transform scales
+    them by 1 / tile); None: UVs 0..1 across the image (sign faces)."""
 
     name: str
     color: RGB = (0.8, 0.8, 0.8)
     roughness: float = 0.9
     metallic: float = 0.0
-    texture: Optional[str] = None
+    texture: Optional[Path] = None
+    normal_map: Optional[Path] = None
+    roughness_map: Optional[Path] = None
+    tile: Optional[tuple[float, float]] = None
+    alpha_mask: bool = False  # transparent texels cut out (sign images)
 
 
 @dataclass
@@ -112,6 +121,36 @@ def write_glb(path: Union[str, Path], nodes: list[Node], materials: list[Materia
     images: list[dict] = []
     textures: list[dict] = []
 
+    image_index: dict[Path, int] = {}
+    texture_index: dict[tuple[int, bool], int] = {}
+    samplers = [{"wrapS": REPEAT, "wrapT": REPEAT, "magFilter": 9729, "minFilter": 9987},
+                {"wrapS": CLAMP, "wrapT": CLAMP, "magFilter": 9729, "minFilter": 9987}]
+    transform_used = False
+
+    def add_bytes(raw: bytes) -> int:
+        while len(blob) % 4:
+            blob.append(0)
+        views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": len(raw)})
+        blob.extend(raw)
+        return len(views) - 1
+
+    def texture(path: Path, tile: Optional[tuple[float, float]]) -> dict:
+        """A textureInfo for an image file (embedded once), repeating with tile, clamped without."""
+        nonlocal transform_used
+        path = Path(path)
+        if path not in image_index:
+            images.append({"bufferView": add_bytes(path.read_bytes()), "mimeType": MIME[path.suffix.lower()]})
+            image_index[path] = len(images) - 1
+        key = (image_index[path], tile is None)
+        if key not in texture_index:
+            textures.append({"source": key[0], "sampler": 1 if tile is None else 0})
+            texture_index[key] = len(textures) - 1
+        info: dict = {"index": texture_index[key]}
+        if tile is not None:
+            transform_used = True
+            info["extensions"] = {"KHR_texture_transform": {"scale": [1.0 / tile[0], 1.0 / tile[1]]}}
+        return info
+
     def add(data: np.ndarray, kind: str, target: int, bounds: bool = False) -> int:
         raw = np.ascontiguousarray(data).tobytes()
         while len(blob) % 4:
@@ -153,11 +192,16 @@ def write_glb(path: Union[str, Path], nodes: list[Node], materials: list[Materia
     for m in materials:
         pbr: dict = {"baseColorFactor": [*map(float, linear(m.color)), 1.0],
                      "metallicFactor": float(m.metallic), "roughnessFactor": float(m.roughness)}
+        mat: dict = {"name": m.name, "pbrMetallicRoughness": pbr}
         if m.texture:
-            images.append({"uri": m.texture})
-            textures.append({"source": len(images) - 1})
-            pbr["baseColorTexture"] = {"index": len(textures) - 1}
-        gl_materials.append({"name": m.name, "pbrMetallicRoughness": pbr})
+            pbr["baseColorTexture"] = texture(m.texture, m.tile)
+        if m.roughness_map:
+            pbr["metallicRoughnessTexture"] = texture(m.roughness_map, m.tile)
+        if m.normal_map:
+            mat["normalTexture"] = texture(m.normal_map, m.tile)
+        if m.alpha_mask:
+            mat["alphaMode"], mat["alphaCutoff"] = "MASK", 0.5
+        gl_materials.append(mat)
 
     doc: dict = {
         "asset": {"version": "2.0", "generator": "kadmos"},
@@ -169,7 +213,9 @@ def write_glb(path: Union[str, Path], nodes: list[Node], materials: list[Materia
         "buffers": [{"byteLength": len(blob)}],
     }
     if images:
-        doc["images"], doc["textures"] = images, textures
+        doc["images"], doc["textures"], doc["samplers"] = images, textures, samplers
+    if transform_used:
+        doc["extensionsUsed"] = ["KHR_texture_transform"]
     while len(blob) % 4:
         blob.append(0)
     js = json.dumps(doc, separators=(",", ":")).encode()

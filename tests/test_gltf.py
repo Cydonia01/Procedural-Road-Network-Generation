@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 import shapely
@@ -10,16 +12,20 @@ from shapely.geometry import Polygon
 
 from cli import main
 from kadmos.graph.io import load_json
+from kadmos.maps.terrain import LAND, TERRAIN_COLORS, VEGETATION, WATER
 from kadmos.opendrive.builder import OpenDriveBuilder
 from kadmos.opendrive.hdmap import HdMapParams
-from kadmos.scene.export import GltfParams, scene_nodes
+from kadmos.scene.export import GltfParams, box_uvs, building_parts, ground_parts, scene_nodes
 from kadmos.scene.gltf import Material, Node, Primitive, accessor_array, linear, read_glb, write_glb
-from kadmos.scene.osgt import Mesh
 from kadmos.scene.junctions import SceneParams, junction_fill_mesh
 from kadmos.scene.marks import dashes, lane_mark_strips, mark_lines, mark_primitives, object_mark_strips
+from kadmos.scene.osgt import IndexedMesh, Mesh
 from kadmos.scene.roads import LaneStrip, frame, junction_surface, lane_strips, road_primitives
 from kadmos.scene.signals import _place, shape, sign_name, signal_primitives
+from kadmos.scene.textures import TextureLibrary, load_library
 from kadmos.validate.continuity import RoadEval
+
+NONE = TextureLibrary()  # plain colours
 
 
 def _triangle(material: str = "m", z: float = 0.0) -> Primitive:
@@ -58,12 +64,27 @@ def test_glb_rejects_an_unknown_material(tmp_path):
         write_glb(tmp_path / "t.glb", [Node("n", [_triangle("missing")])], [Material("m")])
 
 
-def test_material_texture_is_referenced(tmp_path):
+def test_textures_are_embedded_and_tiled(tmp_path):
+    color, normal, sign = tmp_path / "c.jpg", tmp_path / "n.jpg", tmp_path / "s.png"
+    for f, data in ((color, b"\xff\xd8jpeg-color"), (normal, b"\xff\xd8jpeg-normal"), (sign, b"\x89PNGsign")):
+        f.write_bytes(data)
     path = tmp_path / "t.glb"
-    write_glb(path, [Node("n", [_triangle()])], [Material("m", texture="textures/asphalt.jpg")])
-    doc, _ = read_glb(path)
-    assert doc["images"] == [{"uri": "textures/asphalt.jpg"}]
-    assert doc["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] == {"index": 0}
+    write_glb(path, [Node("n", [_triangle("a"), _triangle("b"), _triangle("s")])],
+              [Material("a", texture=color, normal_map=normal, roughness_map=color, tile=(2.0, 4.0)),
+               Material("b", texture=color, tile=(2.0, 4.0)), Material("s", texture=sign, alpha_mask=True)])
+    doc, blob = read_glb(path)
+    assert len(doc["images"]) == 3  # each file embedded once
+    img = {i["mimeType"]: i for i in doc["images"] if i["mimeType"] == "image/png"}["image/png"]
+    view = doc["bufferViews"][img["bufferView"]]
+    assert blob[view["byteOffset"]:view["byteOffset"] + view["byteLength"]] == b"\x89PNGsign"
+    a, b, s = doc["materials"]
+    tex = a["pbrMetallicRoughness"]["baseColorTexture"]
+    assert tex["extensions"]["KHR_texture_transform"]["scale"] == [0.5, 0.25]  # UVs in metres
+    assert "normalTexture" in a and "metallicRoughnessTexture" in a["pbrMetallicRoughness"]
+    assert b["pbrMetallicRoughness"]["baseColorTexture"]["index"] == tex["index"]  # shared texture
+    assert "extensions" not in s["pbrMetallicRoughness"]["baseColorTexture"] and s["alphaMode"] == "MASK"
+    assert doc["samplers"][doc["textures"][tex["index"]]["sampler"]]["wrapS"] == 10497  # repeat
+    assert doc["extensionsUsed"] == ["KHR_texture_transform"]
 
 
 @pytest.fixture(scope="module")
@@ -109,12 +130,12 @@ def test_scene_nodes_group_meshes_and_name_materials(built):
     _, root = built
     building = Mesh("buildings", [((0, 0, 0), (1, 0, 0), (0, 1, 0))], [(0, 0, 1)], (0.7, 0.6, 0.5))
     fill = Mesh("junction_fill", [((0, 0, 0), (1, 0, 0), (0, 1, 0))], [(0, 0, 1)], (0.3, 0.3, 0.3))
-    nodes, materials = scene_nodes(root, [fill, building], GltfParams(marks=False, signals=False))
+    nodes, materials = scene_nodes(root, [fill, building], GltfParams(marks=False, signals=False), library=NONE)
     by_name = {n.name: n for n in nodes}
     assert set(by_name) == {"roads", "buildings"}
     assert by_name["roads"].primitives[-1].material == "lane_driving"  # the fill joins the roads
     colors = {m.name: m.color for m in materials}
-    assert colors["buildings"] == (0.7, 0.6, 0.5)
+    assert colors["building_roof"] == (0.7, 0.6, 0.5)  # the triangle faces up: a roof
     assert colors["lane_driving"] == tuple(GltfParams().lane_colors["driving"])
 
 
@@ -237,7 +258,83 @@ def test_fill_grows_under_the_lanes():
 
 def test_scene_has_marks_and_signals(built):
     _, root = built
-    nodes, materials = scene_nodes(root, [], GltfParams())
+    nodes, materials = scene_nodes(root, [], GltfParams(), library=NONE)
     assert [n.name for n in nodes] == ["roads", "marks", "signals"]
-    nodes, _ = scene_nodes(root, [], GltfParams(marks=False, signals=False))
+    nodes, _ = scene_nodes(root, [], GltfParams(marks=False, signals=False), library=NONE)
     assert [n.name for n in nodes] == ["roads"]
+
+
+def test_box_uvs_run_along_walls_and_up_from_their_base():
+    wall = np.array([[[0.0, 0.0, 10.0], [4.0, 0.0, 10.0], [4.0, 0.0, 13.0]]])  # facing -y
+    uv = box_uvs(wall, np.array([[0.0, -1.0, 0.0]]))[0]
+    np.testing.assert_allclose(np.abs(uv[1, 0] - uv[0, 0]), 4.0)  # along the wall [m]
+    np.testing.assert_allclose(uv[:, 1], [0.0, 0.0, -3.0])  # up from the base; glTF v runs down
+    roof = np.array([[[1.0, 2.0, 13.0], [3.0, 2.0, 13.0], [3.0, 5.0, 13.0]]])
+    np.testing.assert_allclose(box_uvs(roof, np.array([[0.0, 0.0, 1.0]]))[0], roof[0, :, :2])
+
+
+def test_buildings_split_into_walls_and_roofs():
+    tris = [((0, 0, 0), (4, 0, 0), (4, 0, 3)), ((0, 0, 3), (4, 0, 3), (4, 4, 3))]
+    parts = building_parts(Mesh("buildings", tris, [(0, -1, 0), (0, 0, 1)], (0.7, 0.6, 0.5)))
+    assert [p.material for p in parts] == ["building_wall", "building_roof"]
+    assert all(len(p.indices) == 3 and p.uvs is not None for p in parts)
+
+
+def test_ground_splits_into_land_vegetation_and_water():
+    land, veg, water = (TERRAIN_COLORS[k] for k in (LAND, VEGETATION, WATER))
+    mix = tuple(0.2 * a + 0.8 * b for a, b in zip(land, veg))  # mostly vegetation
+    vertices = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0), (2, 0, 0), (2, 1, 0), (3, 0, 0), (3, 1, 0)]
+    colors = [land, land, land, mix, mix, mix, water, water]
+    tris = [0, 1, 2, 1, 4, 3, 4, 5, 3, 4, 6, 7]  # land, land-ish (1 land + 2 mix: veg), veg, water+mix
+    mesh = IndexedMesh("ground", vertices, [(0, 0, 1)] * 8, colors, tris)
+    by = {p.material: p for p in ground_parts(mesh)}
+    assert set(by) == {"ground_land", "ground_vegetation"}  # the last triangle is not all water
+    assert len(by["ground_land"].indices) == 3 and len(by["ground_vegetation"].indices) == 9
+    mesh.indices = [6, 7, 5]
+    mesh.colors = [land, land, land, mix, mix, water, water, water]
+    (wet,) = ground_parts(mesh, colors=False)
+    assert wet.material == "water" and wet.colors is None
+    np.testing.assert_allclose(wet.uvs, wet.positions[:, :2])
+
+
+def test_imaged_signs_get_one_face_over_the_plate(built):
+    _, root = built
+    prims, _ = signal_primitives(root, imaged=frozenset({"sign_DE_206"}))
+    by = {p.material: p for p in prims}
+    face = by["sign_DE_206"]
+    assert face.uvs.min() == pytest.approx(0.0) and face.uvs.max() == pytest.approx(1.0)
+    assert "sign_rim_white" not in by  # the stop sign's rim is in its image
+    up = face.uvs[face.positions[:, 2].argmax()]
+    assert up[1] == pytest.approx(0.0, abs=0.08)  # the plate's top shows the image's top (v = 0)
+
+
+def test_texture_library_applies_to_named_materials(tmp_path, monkeypatch):
+    monkeypatch.delenv("KADMOS_TEXTURES")
+    (tmp_path / "asphalt").mkdir()
+    (tmp_path / "signs").mkdir()
+    for f in ("asphalt/color.jpg", "asphalt/normal.jpg", "signs/sign_DE_206.png"):
+        (tmp_path / f).write_bytes(b"x")
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        "textures": {"asphalt": {"files": {"color": "asphalt/color.jpg", "normal": "asphalt/normal.jpg",
+                                           "roughness": "asphalt/roughness.jpg"}, "tile": [2.5, 2.5]},
+                     "gone": {"files": {"color": "gone/color.jpg"}, "tile": [1, 1]}},
+        "materials": {"lane_driving": "asphalt", "concrete": "gone"},
+        "signs": {"sign_DE_206": {"file": "signs/sign_DE_206.png"}, "sign_DE_205": {"file": "signs/x.png"}},
+    }))
+    lib = load_library(tmp_path)
+    assert set(lib.materials) == {"lane_driving"} and set(lib.signs) == {"sign_DE_206"}
+    m = lib.apply(Material("lane_driving", (0.3, 0.3, 0.3)))
+    assert m.color == (1.0, 1.0, 1.0) and m.tile == (2.5, 2.5) and m.roughness_map is None  # file missing
+    assert m.normal_map == tmp_path / "asphalt/normal.jpg"
+    assert lib.apply(Material("sign_DE_206")).alpha_mask
+    assert lib.apply(Material("concrete")) == Material("concrete")
+    assert load_library(tmp_path / "missing").empty and load_library("").empty
+    monkeypatch.setenv("KADMOS_TEXTURES", "off")
+    assert load_library(tmp_path).empty
+    monkeypatch.setenv("KADMOS_TEXTURES", str(tmp_path))
+    assert not load_library("elsewhere").empty
+    monkeypatch.delenv("KADMOS_TEXTURES")
+    # the export embeds them
+    nodes, materials = scene_nodes(None, [Mesh("junction_fill", [((0, 0, 0), (1, 0, 0), (0, 1, 0))],
+                                                [(0, 0, 1)], (0.3, 0.3, 0.3))], library=lib)
+    assert materials[0].texture == tmp_path / "asphalt/color.jpg"

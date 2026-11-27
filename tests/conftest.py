@@ -3,11 +3,19 @@ import yaml
 
 import kadmos.config
 from kadmos.history import ENV_VAR
+from kadmos.scene.textures import TEXTURES_ENV
 
 # What `pipeline` adds by default (defaults.yaml `pipeline:`): off in tests, which ask
 # for it with --buildings, --ground, ... where they need it (the drive-check alone would
 # run esmini on every pipeline). tests/test_pipeline_defaults.py checks the real defaults.
 PIPELINE_OFF = {"buildings": False, "ground": False, "lane_plot": False, "drive_check": False}
+
+
+@pytest.fixture(autouse=True)
+def _no_texture_library(monkeypatch):
+    """The .glb's texture library (scripts/fetch_textures.py) may or may not be in a
+    checkout: off, so every test sees plain colours (tests that need one build their own)."""
+    monkeypatch.setenv(TEXTURES_ENV, "off")
 
 
 @pytest.fixture(autouse=True)
