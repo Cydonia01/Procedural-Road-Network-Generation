@@ -462,7 +462,7 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     hd = hd_params(args)
     outputs(args, "elevation" in layers)
     # The scene draws the junction surface no lane covers too (under the .xodr's patch objects).
-    fill = (args.ground or args.buildings) and section(args.cfg, "scene")["junction_fill"]
+    fill = (args.ground or args.buildings or args.gltf) and section(args.cfg, "scene")["junction_fill"]
     if hd.enabled:
         before, graph = graph, annotate_graph(graph, layers, args.cfg)
         if graph is not before:
@@ -496,27 +496,21 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
         return []
 
     def scene() -> list:
+        """The scene file (ground and buildings: PREFIX_scene.osgt; buildings only:
+        PREFIX_buildings.osgt) and/or the .glb, from the same meshes."""
+        from kadmos.scene.osgt import write_osgt
+
         scene_reports: list = []
-        write_scene(graph, layers, Path(f"{prefix}_scene.osgt"), args.cfg, args.seed, args.buildings,
-                    hd.active_cross_section, xodr if xodr.exists() and graph.has_elevation else None,
-                    junction_fills(xodr, fill), scene_reports, na, tree, evals)
+        meshes = scene_meshes(graph, layers, args.cfg, args.seed, args.buildings, hd.active_cross_section,
+                              xodr if xodr.exists() and graph.has_elevation else None,
+                              junction_fills(xodr, fill), scene_reports, na, tree, evals, ground=args.ground)
+        if args.ground or args.buildings:
+            scenegraph = Path(f"{prefix}_scene.osgt" if args.ground else f"{prefix}_buildings.osgt")
+            write_osgt(scenegraph, meshes)
+            log.info("wrote %s", scenegraph)
+        if args.gltf and xodr.exists():
+            export_scene_glb(prefix.with_suffix(".glb"), xodr, meshes, args.cfg, tree, evals)
         return scene_reports
-
-    def buildings() -> list:
-        from kadmos.scene.buildings import BuildingParams, building_mesh
-        from kadmos.scene.osgt import Mesh, write_osgt
-
-        scenegraph = Path(f"{prefix}_buildings.osgt")
-        # Buildings stand on the ground only if the roads do.
-        ground = layers.get("elevation") if graph.has_elevation else None
-        with timed("buildings"):
-            params = BuildingParams(seed=args.seed, **section(args.cfg, "buildings"))
-            tris, normals, n = building_mesh(graph, params, ground, layers.get("terrain"),
-                                             hd.active_cross_section, layers.get("population"), na)
-            write_osgt(scenegraph, [Mesh("buildings", tris, normals, tuple(params.color)),
-                                    *fill_meshes(junction_fills(xodr, fill), args.cfg)])
-        log.info("wrote %s (%d buildings)", scenegraph, n)
-        return []
 
     def drive_check() -> list:
         with timed("drive-check"):
@@ -526,10 +520,8 @@ def cmd_pipeline(args: argparse.Namespace) -> int:
     tasks = {}
     if args.lane_plot and hd.enabled and graph.edges and xodr.exists():  # nothing to draw without roads
         tasks["lane plot"] = lane_plot
-    if args.ground:
+    if args.ground or args.buildings or args.gltf:
         tasks["scene"] = scene
-    elif args.buildings:
-        tasks["buildings"] = buildings
     if args.drive_check and not errors:
         tasks["drive-check"] = drive_check
     with timed("after the xodr"):
@@ -585,11 +577,11 @@ def _send_reports(name: str, task: Callable[[], list], send) -> None:
 
 
 def outputs(args: argparse.Namespace, elevation: bool) -> None:
-    """Resolve the pipeline's --[no-]drive-check, --lane-plot, --buildings and --ground
+    """Resolve the pipeline's --[no-]drive-check, --lane-plot, --buildings, --gltf and --ground
     against the pipeline section of the config. A default ground needs an elevation map
     (else it is left out); an asked-for one without it is an error."""
     on = section(args.cfg, "pipeline")
-    for name in ("drive_check", "lane_plot", "buildings"):
+    for name in ("drive_check", "lane_plot", "buildings", "gltf"):
         if getattr(args, name) is None:
             setattr(args, name, bool(on[name]))
     if args.ground and not elevation:
@@ -614,55 +606,68 @@ def fill_meshes(fills: list, cfg: dict) -> list:
     return [junction_fill_mesh(fills, SceneParams(**section(cfg, "scene")))] if fills else []
 
 
-def write_scene(graph: RoadGraph, layers: dict[str, MapLayer], path: Path, cfg: dict,
-                seed: int, buildings: bool, cross_section=None, xodr: Optional[Path] = None,
-                fills: Optional[list] = None, reports: Optional[list] = None,
-                na: Optional[NetworkAlignment] = None, tree: Optional[etree._ElementTree] = None,
-                evals: Optional[dict] = None) -> None:
-    """Ground mesh (and buildings on it) as one .osgt for esmini's SceneGraphFile. With the
-    built .xodr of a draped network the ground is cut around its roads (and the junction
-    fills), and bridges and tunnels get their structures; with a cross-section (HD maps)
-    buildings stand setback behind the roads (medians included). na: the graph's alignment
-    with the cross-section (final_alignment), if already computed; tree, evals: the written
-    .xodr as validation parsed it (build_and_validate), if at hand."""
+def scene_meshes(graph: RoadGraph, layers: dict[str, MapLayer], cfg: dict, seed: int,
+                 buildings: bool, cross_section=None, xodr: Optional[Path] = None,
+                 fills: Optional[list] = None, reports: Optional[list] = None,
+                 na: Optional[NetworkAlignment] = None, tree: Optional[etree._ElementTree] = None,
+                 evals: Optional[dict] = None, ground: bool = True) -> list:
+    """The scene's meshes: the ground (with ground and an elevation map), the junction
+    fills, and buildings on the ground. With the built .xodr of a draped network the ground
+    is cut around its roads (and the junction fills), and bridges and tunnels get their
+    structures; with a cross-section (HD maps) buildings stand setback behind the roads
+    (medians included). na: the graph's alignment with the cross-section (final_alignment),
+    if already computed; tree, evals: the written .xodr as validation parsed it
+    (build_and_validate), if at hand."""
     import numpy as np
 
     from kadmos.scene.buildings import BuildingParams, building_mesh
     from kadmos.scene.ground import GroundParams, ground_mesh, poke_through
-    from kadmos.scene.osgt import Mesh, write_osgt
+    from kadmos.scene.osgt import Mesh
     from kadmos.scene.structures import StructureParams, structure_mesh
     from kadmos.scene.surface import read_surfaces
 
-    elevation, terrain = layers["elevation"], layers.get("terrain")
-    params = GroundParams(**section(cfg, "ground"))
+    elevation, terrain = layers.get("elevation"), layers.get("terrain")
+    meshes = fill_meshes(fills or [], cfg)
     with timed("scene"):
-        source = tree.getroot() if tree is not None else xodr
-        surfaces = read_surfaces(source, fills, evals=evals) if xodr is not None else None
-        ground = ground_mesh(elevation, terrain, surfaces, params)
-        meshes = [ground.indexed(), *fill_meshes(fills or [], cfg)]
-        samples = covered = 0
-        worst = 0.0
-        if surfaces is not None:
-            samples, covered, worst = poke_through(ground, surfaces, params)
-            log.info("ground: %d of %d road-surface samples under the ground (worst %.2f m)",
-                     covered, samples, worst)
-        report(reports, stages.check_scene(ground, covered, samples, worst))
-        if surfaces is not None:
+        if ground and elevation is not None:
+            params = GroundParams(**section(cfg, "ground"))
+            source = tree.getroot() if tree is not None else xodr
+            surfaces = read_surfaces(source, fills, evals=evals) if xodr is not None else None
+            mesh = ground_mesh(elevation, terrain, surfaces, params)
+            meshes.insert(0, mesh.indexed())
+            samples = covered = 0
+            worst = 0.0
+            if surfaces is not None:
+                samples, covered, worst = poke_through(mesh, surfaces, params)
+                log.info("ground: %d of %d road-surface samples under the ground (worst %.2f m)",
+                         covered, samples, worst)
+            report(reports, stages.check_scene(mesh, covered, samples, worst))
             structures = StructureParams(**section(cfg, "structures"))
-            if structures.enabled and surfaces.spans:
+            if surfaces is not None and structures.enabled and surfaces.spans:
                 def heights(px: np.ndarray, py: np.ndarray) -> np.ndarray:
-                    h = ground.height(px, py)
+                    h = mesh.height(px, py)
                     return np.where(np.isnan(h), elevation.sample(px, py), h)
 
                 meshes.append(structure_mesh(surfaces, heights, structures)[0])
-        n = 0
         if buildings:
+            # Buildings stand on the ground only if the roads do.
+            on = elevation if graph.has_elevation or ground else None
             bp = BuildingParams(seed=seed, **section(cfg, "buildings"))
-            tris, normals, n = building_mesh(graph, bp, elevation, terrain, cross_section,
+            tris, normals, n = building_mesh(graph, bp, on, terrain, cross_section,
                                              layers.get("population"), na)
             meshes.append(Mesh("buildings", tris, normals, tuple(bp.color)))
-        write_osgt(path, meshes)
-    log.info("wrote %s (ground%s)", path, f" + {n} buildings" if buildings else "")
+            log.info("scene: %d buildings", n)
+    return meshes
+
+
+def export_scene_glb(path: Path, xodr: Optional[Path], meshes: list, cfg: dict,
+              tree: Optional[etree._ElementTree] = None, evals: Optional[dict] = None) -> None:
+    """The .xodr's lanes and the scene meshes as one .glb (for Blender)."""
+    from kadmos.scene.export import GltfParams, export_glb
+
+    with timed("glTF"):
+        source = tree.getroot() if tree is not None else xodr
+        export_glb(path, source, meshes, GltfParams(**section(cfg, "gltf")), evals)
 
 
 def load_layers(items: Optional[list[str]], flag: str = "--map-file") -> dict[str, MapLayer]:
@@ -733,6 +738,8 @@ def cmd_annotate(args: argparse.Namespace) -> int:
 
 
 def cmd_ground(args: argparse.Namespace) -> int:
+    from kadmos.scene.osgt import write_osgt
+
     layers = load_layers(args.map_file)
     if "elevation" not in layers:
         raise SystemExit("error: ground needs --map-file elevation=FILE.npz")
@@ -740,9 +747,24 @@ def cmd_ground(args: argparse.Namespace) -> int:
         raise SystemExit("error: ground --buildings needs --graph")
     graph = load_json(args.graph) if args.graph else RoadGraph()
     xodr = Path(args.xodr) if args.xodr else None
-    write_scene(graph, layers, artifact(args, args.output, Path("out") / "scene.osgt"), args.cfg, args.seed,
-                args.buildings and bool(graph.edges), xodr=xodr,
-                fills=junction_fills(xodr, section(args.cfg, "scene")["junction_fill"]) if xodr else None)
+    meshes = scene_meshes(graph, layers, args.cfg, args.seed, args.buildings and bool(graph.edges), xodr=xodr,
+                          fills=junction_fills(xodr, section(args.cfg, "scene")["junction_fill"]) if xodr else None)
+    output = artifact(args, args.output, Path("out") / "scene.osgt")
+    write_osgt(output, meshes)
+    log.info("wrote %s", output)
+    return 0
+
+
+def cmd_export_gltf(args: argparse.Namespace) -> int:
+    layers = load_layers(args.map_file)
+    if args.buildings and not args.graph:
+        raise SystemExit("error: export-gltf --buildings needs --graph")
+    graph = load_json(args.graph) if args.graph else RoadGraph()
+    xodr = Path(args.input)
+    meshes = scene_meshes(graph, layers, args.cfg, args.seed, args.buildings and bool(graph.edges), xodr=xodr,
+                          fills=junction_fills(xodr, section(args.cfg, "scene")["junction_fill"]),
+                          ground="elevation" in layers)
+    export_scene_glb(artifact(args, args.output, xodr.with_suffix(".glb")), xodr, meshes, args.cfg)
     return 0
 
 
@@ -1087,6 +1109,10 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
                        help="export a 3D ground mesh from the maps, cut around the roads, with the buildings "
                             "on it, to <prefix>_scene.osgt (for view --scenegraph); needs an elevation map "
                             f"(default: pipeline.ground, {on['ground']}, when there is one)")
+        g.add_argument("--gltf", action=argparse.BooleanOptionalAction, default=None,
+                       help="export the scene with our own road mesh (lanes, junction fills, ground, "
+                            f"structures, buildings) to <prefix>.glb for Blender (default: pipeline.gltf, "
+                            f"{on['gltf']})")
         _add_pipeline_map_args(g, cfg)
         g.set_defaults(func=cmd_pipeline)
 
@@ -1129,6 +1155,18 @@ def build_parser(config: Optional[dict] = None) -> argparse.ArgumentParser:
     p.add_argument("--buildings", action="store_true", help="add the --graph's buildings")
     p.add_argument("--seed", type=int, default=cfg["seed"], help="building heights (default %(default)s)")
     p.set_defaults(func=cmd_ground)
+
+    p = sub.add_parser("export-gltf", help="the .xodr's lanes and the scene (ground, buildings) as one "
+                                           ".glb for Blender")
+    p.add_argument("input", help=".xodr file (its .roadmap.json sidecar gives the junction fills)")
+    p.add_argument("-o", "--output", help="output .glb (default: <input>.glb)")
+    p.add_argument("--map-file", action="append", metavar="KIND=FILE.npz",
+                   help="elevation map for the ground (cut around the roads; needs a draped network) "
+                        "and terrain map (colors), repeatable; without one: no ground")
+    p.add_argument("--graph", help="RoadGraph JSON the .xodr was built from, for --buildings")
+    p.add_argument("--buildings", action="store_true", help="add the --graph's buildings")
+    p.add_argument("--seed", type=int, default=cfg["seed"], help="building heights (default %(default)s)")
+    p.set_defaults(func=cmd_export_gltf)
 
     p = sub.add_parser("maps", help="list map generators (terrain, elevation, population)")
     p.set_defaults(func=cmd_maps)

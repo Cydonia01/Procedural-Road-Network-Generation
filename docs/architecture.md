@@ -17,6 +17,8 @@ flowchart LR
     B --> X[(".xodr +<br/>.roadmap.json")]
     X --> V{"validators<br/>drive-check"}
     J --> SC["Ground +<br/>buildings"] --> OS[(".osgt")]
+    X --> SC
+    SC --> GLB[(".glb<br/>Blender")]
     MP -.-> SC
     X --> E["esmini view<br/>(presentation)"]
     OS -.-> E
@@ -33,7 +35,7 @@ flowchart LR
 | Build | `RoadGraph` → `.xodr` + `.roadmap.json` | `kadmos/opendrive/` (shape from `kadmos/geometry/`) | [OpenDRIVE builder](opendrive.md), [Road geometry](geometry.md) |
 | Validate | `RoadGraph` / `.xodr` → errors | `kadmos/validate/` | [Validation](validation.md) |
 | Drive-check | `.xodr` + sidecar → pass/fail per movement and lane | `kadmos/sim/drive_check.py` | [Validation](validation.md#drive-check) |
-| Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt` | `kadmos/scene/` | [3D scene](scene.md) |
+| Scene | `.xodr` + `RoadGraph` + maps → ground, structures, junction surface and buildings `.osgt`; with the roads `.glb` (Blender) | `kadmos/scene/` | [3D scene](scene.md) |
 
 `python -m cli pipeline` runs the stages in this order; the lane plot, the scene
 and the drive-check, which read only the built `.xodr` and the graph, run side by
@@ -185,6 +187,15 @@ kadmos/
     junctions.py           junction surface no lane covers, drawn in asphalt
     parcels.py             blocks split into parcels, one building each, heights from population
     osgt.py                OpenSceneGraph ASCII writer
+    roads.py               road mesh of the .xodr (a strip per lane, UVs (s, t); junctions merged flat) for the .glb
+    marks.py               lane marks and marking objects (stop lines, arrows) of the .xodr for the .glb
+    signals.py             signs and traffic lights of the .xodr as simple models for the .glb
+    gltf.py                binary glTF 2.0 writer (y-up, origin near the centre)
+    export.py              the scene and the roads as one .glb (nodes, materials, UVs)
+    textures.py            the texture library (scripts/fetch_textures.py) the .glb embeds
+scripts/                   standalone tools: fetch_textures.py (texture library, run once),
+                           blender_scene.py (a .glb in Blender with sun, sky, camera; .blend, render)
+assets/textures/           texture library from fetch_textures.py (git-ignored)
 tests/                     pytest suite; fixtures/ and data/ hold RoadGraph JSONs
 runs/                      example runs (examples.sh, generated README) and inputs
 plans/                     plans, discussions and reviews, with the prompts behind them
@@ -207,4 +218,5 @@ per successful command
 | `net_<kind>.npz`, `.png` | `pipeline --maps`, `map` | Input map and its preview with the roads ([maps](maps.md)) |
 | `net_buildings.osgt` | `pipeline` without a ground (`--no-buildings` leaves it out) | Buildings for esmini ([scene](scene.md)) |
 | `net_scene.osgt` | `pipeline` with an elevation map (`--no-ground` leaves it out), `ground` | Ground mesh, bridge and tunnel structures, junction surface, buildings |
+| `net.glb` | `pipeline --gltf`, `export-gltf` | Roads (a strip per lane), junction surface, marks, signs and lights, ground, structures, buildings for Blender ([Blender export](scene.md#blender-export-glb)) |
 | `run.yaml` | every recorded command | The command and every parameter that differs from the defaults |

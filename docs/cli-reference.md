@@ -28,6 +28,7 @@ check or simulation failed.
 | [`metrics`](#metrics) | Geometry and network metrics, build-failure sweep |
 | **Scene and simulation** | |
 | [`ground`](#ground) | 3D ground mesh (`.osgt`) from maps |
+| [`export-gltf`](#export-gltf) | The `.xodr`'s lanes and the scene as one `.glb` for Blender |
 | [`view`](#view) | Open an `.xodr` in esmini's `odrviewer` |
 | **Runs** | |
 | [`history`, `replay`, `run`](#run-folders-history-replay-run) | List, rerun or define recorded runs |
@@ -48,13 +49,14 @@ These go **before** the command, e.g. `python -m cli -v pipeline ...`:
 | `ESMINI_HOME` | esmini root containing `bin/` (fallback `./esmini`) |
 | `OPENDRIVE_XSD` | ASAM OpenDRIVE XSD for the schema check |
 | `KADMOS_HISTORY` | Root of the run folders (default `out`); `off` disables recording |
+| `KADMOS_TEXTURES` | Texture library the `.glb` embeds (default `gltf.textures`, `assets/textures`); `off` for plain colours ([textures](scene.md#textures)) |
 
 ## Parameters and `--config`
 
 Every default lives in [`kadmos/defaults.yaml`](../kadmos/defaults.yaml),
 one section per component. Examples: `generators.<name>`,
 `maps.<kind>.<name>`, `drape`, `design`, `opendrive`, `hdmap`,
-`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `pipeline`, `scene`, `ground`, `structures`, `buildings`, `esmini`.
+`cross_section`, `turn_lanes`, `road_marks`, `junction_control`, `traffic_lights`, `annotate`, `pipeline`, `scene`, `ground`, `structures`, `buildings`, `gltf`, `esmini`.
 
 Parameters are layered. Each layer overrides the one before it:
 
@@ -158,8 +160,8 @@ By default it also draws the lane plot (`PREFIX_hd.png`, HD maps only),
 writes the buildings and, when there is an elevation map, the ground
 (`PREFIX_scene.osgt`; without one `PREFIX_buildings.osgt`), and runs the
 drive-check. The config section `pipeline:` (`buildings`, `ground`,
-`lane_plot`, `drive_check`, all `true`) sets these defaults, and each has a
-`--x` / `--no-x` switch below. These three read only the built `.xodr` and the
+`lane_plot`, `drive_check`, all `true`; `gltf`, `false`) sets these
+defaults, and each has a `--x` / `--no-x` switch below. These three read only the built `.xodr` and the
 graph, so they run side by side, each in a forked process
 (`cli.run_side_by_side`; one after another where the platform has no `fork`):
 the run takes as long as the slowest of them, usually the drive-check. Their
@@ -179,6 +181,7 @@ the stage summary at the end gathers their checks.
 | `--map-file KIND=FILE.npz` | Load one kind from a file; wins over a generator for that kind |
 | `--buildings`, `--no-buildings` | Buildings ([scene](scene.md)): in `PREFIX_scene.osgt` with the ground, else in `PREFIX_buildings.osgt` (default `pipeline.buildings`, on) |
 | `--ground`, `--no-ground` | `PREFIX_scene.osgt`: the ground cut around the roads, bridges and tunnels, plus the buildings (default `pipeline.ground`, on when there is an elevation map; asking `--ground` without one is an error) |
+| `--gltf`, `--no-gltf` | `PREFIX.glb` for Blender: the lanes, marks, signs and lights of the built `.xodr`, the junction fills, and the ground, structures and buildings of the scene ([Blender export](scene.md#blender-export-glb)) (default `pipeline.gltf`, off) |
 | `--drive-check`, `--no-drive-check` | Run [drive-check](#drive-check), if there are no errors so far (default `pipeline.drive_check`, on) |
 | `--lane-plot`, `--no-lane-plot` | With HD maps, draw the built lanes to `PREFIX_hd.png` ([plot-xodr](#plot-map-plot-graph-plot-xodr); about 5 s on a city) (default `pipeline.lane_plot`, on) |
 
@@ -282,6 +285,21 @@ A ground mesh from the maps. `--xodr` (built from a draped network) cuts the
 ground around its roads and its sidecar's junction fills, and adds bridge
 decks, piers and tunnel portals; `--buildings` adds the `--graph`'s
 buildings. Parameters go in `ground:` and `structures:`. See [3D scene](scene.md).
+
+## export-gltf
+
+```bash
+python -m cli export-gltf NET.xodr [-o OUT.glb] [--map-file elevation=E.npz --map-file terrain=T.npz] \
+    [--graph NET.json --buildings] [--seed N]                                 # default: NET.glb
+```
+
+The lanes, marks, signs and lights of a built `.xodr` and its sidecar's
+junction fills as one binary glTF for Blender. With an elevation map, it adds the ground (cut around the
+roads, so the network must be draped) and the bridge and tunnel structures.
+`--buildings` adds the `--graph`'s buildings. Parameters go in `gltf:`
+(sampling step, lane colours, `marks`, `mark_lift`, `signals`, `textures`: the
+library from `scripts/fetch_textures.py`, embedded when there), `ground:`, `structures:` and `buildings:`.
+See [Blender export](scene.md#blender-export-glb).
 
 ## view
 

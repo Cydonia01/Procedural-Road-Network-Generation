@@ -37,9 +37,10 @@ class SceneParams:
     junction_fill: bool = _D["junction_fill"]  # draw the junction surface no lane covers
     asphalt_color: tuple[float, float, float] = _D["asphalt_color"]  # RGB in [0, 1]
     fill_below: float = _D["fill_below"]  # the fill sits this far under the lanes [m]
+    fill_grow: float = _D["fill_grow"]  # ... and reaches this far in under them [m]
 
     def __post_init__(self) -> None:
-        if self.fill_below < 0 or not all(0.0 <= c <= 1.0 for c in self.asphalt_color):
+        if self.fill_below < 0 or self.fill_grow < 0 or not all(0.0 <= c <= 1.0 for c in self.asphalt_color):
             raise ValueError("need fill_below >= 0 and asphalt_color in [0, 1]")
 
 
@@ -63,6 +64,9 @@ def junction_fill_mesh(fills: list[Outline], params: SceneParams = SceneParams()
             poly = poly.buffer(0)
             if poly.is_empty or poly.geom_type != "Polygon":
                 continue
+        if params.fill_grow > 0:  # the simplified outline may stop short of the lane edges
+            grown = poly.buffer(params.fill_grow, join_style="mitre")
+            poly = grown if grown.geom_type == "Polygon" else poly
         # The plane through the corners (least squares; exact for a planar outline).
         a = np.column_stack([xy, np.ones(len(xy))])
         coef = np.linalg.lstsq(a, z, rcond=None)[0]

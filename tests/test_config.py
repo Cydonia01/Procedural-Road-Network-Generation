@@ -22,6 +22,7 @@ from kadmos.opendrive.hdmap import HdMapParams
 from kadmos.opendrive.lights import TrafficLightParams
 from kadmos.opendrive.marks import RoadMarkParams
 from kadmos.scene.buildings import BuildingParams
+from kadmos.scene.export import GltfParams
 from kadmos.scene.ground import GroundParams
 from kadmos.scene.structures import StructureParams
 
@@ -32,6 +33,7 @@ from kadmos.scene.structures import StructureParams
     (DrapeParams, ("drape",)),
     (GroundParams, ("ground",)),
     (StructureParams, ("structures",)),
+    (GltfParams, ("gltf",)),
     (GeometryMetricsParams, ("metrics",)),
     (NetworkMetricsParams, ("network_metrics",)),
     (DesignParams, ("design",)),

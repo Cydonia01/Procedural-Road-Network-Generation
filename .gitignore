@@ -56,3 +56,5 @@ files/
 plans/
 report/*
 !report/midterm-report.pdf
+# Textures for the .glb export (scripts/fetch_textures.py)
+assets/textures/

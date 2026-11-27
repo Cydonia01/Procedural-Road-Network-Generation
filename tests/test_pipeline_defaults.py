@@ -15,7 +15,9 @@ from tests.shared import needs_rm
 
 @pytest.mark.pipeline_defaults
 def test_defaults_are_on():
-    assert DEFAULTS["pipeline"] == {"buildings": True, "ground": True, "lane_plot": True, "drive_check": True}
+    # The .glb (Blender export) is the one output asked for with --gltf.
+    assert DEFAULTS["pipeline"] == {"buildings": True, "ground": True, "lane_plot": True, "drive_check": True,
+                                    "gltf": False}
 
 
 @pytest.mark.pipeline_defaults

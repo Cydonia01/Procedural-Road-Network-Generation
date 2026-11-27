@@ -20,6 +20,7 @@ python -m cli view out/<hash>/hills.xodr --scenegraph out/<hash>/hills_scene.osg
 | `pipeline` with an elevation map | `PREFIX_scene.osgt` | Ground, bridges and tunnels, plus the buildings (`--no-buildings` leaves them out) |
 | `pipeline` without one, or with `--no-ground` | `PREFIX_buildings.osgt` | Buildings only (`--no-buildings`: no scene) |
 | `ground` command | `scene.osgt` | The same, from map files and a built `.xodr` ([CLI](cli-reference.md#ground)) |
+| `pipeline --gltf`, `export-gltf` | `PREFIX.glb` | The same scene with our own road mesh, for Blender ([below](#blender-export-glb)) |
 
 esmini takes a single SceneGraphFile, so ground and buildings share one
 file. `view --scenegraph` shows it with the roads.
@@ -83,8 +84,9 @@ a road under the ground.
 covers (corners no turn follows, slivers between turning lanes) are found by
 the builder and listed in the sidecar as `junction_fills`. When the pipeline
 writes a scene (ground or buildings), it draws them as flat triangles
-on the junction plane, `fill_below` (0.02 m) under the lanes, in
-`asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`).
+on the junction plane, `fill_below` (0.02 m) under the lanes and reaching
+`fill_grow` (0.05 m) in under them, since their outline is simplified by up to
+5 cm. The colour is `asphalt_color` (the mean of esmini's `resources/models/asphalt.jpg`).
 `junction_fill: false` leaves them out of the scene. The `.xodr` always
 describes the same areas as `<object type="patch">` ([OpenDRIVE](opendrive.md)),
 which esmini draws on top in a plain, lighter grey; making that look match
@@ -125,10 +127,158 @@ is open.
    lowest ground under it, and its height counts from the highest. Footprints
    touching water are dropped.
 
+## Blender export (.glb)
+
+esmini builds its road mesh from the `.xodr` itself, so the `.osgt` holds no
+roads. For Blender, `pipeline --gltf` (or `export-gltf` on a built `.xodr`)
+writes one binary glTF 2.0 file with the roads and the scene meshes:
+
+```bash
+python -m cli pipeline lsystem --preset hill_town --maps --gltf -o hills
+python -m cli export-gltf out/<hash>/hills.xodr --map-file elevation=out/<hash>/hills_elevation.npz \
+    --map-file terrain=out/<hash>/hills_terrain.npz --graph out/<hash>/hills.json --buildings
+```
+
+Blender: *File → Import → glTF 2.0*, or the scene script below. A city is
+several kilometres wide: raise the view's *Clip End*.
+
+### Textures
+
+Without textures every material is a plain colour. To get real surfaces,
+download the texture library once per checkout:
+
+```bash
+python scripts/fetch_textures.py            # into assets/textures/ (git-ignored, about 30 MB)
+```
+
+The script needs only Python's standard library, so it runs on the host
+too. It downloads two kinds of files, and records each one's source and
+licence in `assets/textures/manifest.json`:
+
+- **Surfaces** from [ambientCG](https://ambientcg.com) (CC0): asphalt,
+  concrete, paving, grass, ground, a facade and roof gravel. Each comes with
+  its colour, OpenGL normal and roughness maps, and its real size.
+- **German sign images** from Wikimedia Commons (public domain as official
+  works): one PNG per sign type the builder writes, and every speed limit
+  from 10 to 130 km/h.
+
+From then on every `.glb` embeds the images of the materials the manifest
+names (`gltf.textures`; `$KADMOS_TEXTURES` overrides it, `off` for plain
+colours):
+
+- Surfaces are tiled at their real size: UVs are in metres, and
+  KHR_texture_transform scales them by 1 / tile.
+- A sign with an image gets one face over its whole plate showing it,
+  with transparent texels cut out.
+
+Any glTF viewer then shows the textured scene. Each `.glb` grows by about
+26 MB of images.
+
+### Scene script
+
+```bash
+blender -b --python scripts/blender_scene.py -- NET.glb --blend NET.blend [--render NET.png]
+        [--engine eevee|cycles] [--samples N] [--size W H] [--camera=X,Y,Z,TX,TY,TZ]
+```
+
+Use `flatpak run org.blender.Blender` for `blender` with the Flatpak, and
+give absolute paths, because the sandbox does not see `/tmp`. Leave out
+`-b` to stay in the UI.
+
+The script imports the `.glb` and adds what glTF has no place for:
+
+- a sun and a sky;
+- a camera, looking at the whole network from the south-west, or from
+  `--camera` (position and target in the `.glb`'s coordinates [m]);
+- clip distances that fit the city, and every 3D view in Material Preview
+  (Blender's default Solid shading shows grey clay, without textures or
+  colours);
+- render settings.
+
+It then saves a `.blend` and/or renders one image. Cycles renders without a
+GPU; EEVEE needs one.
+
+### What the .glb holds
+
+- **Roads** (`roads.py`). Every lane of every road is a strip between its
+  inner and outer border. It is sampled every `gltf.step` (2 m) and at both
+  ends of each lane section. It follows the reference line, lane offset,
+  widths, elevation, superelevation and lane `<height>`, as `surface.py`
+  does for the ground. Lanes of type `none` are left out. UVs are (s, t) in
+  metres, so a tiling texture keeps its scale along and across the road.
+- **Junctions.** Connecting roads overlap by design. Drawn one by one,
+  their coinciding surfaces flicker and shade each other in a renderer. So
+  each junction's connecting-road lanes are merged into one flat surface on
+  the plane through them, with UVs (x, y). Hairline gaps between lanes are
+  closed. Junctions are planar to a few millimetres; one further than 5 cm
+  from a plane keeps its strips. The junction fills join the roads.
+- **Marks** (`marks.py`, `gltf.marks`). Every lane `<roadMark>` lies on its
+  lane's outer border, or on the lane offset for the centre lane. It runs
+  from its sOffset to the next mark or the end of the section:
+  - Each `<type>/<line>` is one line (tOffset, width, dash `length` and
+    `space`, sOffset).
+  - A mark without lines is one line, solid or broken (3 m / 9 m), or two
+    lines for double types.
+  - Type `none` draws nothing.
+  - Marking objects (`<object type="roadMark">`: stop and yield lines, turn
+    arrows) draw each `<marking>` as a line of its width through the
+    corners it references, dashed by `lineLength` / `spaceLength`.
+
+  Marks lie `gltf.mark_lift` (0.02 m) above the road surface, with UVs
+  (s, t).
+- **Signs and lights** (`signals.py`, `gltf.signals`). Every `<signal>`
+  stands at its (s, t) on the road surface, facing the traffic it is for
+  (orientation `+`: drivers going in +s), turned further by hOffset.
+  - A sign has a post, and a plate of its width and height from `zOffset`
+    up, in its shape: octagon (206), triangles (205, 301, 103, 105),
+    diamonds (306, 307), circles (274, 209, 214, 215), or a square.
+  - The plate has a rim, a face and a grey back. The face's material is
+    named after the sign (`sign_DE_274_80`, `sign_DE_206`, ...) and has UVs
+    0..1 across the plate. With the sign's image ([textures](#textures)), one
+    face covers the plate and shows it.
+  - A light (dynamic signal) has a post, a dark housing and three lamps
+    (red, amber, green), all plain colours.
+- **Nodes.** `roads`, `marks`, `signals`, `ground`, `structures` and
+  `buildings`, one object each in Blender. Each node has one primitive per
+  material.
+- **Ground, structures, buildings.**
+  - The ground is split per triangle into `ground_land`,
+    `ground_vegetation` (mostly vegetation colour) and `water` (a smooth,
+    reflecting blue), with UVs (x, y).
+  - Untextured land and vegetation keep the terrain colours as vertex
+    colours.
+  - Buildings are split into `building_wall` and `building_roof`. Walls
+    get UVs along the facade and up from its base, so a facade texture
+    stands upright on the ground. Roofs and anything else facing up get
+    (x, y).
+  - Structures (`concrete`) get UVs the same way.
+- **Materials.** Every material is named, so it can be textured or replaced
+  in Blender:
+  - `lane_<type>` for each lane type in `gltf.lane_colors` (`driving`,
+    `median`, ...); other types use `lane_other`.
+  - `mark_white`, `mark_yellow`, ... for the marks.
+  - `pole`, `sign_back`, `sign_rim_*`, `sign_<country>_<type>...`,
+    `light_housing` and `light_red` / `_amber` / `_green` for the signals.
+  - `ground_land`, `ground_vegetation`, `water`, `concrete`,
+    `building_wall` and `building_roof` for the scene.
+
+  Colours are given as displayed (sRGB) and written linear, as glTF
+  requires. UVs follow glTF, where v runs down the image.
+- **Axes.** glTF is y-up. Points are written as (x, z, −y) after subtracting
+  an origin near the network's centre, which keeps float32 vertices precise
+  on big maps. Blender's importer turns the scene back to z-up, in OpenDRIVE
+  axes around that origin. The origin is stored in the scene's extras
+  (`kadmos_origin`, [m]) and logged.
+
+`gltf.py` is a small writer of its own (numpy and `struct`, no glTF
+library).
+
 ## Formats
 
 - **`.osgt`** (OpenSceneGraph ASCII, z-up; `osgt.py`): what esmini loads.
   - esmini's bundled OSG can't read `.obj`.
   - esmini loads scene graphs only when it has a window (`view`).
-- **`.obj` + `.mtl`** (y-up by default, `buildings.y_up`): for Blender,
-  MeshLab and similar tools.
+- **`.glb`** (binary glTF 2.0, y-up; `gltf.py`): the whole scene with the
+  roads, for Blender ([above](#blender-export-glb)).
+- **`.obj` + `.mtl`** (y-up by default, `buildings.y_up`): buildings only, for
+  Blender, MeshLab and similar tools.
