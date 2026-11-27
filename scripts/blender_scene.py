@@ -16,7 +16,8 @@ This script adds what glTF has no place for:
 - a camera looking at the whole network from the south-west, or from --camera
   (position and target in the .glb's coordinates [m]),
 - clip distances fitting a city several kilometres wide, in the camera and in
-  every 3D view,
+  every 3D view, and those views in Material Preview (Solid shading shows no
+  textures),
 - the render settings (engine, samples, size).
 """
 
@@ -114,6 +115,7 @@ def main(argv: Optional[list[str]] = None) -> None:
             for space in area.spaces:
                 if space.type == "VIEW_3D":
                     space.clip_start, space.clip_end = 0.1, 4 * size
+                    space.shading.type = "MATERIAL"  # textures and colours; Solid shows grey clay
 
     # render settings
     for engine in ENGINES[args.engine]:  # render engines register at run time: try their names

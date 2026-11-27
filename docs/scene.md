@@ -190,7 +190,9 @@ The script imports the `.glb` and adds what glTF has no place for:
 - a sun and a sky;
 - a camera, looking at the whole network from the south-west, or from
   `--camera` (position and target in the `.glb`'s coordinates [m]);
-- clip distances that fit the city;
+- clip distances that fit the city, and every 3D view in Material Preview
+  (Blender's default Solid shading shows grey clay, without textures or
+  colours);
 - render settings.
 
 It then saves a `.blend` and/or renders one image. Cycles renders without a
